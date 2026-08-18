@@ -1,0 +1,356 @@
+// src/services/AuditLog.js
+//@ts-check
+const auditLogger = require("../utils/auditLogger");
+const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
+
+/**
+ * Allowed columns for sorting (prevents SQL injection)
+ */
+const ALLOWED_SORT_COLUMNS = new Set([
+  "id",
+  "action",
+  "entity",
+  "entityId",
+  "user",
+  "timestamp",
+]);
+
+class AuditLogService {
+  constructor() {
+    this.auditLogRepository = null;
+  }
+
+  async initialize() {
+    const { AppDataSource } = require("../main/db/data-source");
+    const { AuditLog } = require("../entities/AuditLog");
+
+    if (!AppDataSource.isInitialized) {
+      await AppDataSource.initialize();
+    }
+    this.auditLogRepository = AppDataSource.getRepository(AuditLog);
+    console.log("AuditLogService initialized");
+  }
+
+  async getRepository() {
+    if (!this.auditLogRepository) {
+      await this.initialize();
+    }
+    return this.auditLogRepository;
+  }
+
+  /**
+   * Helper: get a repository (transactional if queryRunner provided)
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @param {Function} entityClass
+   * @returns {import("typeorm").Repository<any>}
+   */
+  _getRepo(qr, entityClass) {
+    // Log the type for debugging
+    const qrType =
+      qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
+    const hasManager = qr && typeof qr === "object" && !!qr.manager;
+    console.log(
+      `[AuditLog._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
+    );
+
+    // Only use the transactional manager if qr is a valid QueryRunner object
+    if (hasManager && typeof qr.manager.getRepository === "function") {
+      return qr.manager.getRepository(entityClass);
+    }
+    // Fallback to global data source
+    const { AppDataSource } = require("../main/db/data-source");
+    console.log(`[AuditLog._getRepo] Using global repository (fallback)`);
+    return AppDataSource.getRepository(entityClass);
+  }
+
+  /**
+   * Create a new audit log entry
+   * @param {Object} data - { action, entity, entityId?, user?, description? }
+   * @param {string} user - User performing the action (for logger)
+   * @param {import("typeorm").QueryRunner | null} qr - Optional transaction query runner
+   */
+  async create(data, user = "system", qr = null) {
+    const { saveDb } = require("../utils/dbUtils/dbActions");
+    const { AuditLog } = require("../entities/AuditLog");
+    const repo = this._getRepo(qr, AuditLog);
+
+    try {
+      // Validate required fields
+      if (!data.action) throw new Error("Action is required");
+      if (!data.entity) throw new Error("Entity is required");
+
+      const log = repo.create({
+        action: data.action,
+        entity: data.entity,
+        entityId: data.entityId || null,
+        user: data.user || user,
+        timestamp: new Date(),
+        description: data.description || null, // optional field if exists, otherwise ignore
+      });
+
+      const saved = await saveDb(repo, log, { queryRunner: qr });
+
+      // Audit log of the audit log creation (to keep track, but avoid infinite loop)
+      // We use the direct auditLogger utility which does NOT call this service.
+      await auditLogger.logCreate("AuditLog", saved.id, saved, user);
+
+      console.log(`AuditLog created: #${saved.id} - ${data.action} on ${data.entity}`);
+      return saved;
+    } catch (error) {
+      console.error("Failed to create audit log:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Find audit log by ID
+   * @param {number} id
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async findById(id, qr = null) {
+    const { AuditLog } = require("../entities/AuditLog");
+    const repo = this._getRepo(qr, AuditLog);
+
+    const log = await repo.findOne({ where: { id } });
+    if (!log) {
+      throw new Error(`AuditLog with ID ${id} not found`);
+    }
+    await auditLogger.logView("AuditLog", id, "system");
+    return log;
+  }
+
+  /**
+   * Find all audit logs with filters, pagination, sorting
+   * @param {Object} options
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async findAll(options = {}, qr = null) {
+    const { AuditLog } = require("../entities/AuditLog");
+    const repo = this._getRepo(qr, AuditLog);
+    const qb = repo.createQueryBuilder("log");
+
+    // Filters
+    if (options.action) {
+      qb.andWhere("log.action = :action", { action: options.action });
+    }
+    if (options.entity) {
+      qb.andWhere("log.entity = :entity", { entity: options.entity });
+    }
+    if (options.entityId) {
+      qb.andWhere("log.entityId = :entityId", { entityId: options.entityId });
+    }
+    if (options.user) {
+      qb.andWhere("log.user = :user", { user: options.user });
+    }
+    if (options.startDate) {
+      qb.andWhere("log.timestamp >= :startDate", { startDate: new Date(options.startDate) });
+    }
+    if (options.endDate) {
+      const end = new Date(options.endDate);
+      end.setHours(23, 59, 59, 999);
+      qb.andWhere("log.timestamp <= :endDate", { endDate: end });
+    }
+    if (options.search) {
+      qb.andWhere(
+        "(log.action LIKE :search OR log.entity LIKE :search OR log.user LIKE :search OR log.description LIKE :search)",
+        { search: `%${options.search}%` },
+      );
+    }
+
+    // Sorting (with whitelist)
+    let sortBy = options.sortBy || "timestamp";
+    if (!ALLOWED_SORT_COLUMNS.has(sortBy)) {
+      console.warn(`[AuditLog] Invalid sortBy: ${sortBy}, falling back to timestamp`);
+      sortBy = "timestamp";
+    }
+    const sortOrder = options.sortOrder === "ASC" ? "ASC" : "DESC";
+    qb.orderBy(`log.${sortBy}`, sortOrder);
+
+    // Pagination
+    const result = await paginateQueryBuilder(qb, {
+      page: options.page,
+      limit: options.limit,
+    });
+
+    await auditLogger.logView("AuditLog", null, "system");
+    return result; // { data: [], pagination: {} }
+  }
+
+  /**
+   * Hard delete an audit log (use with caution – for cleanup)
+   * @param {number} id
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async permanentlyDelete(id, user = "system", qr = null) {
+    const { removeDb } = require("../utils/dbUtils/dbActions");
+    const { AuditLog } = require("../entities/AuditLog");
+    const repo = this._getRepo(qr, AuditLog);
+
+    const log = await repo.findOne({ where: { id } });
+    if (!log) {
+      throw new Error(`AuditLog with ID ${id} not found`);
+    }
+
+    await removeDb(repo, log, { queryRunner: qr });
+    await auditLogger.logDelete("AuditLog", id, log, user);
+    console.log(`AuditLog #${id} permanently deleted`);
+  }
+
+  /**
+   * Get audit log statistics
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getStatistics(qr = null) {
+    const { AuditLog } = require("../entities/AuditLog");
+    const repo = this._getRepo(qr, AuditLog);
+
+    // Count by action
+    const byAction = await repo
+      .createQueryBuilder("log")
+      .select("log.action", "action")
+      .addSelect("COUNT(*)", "count")
+      .groupBy("log.action")
+      .getRawMany();
+
+    // Count by entity
+    const byEntity = await repo
+      .createQueryBuilder("log")
+      .select("log.entity", "entity")
+      .addSelect("COUNT(*)", "count")
+      .groupBy("log.entity")
+      .getRawMany();
+
+    const total = await repo.count();
+
+    // Last 7 days activity
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const last7Days = await repo
+      .createQueryBuilder("log")
+      .where("log.timestamp >= :sevenDaysAgo", { sevenDaysAgo })
+      .getCount();
+
+    return {
+      total,
+      last7Days,
+      byAction: byAction.reduce((acc, row) => {
+        acc[row.action] = parseInt(row.count, 10);
+        return acc;
+      }, {}),
+      byEntity: byEntity.reduce((acc, row) => {
+        acc[row.entity] = parseInt(row.count, 10);
+        return acc;
+      }, {}),
+    };
+  }
+
+  /**
+   * Export audit logs to CSV or JSON
+   * @param {string} format - 'csv' or 'json'
+   * @param {Object} filters - Export filters (same as findAll)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async exportAuditLogs(format = "json", filters = {}, user = "system", qr = null) {
+    try {
+      // Fetch all data without pagination for export
+      const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
+      const logs = result.data;
+
+      let exportData;
+      if (format === "csv") {
+        const headers = ["ID", "Action", "Entity", "Entity ID", "User", "Timestamp", "Description"];
+        const rows = logs.map((log) => [
+          log.id,
+          log.action,
+          log.entity,
+          log.entityId ?? "",
+          log.user ?? "",
+          new Date(log.timestamp).toLocaleString(),
+          log.description ?? "",
+        ]);
+        exportData = {
+          format: "csv",
+          data: [headers, ...rows].map((row) => row.join(",")).join("\n"),
+          filename: `audit_logs_export_${new Date().toISOString().split("T")[0]}.csv`,
+        };
+      } else {
+        exportData = {
+          format: "json",
+          data: logs,
+          filename: `audit_logs_export_${new Date().toISOString().split("T")[0]}.json`,
+        };
+      }
+
+      await auditLogger.logExport("AuditLog", format, filters, user);
+      console.log(`Exported ${logs.length} audit logs in ${format} format`);
+      return exportData;
+    } catch (error) {
+      console.error("Failed to export audit logs:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Bulk create audit logs
+   * @param {Array<Object>} logsArray
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async bulkCreate(logsArray, user = "system", qr = null) {
+    const results = { created: [], errors: [] };
+    for (const data of logsArray) {
+      try {
+        const saved = await this.create(data, user, qr);
+        results.created.push(saved);
+      } catch (err) {
+        results.errors.push({ log: data, error: err.message });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Import audit logs from a CSV file
+   * @param {string} filePath
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async importFromCSV(filePath, user = "system", qr = null) {
+    const fs = require("fs").promises;
+    const csv = require("csv-parse/sync");
+    const fileContent = await fs.readFile(filePath, "utf-8");
+    const records = csv.parse(fileContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
+
+    const results = { imported: [], errors: [] };
+    for (const record of records) {
+      try {
+        const logData = {
+          action: record.action,
+          entity: record.entity,
+          entityId: record.entityId ? parseInt(record.entityId, 10) : null,
+          user: record.user || user,
+          description: record.description || null,
+        };
+        // Basic validation
+        if (!logData.action || !logData.entity) {
+          throw new Error("Action and Entity are required");
+        }
+        const saved = await this.create(logData, user, qr);
+        results.imported.push(saved);
+      } catch (err) {
+        results.errors.push({ row: record, error: err.message });
+      }
+    }
+    return results;
+  }
+}
+
+// Singleton instance
+const auditLogService = new AuditLogService();
+module.exports = auditLogService;

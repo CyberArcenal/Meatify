@@ -1,0 +1,111 @@
+{
+  "name": "meatify",
+  "private": true,
+  "version": "v1.0.0",
+  "description": "Meatify - Meat Shop POS System with batch inventory, expiry tracking, and FIFO sales",
+  "main": "src/main/index.js",
+  "author": {
+    "name": "CyberArcenal",
+    "email": "cyberarcenal1@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/meatify.git"
+  },
+  "build": {
+    "appId": "com.yourname.meatify.app",
+    "productName": "Meatify",
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": "nsis",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "mac": {
+      "icon": "build/icon.icns",
+      "target": "dmg",
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": ["AppImage", "deb"],
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "CyberArcenal",
+      "repo": "meatify",
+      "releaseType": "release"
+    }
+  },
+  "scripts": {
+    "build:main": "tsc -p tsconfig.main.json",
+    "lint": "eslint . --ext .ts,.tsx",
+    "vite": "vite",
+    "preview": "vite preview",
+    "electron": "electron ./src/main/index.js",
+    "electron:dev": "electron ./src/main/index.js",
+    "electron:build": "electron-builder",
+    "migration:generate": "npx typeorm migration:generate src/migrations/InitSchema -d src/main/db/data-source.js --outputJs",
+    "migration:run": "npx typeorm migration:run -d src/main/db/data-source.js",
+    "migration:revert": "npx typeorm migration:revert -d src/main/db/data-source.js",
+    "dev": "cross-env NODE_ENV=development concurrently \"vite\" \"tsc -w -p tsconfig.main.json\" \"electron ./src/main/index.js\"",
+    "build": "vite build && electron-builder --publish never",
+    "dist:win": "vite build && electron-builder --win",
+    "dist:mac": "vite build && electron-builder --mac",
+    "dist:linux": "vite build && electron-builder --linux",
+    "seed": "node src/seeders/seedData.js",
+    "seed:reset": "ts-node src/seeders/seedData.js --reset",
+    "postinstall": "electron-rebuild",
+    "rebuild": "electron-rebuild -f -w sqlite3"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "chart.js": "^4.5.1",
+    "clsx": "^2.1.1",
+    "csv-parse": "^6.1.0",
+    "date-fns": "^4.1.0",
+    "decimal.js": "^10.6.0",
+    "electron-updater": "^6.8.3",
+    "escpos": "^3.0.0-alpha.6",
+    "escpos-usb": "^3.0.0-alpha.4",
+    "lucide-react": "^0.562.0",
+    "nodemailer": "^8.0.1",
+    "p-queue": "^9.1.0",
+    "react": "^19.2.0",
+    "react-chartjs-2": "^5.3.1",
+    "react-dom": "^19.2.0",
+    "react-hook-form": "^7.71.1",
+    "react-router-dom": "^7.12.0",
+    "reflect-metadata": "^0.2.2",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.0.2",
+    "tailwind-merge": "^3.4.0",
+    "twilio": "^5.12.2",
+    "typeorm": "^0.3.28"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
+    "@eslint/js": "^9.39.1",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/chart.js": "^2.9.41",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "electron": "^40.6.1",
+    "electron-builder": "^26.8.1",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^7.2.4"
+  }
+}

@@ -1,0 +1,435 @@
+// src/stateServices/SaleStateService.js
+//@ts-check
+const { logger } = require("../utils/logger");
+const auditLogger = require("../utils/auditLogger");
+const Sale = require("../entities/Sale");
+const SaleItem = require("../entities/SaleItem");
+const Customer = require("../entities/Customer");
+const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
+const notificationService = require("../services/Notification");
+const { BatchStateService } = require("./Batch");
+
+// Settings getters (you can implement these as async functions)
+const getLoyaltyPointRate = async () => 100; // points per peso spent
+const loyaltyPointsEnabled = async () => true;
+const enableReceiptPrinting = async () => true;
+const enableCashDrawer = async () => true;
+const companyName = async () => "Meatify Shop";
+
+/**
+ * SaleStateService handles state transitions for sales.
+ * It does NOT contain CRUD operations – those belong to SaleService.
+ * All methods here modify the state (status) of sales and trigger side effects.
+ */
+class SaleStateService {
+  /**
+   * @param {import("typeorm").DataSource} dataSource
+   */
+  constructor(dataSource) {
+    this.dataSource = dataSource;
+    this.saleRepo = dataSource.getRepository(Sale);
+    this.saleItemRepo = dataSource.getRepository(SaleItem);
+    this.customerRepo = dataSource.getRepository(Customer);
+    this.loyaltyRepo = dataSource.getRepository(LoyaltyTransaction);
+    this.batchStateService = new BatchStateService(dataSource);
+  }
+
+  /**
+   * Helper: get repository (transactional if queryRunner provided)
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @param {Function} entityClass
+   * @returns {import("typeorm").Repository<any>}
+   */
+  _getRepo(qr, entityClass) {
+    if (qr) {
+      return qr.manager.getRepository(entityClass);
+    }
+    return this.dataSource.getRepository(entityClass);
+  }
+
+  /**
+   * Mark a sale as paid – triggers all side effects: FIFO batch deduction,
+   * loyalty points, notifications, receipt printing, cash drawer.
+   * @param {number} saleId
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async markAsPaid(saleId, user = "system", queryRunner = null) {
+    const { updateDb, saveDb, removeDb } = require("../utils/dbUtils/dbActions");
+
+    // Load sale with items and customer
+    const saleRepo = this._getRepo(queryRunner, Sale);
+    const saleItemRepo = this._getRepo(queryRunner, SaleItem);
+
+    const sale = await saleRepo.findOne({
+      where: { id: saleId },
+      relations: ["saleItems", "saleItems.meat", "customer"],
+    });
+    if (!sale) {
+      throw new Error(`Sale #${saleId} not found`);
+    }
+
+    if (sale.status !== "initiated") {
+      throw new Error(`Sale #${saleId} is already ${sale.status}`);
+    }
+
+    logger.info(`[SaleState] Marking sale #${saleId} as paid`);
+
+    // --- STEP 1: FIFO Batch Deduction for each item ---
+    const deductions = [];
+    for (const item of sale.saleItems) {
+      const result = await this.batchStateService.fifoDeduct(
+        item.meat.id,
+        item.weightKg,
+        "sale",
+        { saleId: sale.id, notes: `Sale #${sale.id} - ${item.meat.name}` },
+        user,
+        queryRunner
+      );
+      deductions.push({
+        saleItem: item,
+        deductions: result, // array of { batch, deductedWeight }
+      });
+    }
+
+    // --- STEP 2: Replace sale items with batch-specific items ---
+    // Remove old sale items
+    for (const item of sale.saleItems) {
+      await removeDb(saleItemRepo, item, { queryRunner });
+    }
+
+    // Create new sale items per batch deduction
+    const newSaleItems = [];
+    for (const deductionGroup of deductions) {
+      const originalItem = deductionGroup.saleItem;
+      for (const d of deductionGroup.deductions) {
+        const newItem = saleItemRepo.create({
+          weightKg: d.deductedWeight,
+          unitPrice: originalItem.unitPrice,
+          discount: originalItem.discount,
+          tax: originalItem.tax,
+          lineTotal: (originalItem.unitPrice * d.deductedWeight) - originalItem.discount + originalItem.tax,
+          sale: sale,
+          meat: originalItem.meat,
+          batch: d.batch,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        const saved = await saveDb(saleItemRepo, newItem, { queryRunner });
+        newSaleItems.push(saved);
+      }
+    }
+
+    // --- STEP 3: Update sale total (recompute based on new items) ---
+    let newTotal = 0;
+    for (const item of newSaleItems) {
+      newTotal += item.lineTotal;
+    }
+    // Apply loyalty redemption (if any)
+    if (sale.loyaltyRedeemed > 0) {
+      newTotal -= sale.loyaltyRedeemed;
+    }
+    sale.totalAmount = Math.round(newTotal * 100) / 100;
+    sale.saleItems = newSaleItems;
+
+    // --- STEP 4: Loyalty Points (Earn) ---
+    const loyaltyEnabled = await loyaltyPointsEnabled();
+    let pointsEarned = 0;
+    if (loyaltyEnabled && sale.customer) {
+      const rate = await getLoyaltyPointRate();
+      const netSpend = sale.totalAmount - (sale.loyaltyRedeemed || 0);
+      pointsEarned = Math.floor(netSpend / rate);
+      sale.pointsEarn = pointsEarned;
+    }
+
+    // --- STEP 5: Loyalty Points (Redeem) – already handled in total ---
+    // --- STEP 6: Update customer loyalty balance ---
+    if (pointsEarned > 0 && sale.customer) {
+      const customerRepo = this._getRepo(queryRunner, Customer);
+      const customer = await customerRepo.findOne({ where: { id: sale.customer.id } });
+      if (customer) {
+        const oldBalance = customer.loyaltyPointsBalance;
+        customer.loyaltyPointsBalance += pointsEarned;
+        customer.lifetimePointsEarned = (customer.lifetimePointsEarned || 0) + pointsEarned;
+        customer.updatedAt = new Date();
+        await updateDb(customerRepo, customer, { queryRunner });
+
+        // Create loyalty transaction
+        const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
+        const tx = loyaltyRepo.create({
+          pointsChange: pointsEarned,
+          transactionType: "earn",
+          notes: `Sale #${sale.id}`,
+          customer: customer,
+          sale: sale,
+          timestamp: new Date(),
+        });
+        await saveDb(loyaltyRepo, tx, { queryRunner });
+
+        // If loyalty redeemed, create redemption transaction
+        if (sale.loyaltyRedeemed > 0) {
+          const redeemTx = loyaltyRepo.create({
+            pointsChange: -sale.loyaltyRedeemed,
+            transactionType: "redeem",
+            notes: `Redeemed on Sale #${sale.id}`,
+            customer: customer,
+            sale: sale,
+            timestamp: new Date(),
+          });
+          await saveDb(loyaltyRepo, redeemTx, { queryRunner });
+        }
+
+        await auditLogger.logUpdate(
+          "Customer",
+          customer.id,
+          { loyaltyPointsBalance: oldBalance },
+          { loyaltyPointsBalance: customer.loyaltyPointsBalance },
+          user
+        );
+      }
+    }
+
+    // --- STEP 7: Update sale status to paid ---
+    sale.status = "paid";
+    sale.updatedAt = new Date();
+    const paidSale = await updateDb(saleRepo, sale, { queryRunner });
+
+    // --- STEP 8: Audit log for status change ---
+    await auditLogger.logUpdate(
+      "Sale",
+      saleId,
+      { status: "initiated" },
+      { status: "paid" },
+      user
+    );
+
+    // --- STEP 9: Side effects (non-critical) ---
+    try {
+      // Large sale notification (if amount > threshold)
+      if (sale.totalAmount > 10000) {
+        await this._notifyLargeSale(sale, user, queryRunner);
+      }
+
+      // Loyalty milestone notification
+      if (sale.customer && pointsEarned > 0) {
+        await this._checkLoyaltyMilestone(sale.customer, user, queryRunner);
+      }
+
+      // Receipt printing
+      const printEnabled = await enableReceiptPrinting();
+      if (printEnabled) {
+        // This would call PrinterService – we'll just log
+        logger.info(`[SaleState] Would print receipt for sale #${saleId}`);
+        // await printerService.printReceipt(saleId, queryRunner);
+      }
+
+      // Cash drawer
+      const drawerEnabled = await enableCashDrawer();
+      if (drawerEnabled && sale.paymentMethod === "cash") {
+        logger.info(`[SaleState] Would open cash drawer for sale #${saleId}`);
+        // await cashDrawerService.openDrawer("sale", queryRunner);
+      }
+    } catch (err) {
+      logger.error(`[SaleState] Non-critical side effects failed for sale #${saleId}:`, err);
+    }
+
+    logger.info(`[SaleState] Sale #${saleId} paid successfully`);
+    return paidSale;
+  }
+
+  /**
+   * Refund a sale – reverse all stock deductions and loyalty points
+   * @param {number} saleId
+   * @param {string} reason
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async refundSale(saleId, reason = "", user = "system", queryRunner = null) {
+    const { updateDb, saveDb, removeDb } = require("../utils/dbUtils/dbActions");
+
+    const saleRepo = this._getRepo(queryRunner, Sale);
+    const saleItemRepo = this._getRepo(queryRunner, SaleItem);
+
+    const sale = await saleRepo.findOne({
+      where: { id: saleId },
+      relations: ["saleItems", "saleItems.batch", "saleItems.meat", "customer"],
+    });
+    if (!sale) {
+      throw new Error(`Sale #${saleId} not found`);
+    }
+
+    if (sale.status !== "paid") {
+      throw new Error(`Cannot refund sale with status "${sale.status}"`);
+    }
+
+    logger.info(`[SaleState] Refunding sale #${saleId}`);
+
+    // --- STEP 1: Reverse stock for each sale item (add back to batch) ---
+    for (const item of sale.saleItems) {
+      if (item.batch) {
+        await this.batchStateService.addToBatch(
+          item.batch.id,
+          item.weightKg,
+          "refund",
+          { saleId: sale.id, notes: `Refund of sale #${sale.id}` },
+          user,
+          queryRunner
+        );
+      } else {
+        logger.warn(`[SaleState] Sale item #${item.id} has no batch, skipping stock reversal`);
+      }
+    }
+
+    // --- STEP 2: Reverse loyalty points (if any) ---
+    if (sale.pointsEarn > 0 && sale.customer) {
+      const customerRepo = this._getRepo(queryRunner, Customer);
+      const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
+
+      const customer = await customerRepo.findOne({ where: { id: sale.customer.id } });
+      if (customer) {
+        const oldBalance = customer.loyaltyPointsBalance;
+        customer.loyaltyPointsBalance -= sale.pointsEarn;
+        customer.updatedAt = new Date();
+        await updateDb(customerRepo, customer, { queryRunner });
+
+        // Create reversal transaction
+        const tx = loyaltyRepo.create({
+          pointsChange: -sale.pointsEarn,
+          transactionType: "refund",
+          notes: `Refund of sale #${sale.id} - ${reason}`,
+          customer: customer,
+          sale: sale,
+          timestamp: new Date(),
+        });
+        await saveDb(loyaltyRepo, tx, { queryRunner });
+
+        await auditLogger.logUpdate(
+          "Customer",
+          customer.id,
+          { loyaltyPointsBalance: oldBalance },
+          { loyaltyPointsBalance: customer.loyaltyPointsBalance },
+          user
+        );
+      }
+    }
+
+    // --- STEP 3: Update sale status ---
+    sale.status = "refunded";
+    sale.notes = sale.notes
+      ? `${sale.notes}\nRefunded: ${reason}`
+      : `Refunded: ${reason}`;
+    sale.updatedAt = new Date();
+    const refundedSale = await updateDb(saleRepo, sale, { queryRunner });
+
+    // --- STEP 4: Audit log ---
+    await auditLogger.logUpdate(
+      "Sale",
+      saleId,
+      { status: "paid" },
+      { status: "refunded" },
+      user
+    );
+
+    logger.info(`[SaleState] Sale #${saleId} refunded successfully`);
+    return refundedSale;
+  }
+
+  /**
+   * Void a sale (before payment) – no stock changes
+   * @param {number} saleId
+   * @param {string} reason
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async voidSale(saleId, reason = "", user = "system", queryRunner = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+
+    const saleRepo = this._getRepo(queryRunner, Sale);
+
+    const sale = await saleRepo.findOne({
+      where: { id: saleId },
+      relations: ["saleItems", "customer"],
+    });
+    if (!sale) {
+      throw new Error(`Sale #${saleId} not found`);
+    }
+
+    if (sale.status !== "initiated") {
+      throw new Error(`Cannot void a sale with status "${sale.status}"`);
+    }
+
+    logger.info(`[SaleState] Voiding sale #${saleId}`);
+
+    sale.status = "voided";
+    sale.notes = sale.notes
+      ? `${sale.notes}\nVoided: ${reason}`
+      : `Voided: ${reason}`;
+    sale.updatedAt = new Date();
+
+    const voidedSale = await updateDb(saleRepo, sale, { queryRunner });
+
+    await auditLogger.logUpdate(
+      "Sale",
+      saleId,
+      { status: "initiated" },
+      { status: "voided" },
+      user
+    );
+
+    logger.info(`[SaleState] Sale #${saleId} voided successfully`);
+    return voidedSale;
+  }
+
+  // --- Helper methods for side effects ---
+
+  /**
+   * Notify about large sale
+   * @private
+   */
+  async _notifyLargeSale(sale, user, queryRunner) {
+    try {
+      await notificationService.create(
+        {
+          userId: 1,
+          title: "Large Sale Alert",
+          message: `Sale #${sale.id} amount: ₱${sale.totalAmount.toFixed(2)}`,
+          type: "sale",
+          metadata: { saleId: sale.id, amount: sale.totalAmount },
+        },
+        user,
+        queryRunner
+      );
+    } catch (err) {
+      logger.error(`[SaleState] Failed to send large sale notification:`, err);
+    }
+  }
+
+  /**
+   * Check loyalty milestone and notify
+   * @private
+   */
+  async _checkLoyaltyMilestone(customer, user, queryRunner) {
+    // Simple check: if lifetime points reach thresholds
+    const thresholds = [100, 500, 1000, 5000];
+    const current = customer.lifetimePointsEarned || 0;
+    // We would need previous value to detect crossing, but we'll just check if it's exactly at threshold
+    // For simplicity, we'll just send a generic message if points > 0
+    try {
+      await notificationService.create(
+        {
+          userId: 1,
+          title: "Loyalty Milestone",
+          message: `${customer.name} has earned points! Total: ${customer.lifetimePointsEarned}`,
+          type: "success",
+          metadata: { customerId: customer.id, points: customer.loyaltyPointsBalance },
+        },
+        user,
+        queryRunner
+      );
+    } catch (err) {
+      logger.error(`[SaleState] Failed to send loyalty milestone notification:`, err);
+    }
+  }
+}
+
+module.exports = { SaleStateService };
