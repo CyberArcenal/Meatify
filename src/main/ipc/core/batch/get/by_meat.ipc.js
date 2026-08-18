@@ -1,0 +1,35 @@
+// src/main/ipc/core/batch/get/by_meat.ipc.js
+const batchService = require("../../../../../services/BatchService");
+
+module.exports = async (params) => {
+  const { meatId, includeInactive = false } = params;
+
+  if (!meatId || typeof meatId !== "number") {
+    return { status: false, message: "Valid meat ID is required", data: null };
+  }
+
+  try {
+    const options = {
+      meatId,
+      includeInactive,
+      sortBy: "expiryDate",
+      sortOrder: "ASC",
+    };
+    const result = await batchService.findAll(options);
+    return {
+      status: true,
+      message: "Batches retrieved successfully",
+      data: {
+        data: result.data,
+        pagination: result.pagination,
+      },
+    };
+  } catch (error) {
+    console.error("Error in getBatchesByMeat:", error);
+    return {
+      status: false,
+      message: error.message || "Failed to retrieve batches by meat",
+      data: null,
+    };
+  }
+};
