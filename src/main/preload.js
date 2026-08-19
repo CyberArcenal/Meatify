@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("backendAPI", {
   notificationLog: (payload) => ipcRenderer.invoke("notificationLog", payload),
   purchase: (payload) => ipcRenderer.invoke("purchase", payload),
    sale: (payload) => ipcRenderer.invoke("sale", payload),
+   saleItem: (payload) => ipcRenderer.invoke("saleItem", payload),
+returnRefund: (payload) => ipcRenderer.invoke("returnRefund", payload),
 
   // ... rest of existing APIs ...
 });

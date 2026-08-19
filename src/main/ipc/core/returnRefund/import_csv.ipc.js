@@ -1,0 +1,28 @@
+// src/main/ipc/core/returnRefund/import_csv.ipc.js
+const returnRefundService = require("../../../../services/ReturnRefund");
+const fs = require("fs").promises;
+
+module.exports = async (params, queryRunner) => {
+  const { filePath, user = "system" } = params;
+
+  if (!filePath) {
+    return { status: false, message: "filePath is required", data: null };
+  }
+
+  try {
+    await fs.access(filePath);
+    const result = await returnRefundService.importFromCSV(filePath, user, queryRunner);
+    return {
+      status: true,
+      message: `CSV import completed. ${result.imported.length} imported, ${result.errors.length} failed.`,
+      data: result,
+    };
+  } catch (error) {
+    console.error("Error in importReturnsCSV:", error);
+    return {
+      status: false,
+      message: error.message || "Failed to import returns",
+      data: null,
+    };
+  }
+};

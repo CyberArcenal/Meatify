@@ -19,7 +19,9 @@ declare global {
       notificationLog: (payload: any) => Promise<any>;
       purchase: (payload: any) => Promise<any>;
       sale: (payload: any) => Promise<any>;
-
+      saleItem: (payload: any) => Promise<any>;
+      returnRefund: (payload: any) => Promise<any>;
+      
     };
   }
 }
