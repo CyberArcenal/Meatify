@@ -8,6 +8,7 @@ export interface NotificationLog {
   id: number;
   recipient_email: string;
   subject: string | null;
+  channel: 'email' | 'sms';
   payload: string | null;
   status: 'queued' | 'sent' | 'failed' | 'resend';
   error_message: string | null;

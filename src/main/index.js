@@ -1,3 +1,4 @@
+//@ts-check
 // src/main/index.js (Meatify – aligned with Debtify startup style)
 /**
  * @file Main entry point for retail Meatify System
@@ -385,7 +386,7 @@ async function createSplashWindow() {
       width: 500,
       height: 400,
       transparent: true,
-      backgroundColor: "#00000000", // ← Added: ensures transparent background (Debtify style)
+      backgroundColor: "#00000000",
       frame: false,
       alwaysOnTop: true,
       center: true,
@@ -481,7 +482,7 @@ async function createMainWindow() {
       y,
       minWidth: 1024,
       minHeight: 768,
-      show: false, // Important: hidden until renderer signals ready
+      show: false,
       frame: true,
       titleBarStyle: "default",
       backgroundColor: "#ffffff",
@@ -604,7 +605,7 @@ function showErrorPage(window, title, message, details = "") {
                 }
                 .error-container {
                     max-width: 600px;
-                    background: rgba(212, 175, 55, 0.1); /* subtle gold tint */
+                    background: rgba(212, 175, 55, 0.1);
                     padding: 40px;
                     border-radius: 20px;
                     backdrop-filter: blur(10px);
@@ -613,7 +614,7 @@ function showErrorPage(window, title, message, details = "") {
                 h1 {
                     margin-bottom: 20px;
                     font-size: 28px;
-                    color: #d4af37; /* gold */
+                    color: #d4af37;
                 }
                 .message {
                     font-size: 16px;
@@ -648,7 +649,7 @@ function showErrorPage(window, title, message, details = "") {
                     min-width: 120px;
                 }
                 .retry-btn {
-                    background: #d4af37; /* gold */
+                    background: #d4af37;
                     color: #000000;
                 }
                 .retry-btn:hover {
@@ -667,7 +668,7 @@ function showErrorPage(window, title, message, details = "") {
                     font-size: 24px;
                     font-weight: bold;
                     margin-bottom: 20px;
-                    color: #d4af37; /* gold */
+                    color: #d4af37;
                 }
             </style>
         </head>
@@ -833,15 +834,41 @@ function registerIpcHandlers() {
     }
   });
 
-  // Import modular IPC handlers
+  // =====================================================
+  // 📦 IMPORT ALL IPC MODULES (MEATIFY SERVICES)
+  // =====================================================
   try {
     const ipcModules = [
-      "./ipc/audit/index.ipc.js",
-      "./ipc/customer/index.ipc.js",
-      "./ipc/category/index.ipc.js",
-      "./ipc/batch/index.ipc.js",
-      "./ipc/meat/index.ipc.js",
-      "./ipc/supplier/index.ipc.js"
+      // Core Services (Main Entities)
+      "./ipc/core/auditLog/index.ipc.js",
+      "./ipc/core/batch/index.ipc.js",
+      "./ipc/core/meat/index.ipc.js",
+      "./ipc/core/category/index.ipc.js",
+      "./ipc/core/supplier/index.ipc.js",
+      "./ipc/core/customer/index.ipc.js",
+      "./ipc/core/inventoryMovement/index.ipc.js",
+      "./ipc/core/loyaltyTransaction/index.ipc.js",
+      "./ipc/core/notification/index.ipc.js",
+      "./ipc/core/notificationLog/index.ipc.js",
+      "./ipc/core/purchase/index.ipc.js",
+      "./ipc/core/purchaseItem/index.ipc.js",
+      "./ipc/core/sale/index.ipc.js",
+      "./ipc/core/saleItem/index.ipc.js",
+      "./ipc/core/returnRefund/index.ipc.js",
+      "./ipc/core/returnRefundItem/index.ipc.js",
+
+      // Additional Utilities
+      "./ipc/analytics/customerInsights/index.ipc.js",
+      "./ipc/analytics/dailySales/index.ipc.js",
+      "./ipc/analytics/financialReports/index.ipc.js",
+      "./ipc/analytics/inventoryReports/index.ipc.js",
+      "./ipc/analytics/returnRefund/index.ipc.js",
+      "./ipc/analytics/sales/index.ipc.js",
+      "./ipc/barcode/index.ipc.js",
+      "./ipc/dashboard/index.ipc.js",
+      "./ipc/system_config.ipc.js",
+      "./ipc/windows_control.ipc.js",
+      "./ipc/utils/updater/index.ipc.js",
     ];
 
     ipcModules.forEach((modulePath) => {
@@ -849,18 +876,18 @@ function registerIpcHandlers() {
         const fullPath = path.join(__dirname, modulePath);
         if (fsSync.existsSync(fullPath)) {
           require(fullPath);
-          log(LogLevel.DEBUG, `Loaded IPC module: ${modulePath}`);
+          log(LogLevel.DEBUG, `✅ Loaded IPC module: ${modulePath}`);
         } else {
-          log(LogLevel.WARN, `IPC module not found: ${modulePath}`);
+          log(LogLevel.WARN, `⚠️ IPC module not found: ${modulePath}`);
         }
       } catch (error) {
-        log(LogLevel.ERROR, `Failed to load IPC module ${modulePath}:`, error);
+        log(LogLevel.ERROR, `❌ Failed to load IPC module ${modulePath}:`, error);
       }
     });
 
-    log(LogLevel.SUCCESS, "All IPC handlers registered");
+    log(LogLevel.SUCCESS, "✅ All IPC handlers registered successfully");
   } catch (error) {
-    log(LogLevel.ERROR, "Failed to register IPC handlers:", error);
+    log(LogLevel.ERROR, "❌ Failed to register IPC handlers:", error);
   }
 }
 
