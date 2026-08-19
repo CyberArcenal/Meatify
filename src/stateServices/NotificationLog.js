@@ -5,7 +5,7 @@ const auditLogger = require("../utils/auditLogger");
 const NotificationLog = require("../entities/NotificationLog");
 const emailSender = require("../channels/email.sender");
 const smsSender = require("../channels/sms.sender");
-const { LOG_STATUS } = require("../services/NotificationLog");
+const { LOG_STATUS } = require("../services/ReminderLog");
 
 /**
  * NotificationLogStateService handles state transitions and side effects for notification logs.

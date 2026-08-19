@@ -1,5 +1,5 @@
 // src/main/ipc/core/category/import_csv.ipc.js
-const categoryService = require("../../../../services/CategoryService");
+const categoryService = require("../../../../services/Category");
 const fs = require("fs").promises;
 
 module.exports = async (params, queryRunner) => {

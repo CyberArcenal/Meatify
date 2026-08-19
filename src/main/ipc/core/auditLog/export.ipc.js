@@ -1,5 +1,5 @@
 // src/main/ipc/core/auditLog/export.ipc.js
-const auditLogService = require("../../../../services/AuditLogService");
+const auditLogService = require("../../../../services/AuditLog");
 
 module.exports = async (params) => {
   const { format = "json", filters = {}, user = "system" } = params;

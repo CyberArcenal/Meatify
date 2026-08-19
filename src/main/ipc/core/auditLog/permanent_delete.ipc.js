@@ -1,5 +1,5 @@
 // src/main/ipc/core/auditLog/permanent_delete.ipc.js
-const auditLogService = require("../../../../services/AuditLogService");
+const auditLogService = require("../../../../services/AuditLog");
 
 module.exports = async (params, queryRunner) => {
   const { id, user = "system" } = params;

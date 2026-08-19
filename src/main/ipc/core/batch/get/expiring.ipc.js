@@ -1,5 +1,5 @@
 // src/main/ipc/core/batch/get/expiring.ipc.js
-const batchService = require("../../../../../services/BatchService");
+const batchService = require("../../../../../services/Batch");
 
 module.exports = async (params) => {
   const { daysThreshold = 7 } = params;

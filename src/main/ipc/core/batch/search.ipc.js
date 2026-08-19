@@ -1,5 +1,5 @@
 // src/main/ipc/core/batch/search.ipc.js
-const batchService = require("../../../../services/BatchService");
+const batchService = require("../../../../services/Batch");
 
 module.exports = async (params) => {
   const { search, page, limit, sortBy, sortOrder, ...filters } = params;

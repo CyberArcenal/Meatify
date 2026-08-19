@@ -1,5 +1,5 @@
 // src/main/ipc/core/batch/export.ipc.js
-const batchService = require("../../../../services/BatchService");
+const batchService = require("../../../../services/Batch");
 
 module.exports = async (params) => {
   const { format = "json", filters = {}, user = "system" } = params;

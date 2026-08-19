@@ -1,5 +1,5 @@
 // src/main/ipc/core/auditLog/search.ipc.js
-const auditLogService = require("../../../../services/AuditLogService");
+const auditLogService = require("../../../../services/AuditLog");
 
 module.exports = async (params) => {
   const { search, page, limit, sortBy, sortOrder, ...filters } = params;

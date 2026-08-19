@@ -1,5 +1,5 @@
 // src/main/ipc/core/batch/get/by_id.ipc.js
-const batchService = require("../../../../../services/BatchService");
+const batchService = require("../../../../../services/Batch");
 
 module.exports = async (params) => {
   const { id, includeDeleted = false } = params;

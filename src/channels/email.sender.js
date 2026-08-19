@@ -39,7 +39,7 @@ class EmailSender {
    */
   // @ts-ignore
   async _sendWithRetry(to, subject, html, text, options) {
-    const notificationService = require("../services/NotificationService");
+    const notificationService = require("../services/Notification");
     let attempt = 0;
     let lastError;
 

@@ -1,5 +1,5 @@
 // src/main/ipc/core/auditLog/get/statistics.ipc.js
-const auditLogService = require("../../../../../services/AuditLogService");
+const auditLogService = require("../../../../../services/AuditLog");
 
 module.exports = async () => {
   try {

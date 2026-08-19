@@ -1,5 +1,5 @@
 // src/main/ipc/core/category/export.ipc.js
-const categoryService = require("../../../../services/CategoryService");
+const categoryService = require("../../../../services/Category");
 
 module.exports = async (params) => {
   const { format = "json", filters = {}, user = "system" } = params;

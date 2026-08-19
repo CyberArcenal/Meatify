@@ -1,5 +1,5 @@
 // src/main/ipc/core/batch/create.ipc.js
-const batchService = require("../../../../services/BatchService");
+const batchService = require("../../../../services/Batch");
 
 module.exports = async (params, queryRunner) => {
   const { user = "system", ...data } = params;

@@ -1,5 +1,5 @@
 // src/main/ipc/core/auditLog/import_csv.ipc.js
-const auditLogService = require("../../../../services/AuditLogService");
+const auditLogService = require("../../../../services/AuditLog");
 const fs = require("fs").promises;
 
 module.exports = async (params, queryRunner) => {

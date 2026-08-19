@@ -1,5 +1,5 @@
 // src/main/ipc/core/category/get/by_id.ipc.js
-const categoryService = require("../../../../../services/CategoryService");
+const categoryService = require("../../../../../services/Category");
 
 module.exports = async (params) => {
   const { id, includeInactive = false } = params;

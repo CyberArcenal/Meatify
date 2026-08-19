@@ -1,5 +1,5 @@
 // src/main/ipc/core/category/get/active.ipc.js
-const categoryService = require("../../../../../services/CategoryService");
+const categoryService = require("../../../../../services/Category");
 
 module.exports = async (params) => {
   try {

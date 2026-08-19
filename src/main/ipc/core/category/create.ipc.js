@@ -1,5 +1,5 @@
 // src/main/ipc/core/category/create.ipc.js
-const categoryService = require("../../../../services/CategoryService");
+const categoryService = require("../../../../services/Category");
 
 module.exports = async (params, queryRunner) => {
   const { user = "system", ...data } = params;

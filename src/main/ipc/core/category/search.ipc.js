@@ -1,5 +1,5 @@
 // src/main/ipc/core/category/search.ipc.js
-const categoryService = require("../../../../services/CategoryService");
+const categoryService = require("../../../../services/Category");
 
 module.exports = async (params) => {
   const { search, page, limit, sortBy, sortOrder, isActive, ...filters } = params;

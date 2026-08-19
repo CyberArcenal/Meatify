@@ -1,5 +1,5 @@
 // src/main/ipc/core/batch/import_csv.ipc.js
-const batchService = require("../../../../services/BatchService");
+const batchService = require("../../../../services/Batch");
 const fs = require("fs").promises;
 
 module.exports = async (params, queryRunner) => {

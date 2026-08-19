@@ -1,5 +1,5 @@
 // src/main/ipc/core/auditLog/get/by_id.ipc.js
-const auditLogService = require("../../../../../services/AuditLogService");
+const auditLogService = require("../../../../../services/AuditLog");
 
 module.exports = async (params) => {
   const { id } = params;

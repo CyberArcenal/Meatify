@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tillify - Loading</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: transparent;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 20px;
+      overflow: hidden;
+    }
+    .container {
+      max-width: 420px;
+      width: 90%;
+      background: #0f172a;
+      border-radius: 24px;
+      box-shadow: 0 20px 35px -12px rgba(19, 19, 19, 0.25);
+      padding: 2rem 1.5rem;
+      border: 1px solid #103886;
+      transition: all 0.2s;
+    }
+    .logo {
+      width: 64px;
+      height: 64px;
+      background: linear-gradient(135deg, #2563eb, #3b82f6);
+      border-radius: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.2rem;
+      box-shadow: 0 8px 16px -6px rgba(37, 99, 235, 0.3);
+    }
+    .logo svg {
+      width: 36px;
+      height: 36px;
+      color: white;
+    }
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      background: linear-gradient(135deg, #1e293b, #2563eb);
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+      margin-bottom: 0.25rem;
+    }
+    .sub {
+      font-size: 0.75rem;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 1.8rem;
+    }
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background: #e5e7eb;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+    .progress-fill {
+      width: 0%;
+      height: 100%;
+      background: #2563eb;
+      border-radius: 10px;
+      animation: loading 2s ease-in-out infinite;
+    }
+    .loading-text {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #4b5563;
+      margin-bottom: 1rem;
+      min-height: 2rem;
+      transition: opacity 0.2s;
+    }
+    .migration-status {
+      display: none;
+      font-size: 0.75rem;
+      background: #f0fdf4;
+      color: #166534;
+      padding: 0.4rem 0.8rem;
+      border-radius: 20px;
+      border: 1px solid #bbf7d0;
+      margin-top: 0.8rem;
+    }
+    .version {
+      margin-top: 2rem;
+      font-size: 0.7rem;
+      color: #9ca3af;
+    }
+    @keyframes loading {
+      0% { width: 0%; opacity: 0.7; }
+      50% { width: 100%; opacity: 1; }
+      100% { width: 0%; opacity: 0.7; }
+    }
+    .ready {
+      color: #10b981;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3 6h18M6 6v12M18 6v12M8 6v12M16 6v12M12 3v18"/>
+      <rect x="8" y="8" width="8" height="8" rx="1"/>
+    </svg>
+  </div>
+  <h1>Tillify</h1>
+  <div class="sub">Point of Sale System</div>
+
+  <div class="progress-bar">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+  <div class="loading-text" id="loading-text">Initializing...</div>
+
+  <div class="migration-status" id="migration-status">
+    <span id="migration-message"></span>
+  </div>
+
+  <div class="version" id="version-text">v1.1.1</div>
+</div>
+
+<script>
+  const loadingMessages = [
+    "Starting modules...",
+    "Connecting to database...",
+    "Loading inventory...",
+    "Preparing sales engine...",
+    "Almost ready...",
+    "Welcome!"
+  ];
+  let step = 0;
+  const loadingEl = document.getElementById("loading-text");
+  const migrationStatusDiv = document.getElementById("migration-status");
+  const migrationMsgSpan = document.getElementById("migration-message");
+
+  let msgInterval = setInterval(() => {
+    if (migrationStatusDiv.style.display === "block") return;
+    loadingEl.style.opacity = "0.5";
+    setTimeout(() => {
+      step = (step + 1) % loadingMessages.length;
+      loadingEl.textContent = loadingMessages[step];
+      loadingEl.style.opacity = "1";
+    }, 150);
+  }, 1800);
+
+  if (window.backendAPI) {
+    window.backendAPI.on("migration:status", (event, data) => {
+      clearInterval(msgInterval);
+      migrationStatusDiv.style.display = "block";
+
+      if (data.status === "running") {
+        migrationMsgSpan.textContent = data.message || "Updating database structure...";
+        migrationStatusDiv.style.background = "#fefce8";
+        migrationStatusDiv.style.borderColor = "#fde047";
+        migrationStatusDiv.style.color = "#854d0e";
+        loadingEl.textContent = "Applying updates...";
+      } else if (data.status === "completed") {
+        migrationMsgSpan.textContent = data.message || "Database update completed ✓";
+        migrationStatusDiv.style.background = "#ecfdf5";
+        migrationStatusDiv.style.borderColor = "#a7f3d0";
+        migrationStatusDiv.style.color = "#065f46";
+        loadingEl.textContent = "Ready ✓";
+        loadingEl.classList.add("ready");
+        document.getElementById("progress-fill").style.animation = "none";
+        document.getElementById("progress-fill").style.width = "100%";
+      } else if (data.status === "failed") {
+        migrationMsgSpan.textContent = data.message || "Migration failed ✗";
+        migrationStatusDiv.style.background = "#fef2f2";
+        migrationStatusDiv.style.borderColor = "#fecaca";
+        migrationStatusDiv.style.color = "#991b1b";
+        loadingEl.textContent = "Database issue detected";
+      }
+    });
+  } else {
+    console.warn("backendAPI not available, cannot listen to migration events");
+  }
+</script>
+</body>
+</html>
