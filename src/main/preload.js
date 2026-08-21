@@ -2,9 +2,16 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("backendAPI", {
-  // ... existing APIs ...
 
   // 🆕 BATCH API
+  customerInsights: (payload) => ipcRenderer.invoke("customerInsights", payload),
+  dailySales: (payload) => ipcRenderer.invoke("dailySales", payload),
+  financialReports: (payload) => ipcRenderer.invoke("financialReports", payload),
+  inventoryReports: (payload) => ipcRenderer.invoke("inventoryReports", payload),
+  salesReport: (payload) => ipcRenderer.invoke("salesReport", payload),
+  returnRefundReports: (payload) => ipcRenderer.invoke("returnRefundReports", payload),
+  
+
   auditLog: (payload) => ipcRenderer.invoke("auditLog", payload),
   batch: (payload) => ipcRenderer.invoke("batch", payload),
   category: (payload) => ipcRenderer.invoke("category", payload),

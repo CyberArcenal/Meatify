@@ -1,40 +1,119 @@
-// Batch.js
-const { EntitySchema } = require("typeorm");
+// src/subscribers/BatchSubscriber.js
+const Batch = require("../entities/Batch");
+const { logger } = require("../utils/logger");
+const { BatchStateService } = require("../stateServices/Batch");
+const { AppDataSource } = require("../main/db/data-source");
 
-const Batch = new EntitySchema({
-  name: "Batch",
-  tableName: "batches",
-  columns: {
-    id: { type: Number, primary: true, generated: true },
-    batchCode: { type: String, unique: true }, // e.g., BATCH-2026-001
-    initialQuantity: { type: "decimal", precision: 10, scale: 3 }, // kg
-    remainingQuantity: { type: "decimal", precision: 10, scale: 3 }, // kg
-    unitCost: { type: "decimal", precision: 10, scale: 2 }, // puhunan per kg
-    expiryDate: { type: Date },
-    receivedDate: { type: Date, default: () => "CURRENT_TIMESTAMP" },
-    status: { 
-      type: String, 
-      default: "active", 
-      enum: ["active", "depleted", "expired", "on_hold"] 
-    },
-    note: { type: String, nullable: true },
-    createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },
-    updatedAt: { type: Date, nullable: true },
-  },
-  relations: {
-    meat: { // ipo-link sa Meat entity sa ibaba
-      target: "Meat",
-      type: "many-to-one",
-      joinColumn: true,
-      eager: true, // madalas kailangan ang meat details
-    },
-    supplier: {
-      target: "Supplier",
-      type: "many-to-one",
-      joinColumn: true,
-      nullable: true,
-    },
-  },
-});
+console.log("[Subscriber] Loading BatchSubscriber");
 
-module.exports = Batch;
+class BatchSubscriber {
+  constructor() {
+    this.stateService = null;
+  }
+
+  async getStateService(dataSource) {
+    if (!this.stateService) {
+      this.stateService = new BatchStateService(dataSource);
+    }
+    return this.stateService;
+  }
+
+  listenTo() {
+    return Batch;
+  }
+
+  /**
+   * @param {import("../entities/Batch")} entity
+   */
+  beforeInsert(entity) {
+    logger.debug("[BatchSubscriber] beforeInsert:", {
+      id: entity?.id,
+      batchCode: entity?.batchCode,
+      meatId: entity?.meatId,
+      quantity: entity?.initialQuantity,
+      expiryDate: entity?.expiryDate,
+    });
+  }
+
+  /**
+   * @param {import("../entities/Batch")} entity
+   */
+  afterInsert(entity, { manager, queryRunner }) {
+    logger.info("[BatchSubscriber] afterInsert:", {
+      id: entity.id,
+      batchCode: entity.batchCode,
+      meatId: entity.meatId,
+      remainingQty: entity.remainingQuantity,
+      status: entity.status,
+    });
+
+    // Check if batch is expiring soon
+    const expiryDate = new Date(entity.expiryDate);
+    const now = new Date();
+    const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
+    if (daysUntilExpiry <= 7 && daysUntilExpiry >= 0) {
+      logger.warn(`[BatchSubscriber] Batch #${entity.id} expires in ${daysUntilExpiry} days`);
+      // TODO: Schedule notification
+    }
+  }
+
+  /**
+   * @param {import("../entities/Batch")} entity
+   */
+  beforeUpdate(entity) {
+    logger.debug("[BatchSubscriber] beforeUpdate:", {
+      id: entity?.id,
+      status: entity?.status,
+      remainingQty: entity?.remainingQuantity,
+    });
+  }
+
+  /**
+   * @param {{ databaseEntity: any; entity: any }} event
+   */
+  async afterUpdate(event, { manager, queryRunner }) {
+    const { entity, databaseEntity } = event;
+    if (!entity) return;
+
+    logger.info("[BatchSubscriber] afterUpdate:", {
+      id: entity.id,
+      oldStatus: databaseEntity?.status,
+      newStatus: entity.status,
+      oldRemaining: databaseEntity?.remainingQuantity,
+      newRemaining: entity.remainingQuantity,
+    });
+
+    // If status changed to 'depleted', trigger notification
+    if (databaseEntity && databaseEntity.status !== "depleted" && entity.status === "depleted") {
+      logger.info(`[BatchSubscriber] Batch #${entity.id} depleted`);
+      // TODO: Send depletion notification
+    }
+
+    // If status changed to 'expired', trigger notification
+    if (databaseEntity && databaseEntity.status !== "expired" && entity.status === "expired") {
+      logger.info(`[BatchSubscriber] Batch #${entity.id} expired`);
+      // TODO: Send expiration notification
+    }
+  }
+
+  /**
+   * @param {import("../entities/Batch")} entity
+   */
+  beforeRemove(entity) {
+    logger.debug("[BatchSubscriber] beforeRemove:", {
+      id: entity?.id,
+      batchCode: entity?.batchCode,
+    });
+  }
+
+  /**
+   * @param {{ databaseEntity?: any; entityId: any }} event
+   */
+  afterRemove(event) {
+    logger.info("[BatchSubscriber] afterRemove:", {
+      id: event.entityId,
+    });
+  }
+}
+
+module.exports = BatchSubscriber;

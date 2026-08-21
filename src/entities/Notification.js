@@ -50,6 +50,10 @@ const Notification = new EntitySchema({
       updateDate: true,
       nullable: true,
     },
+    deletedAt: {
+      type: "datetime",
+      nullable: true,
+    },
   },
   indices: [
     {
@@ -60,6 +64,7 @@ const Notification = new EntitySchema({
       name: "idx_notifications_created",
       columns: ["createdAt"],
     },
+    { name: "idx_notifications_deleted", columns: ["deletedAt"] },
   ],
 });
 

@@ -127,8 +127,10 @@ class PrinterService {
     const footer = await receiptFooterMessage();
 
     const itemsText = sale.saleItems
-      // @ts-ignore
-      .map((i) => `${i.product.name} x${i.quantity} = ${i.lineTotal}`)
+      .map(
+        (i) =>
+          `${i.meat?.name || "Unknown"} ${i.weightKg}kg x ₱${i.unitPrice} = ₱${i.lineTotal}`,
+      )
       .join("\n");
 
     const receipt = `

@@ -1,7 +1,8 @@
 // src/subscribers/NotificationLogSubscriber.js
+//@ts-check
 const NotificationLog = require("../entities/NotificationLog");
 const { AppDataSource } = require("../main/db/data-source");
-const { NotificationLogStateService } = require("../stateServices/NotificationLogStateService");
+const { NotificationLogStateService } = require("../stateServices/NotificationLog");
 const { logger } = require("../utils/logger");
 
 console.log("[Subscriber] Loading NotificationLogSubscriber");

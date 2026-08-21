@@ -165,6 +165,7 @@ async function log(level, message, data = null, writeToFile = false) {
  * Custom error classes for better error tracking
  */
 // @ts-ignore
+// @ts-ignore
 class DatabaseError extends Error {
   /**
    * @param {string} message
@@ -191,6 +192,7 @@ class WindowError extends Error {
   }
 }
 
+// @ts-ignore
 class MigrationError extends Error {
   /**
    * @param {string} message
@@ -243,6 +245,7 @@ function setupGlobalErrorHandlers() {
     );
   });
 
+  // @ts-ignore
   // @ts-ignore
   app.on("renderer-process-crashed", (event, webContents, killed) => {
     log(
@@ -497,6 +500,7 @@ async function createMainWindow() {
       },
     };
 
+    // @ts-ignore
     mainWindow = new BrowserWindow(windowConfig);
     mainWindow.setMenuBarVisibility(false);
     mainWindow.setTitle(`${APP_CONFIG.appName} v${APP_CONFIG.version}`);
@@ -534,6 +538,7 @@ async function createMainWindow() {
       }, 8000); // fallback: 8 seconds
 
       ipcMain.once("app:renderer-ready", (event) => {
+        // @ts-ignore
         if (event.sender === mainWindow.webContents) {
           log(LogLevel.INFO, "Received renderer-ready signal from React app");
           clearTimeout(timeoutId);
@@ -552,6 +557,7 @@ async function createMainWindow() {
 
     // Optional: notify renderer about database status
     mainWindow.webContents.on("did-finish-load", () => {
+      // @ts-ignore
       mainWindow.webContents.send("app:database-status", {
         initialized: isDatabaseInitialized,
       });
@@ -569,6 +575,7 @@ async function createMainWindow() {
     return mainWindow;
   } catch (error) {
     throw new WindowError(
+      // @ts-ignore
       `Failed to create main window: ${error.message}`,
       "main"
     );
@@ -746,6 +753,7 @@ function registerIpcHandlers() {
   }));
 
   // @ts-ignore
+  // @ts-ignore
   ipcMain.on("app:open-external", (event, url) => {
     if (typeof url === "string" && url.startsWith("http")) {
       shell.openExternal(url).catch(console.error);
@@ -808,9 +816,11 @@ function registerIpcHandlers() {
     return cashDrawerService.getStatus();
   });
 
+  // @ts-ignore
   ipcMain.handle("printer:print", async (event, sale) => {
     return await printerService.printReceipt(sale);
   });
+  // @ts-ignore
   ipcMain.handle("cashDrawer:open", async (event, reason) => {
     return await cashDrawerService.openDrawer(reason);
   });
@@ -864,10 +874,10 @@ function registerIpcHandlers() {
       "./ipc/analytics/inventoryReports/index.ipc.js",
       "./ipc/analytics/returnRefund/index.ipc.js",
       "./ipc/analytics/sales/index.ipc.js",
-      "./ipc/barcode/index.ipc.js",
       "./ipc/dashboard/index.ipc.js",
-      "./ipc/system_config.ipc.js",
-      "./ipc/windows_control.ipc.js",
+      
+      "./ipc/utils/system_config.ipc.js",
+      "./ipc/utils/windows_control.ipc.js",
       "./ipc/utils/updater/index.ipc.js",
     ];
 
@@ -982,6 +992,7 @@ async function startupSequence() {
   }
 }
 
+// @ts-ignore
 ipcMain.handle("open-external", async (event, url) => {
   await shell.openExternal(url);
 });

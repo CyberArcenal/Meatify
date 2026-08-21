@@ -3,195 +3,543 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tillify - Loading</title>
+  <title>Meatify - Loading</title>
   <style>
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
+
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
       background: transparent;
       height: 100vh;
       width: 100vw;
       display: flex;
       justify-content: center;
       align-items: center;
-      text-align: center;
       padding: 20px;
       overflow: hidden;
     }
+
     .container {
-      max-width: 420px;
+      max-width: 440px;
       width: 90%;
-      background: #0f172a;
-      border-radius: 24px;
-      box-shadow: 0 20px 35px -12px rgba(19, 19, 19, 0.25);
-      padding: 2rem 1.5rem;
-      border: 1px solid #103886;
-      transition: all 0.2s;
+      background: linear-gradient(145deg, #1a0e0a, #2d1810);
+      border-radius: 28px;
+      box-shadow: 
+        0 25px 50px -12px rgba(0, 0, 0, 0.8),
+        inset 0 1px 1px rgba(212, 175, 55, 0.15);
+      padding: 2.5rem 2rem;
+      border: 1px solid rgba(212, 175, 55, 0.3);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
     }
+
+    /* Subtle background pattern */
+    .container::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(ellipse at 30% 20%, rgba(212, 175, 55, 0.03) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    /* Gold accent line at top */
+    .container::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 10%;
+      right: 10%;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, #d4af37, transparent);
+      opacity: 0.5;
+    }
+
+    .logo-wrapper {
+      position: relative;
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 1.2rem;
+    }
+
     .logo {
-      width: 64px;
-      height: 64px;
-      background: linear-gradient(135deg, #2563eb, #3b82f6);
-      border-radius: 18px;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(145deg, #8b1a1a, #5c0e0e);
+      border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 auto 1.2rem;
-      box-shadow: 0 8px 16px -6px rgba(37, 99, 235, 0.3);
+      box-shadow: 
+        0 10px 25px -8px rgba(139, 26, 26, 0.5),
+        inset 0 2px 4px rgba(212, 175, 55, 0.2);
+      border: 2px solid rgba(212, 175, 55, 0.4);
+      position: relative;
+      transition: all 0.3s ease;
     }
+
+    .logo::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      padding: 2px;
+      background: linear-gradient(135deg, rgba(212, 175, 55, 0.4), transparent 50%, rgba(212, 175, 55, 0.2));
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
     .logo svg {
-      width: 36px;
-      height: 36px;
-      color: white;
+      width: 42px;
+      height: 42px;
+      color: #f5e6c8;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
     }
+
+    /* Glow ring animation */
+    .logo-wrapper::before {
+      content: '';
+      position: absolute;
+      inset: -8px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(212, 175, 55, 0.1), transparent 70%);
+      animation: pulseGlow 2.5s ease-in-out infinite;
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { transform: scale(1); opacity: 0.4; }
+      50% { transform: scale(1.08); opacity: 0.8; }
+    }
+
     h1 {
-      font-size: 1.8rem;
-      font-weight: 700;
-      letter-spacing: -0.01em;
-      background: linear-gradient(135deg, #1e293b, #2563eb);
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      background: linear-gradient(135deg, #f5e6c8, #d4af37);
       background-clip: text;
       -webkit-background-clip: text;
       color: transparent;
-      margin-bottom: 0.25rem;
+      margin-bottom: 0.15rem;
+      text-shadow: 0 2px 20px rgba(212, 175, 55, 0.15);
+      position: relative;
     }
+
     .sub {
-      font-size: 0.75rem;
-      color: #6b7280;
+      font-size: 0.7rem;
+      color: rgba(212, 175, 55, 0.6);
       text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 1.8rem;
+      letter-spacing: 3px;
+      font-weight: 600;
+      margin-bottom: 2rem;
+      position: relative;
     }
+
+    .sub::before,
+    .sub::after {
+      content: '';
+      display: inline-block;
+      width: 20px;
+      height: 1px;
+      background: rgba(212, 175, 55, 0.2);
+      vertical-align: middle;
+      margin: 0 12px;
+    }
+
+    .progress-container {
+      background: rgba(255, 255, 255, 0.06);
+      border-radius: 20px;
+      padding: 3px;
+      margin-bottom: 1rem;
+      border: 1px solid rgba(212, 175, 55, 0.1);
+    }
+
     .progress-bar {
       width: 100%;
       height: 4px;
-      background: #e5e7eb;
+      background: rgba(255, 255, 255, 0.05);
       border-radius: 10px;
       overflow: hidden;
-      margin-bottom: 1rem;
+      position: relative;
     }
+
     .progress-fill {
       width: 0%;
       height: 100%;
-      background: #2563eb;
+      background: linear-gradient(90deg, #d4af37, #f5e6c8, #d4af37);
       border-radius: 10px;
-      animation: loading 2s ease-in-out infinite;
+      animation: loading 2.2s ease-in-out infinite;
+      position: relative;
+      box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
     }
+
+    @keyframes loading {
+      0% { width: 0%; opacity: 0.6; }
+      50% { width: 100%; opacity: 1; }
+      100% { width: 0%; opacity: 0.6; }
+    }
+
     .loading-text {
       font-size: 0.85rem;
       font-weight: 500;
-      color: #4b5563;
-      margin-bottom: 1rem;
+      color: rgba(245, 230, 200, 0.7);
+      margin-bottom: 0.5rem;
       min-height: 2rem;
-      transition: opacity 0.2s;
+      transition: opacity 0.3s ease;
+      letter-spacing: 0.3px;
+      position: relative;
     }
+
+    .loading-text .dot {
+      display: inline-block;
+      animation: dotPulse 1.4s ease-in-out infinite;
+    }
+
+    .loading-text .dot:nth-child(2) { animation-delay: 0.2s; }
+    .loading-text .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes dotPulse {
+      0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-3px); }
+    }
+
     .migration-status {
       display: none;
       font-size: 0.75rem;
-      background: #f0fdf4;
-      color: #166534;
-      padding: 0.4rem 0.8rem;
-      border-radius: 20px;
-      border: 1px solid #bbf7d0;
+      padding: 0.5rem 1rem;
+      border-radius: 12px;
       margin-top: 0.8rem;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+      border: 1px solid;
+      transition: all 0.3s ease;
     }
+
+    .migration-status.running {
+      background: rgba(212, 175, 55, 0.12);
+      border-color: rgba(212, 175, 55, 0.3);
+      color: #f5e6c8;
+    }
+
+    .migration-status.completed {
+      background: rgba(16, 185, 129, 0.12);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #6ee7b7;
+    }
+
+    .migration-status.failed {
+      background: rgba(239, 68, 68, 0.12);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #fca5a5;
+    }
+
+    .migration-status .icon {
+      margin-right: 8px;
+    }
+
     .version {
-      margin-top: 2rem;
-      font-size: 0.7rem;
-      color: #9ca3af;
+      margin-top: 1.8rem;
+      font-size: 0.65rem;
+      color: rgba(245, 230, 200, 0.25);
+      letter-spacing: 1px;
+      font-weight: 400;
+      position: relative;
     }
-    @keyframes loading {
-      0% { width: 0%; opacity: 0.7; }
-      50% { width: 100%; opacity: 1; }
-      100% { width: 0%; opacity: 0.7; }
+
+    .version::before {
+      content: '✦';
+      margin-right: 8px;
+      color: rgba(212, 175, 55, 0.3);
     }
-    .ready {
-      color: #10b981;
-      font-weight: 600;
+
+    .version::after {
+      content: '✦';
+      margin-left: 8px;
+      color: rgba(212, 175, 55, 0.3);
+    }
+
+    /* Ready state */
+    .ready .progress-fill {
+      animation: none;
+      width: 100%;
+      background: linear-gradient(90deg, #10b981, #34d399);
+      box-shadow: 0 0 30px rgba(16, 185, 129, 0.3);
+    }
+
+    .ready .loading-text {
+      color: #6ee7b7;
+    }
+
+    .ready .logo {
+      border-color: rgba(16, 185, 129, 0.4);
+      box-shadow: 0 10px 30px -8px rgba(16, 185, 129, 0.3);
+    }
+
+    /* Decorative corner accents */
+    .corner-accent {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-color: rgba(212, 175, 55, 0.08);
+      border-style: solid;
+      pointer-events: none;
+    }
+
+    .corner-accent.tl {
+      top: 12px;
+      left: 12px;
+      border-width: 1px 0 0 1px;
+      border-radius: 4px 0 0 0;
+    }
+
+    .corner-accent.tr {
+      top: 12px;
+      right: 12px;
+      border-width: 1px 1px 0 0;
+      border-radius: 0 4px 0 0;
+    }
+
+    .corner-accent.bl {
+      bottom: 12px;
+      left: 12px;
+      border-width: 0 0 1px 1px;
+      border-radius: 0 0 0 4px;
+    }
+
+    .corner-accent.br {
+      bottom: 12px;
+      right: 12px;
+      border-width: 0 1px 1px 0;
+      border-radius: 0 0 4px 0;
+    }
+
+    /* Responsive */
+    @media (max-width: 480px) {
+      .container {
+        padding: 2rem 1.2rem;
+        border-radius: 20px;
+      }
+
+      .logo-wrapper {
+        width: 64px;
+        height: 64px;
+      }
+
+      .logo svg {
+        width: 34px;
+        height: 34px;
+      }
+
+      h1 {
+        font-size: 1.6rem;
+      }
+
+      .sub {
+        font-size: 0.6rem;
+        letter-spacing: 2px;
+      }
+
+      .sub::before,
+      .sub::after {
+        width: 12px;
+        margin: 0 8px;
+      }
+
+      .corner-accent {
+        display: none;
+      }
+    }
+
+    @media (max-width: 360px) {
+      .container {
+        padding: 1.5rem 1rem;
+      }
+
+      h1 {
+        font-size: 1.3rem;
+      }
+
+      .logo-wrapper {
+        width: 56px;
+        height: 56px;
+      }
+
+      .logo svg {
+        width: 30px;
+        height: 30px;
+      }
     }
   </style>
 </head>
 <body>
 <div class="container">
-  <div class="logo">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M3 6h18M6 6v12M18 6v12M8 6v12M16 6v12M12 3v18"/>
-      <rect x="8" y="8" width="8" height="8" rx="1"/>
-    </svg>
-  </div>
-  <h1>Tillify</h1>
-  <div class="sub">Point of Sale System</div>
+  <!-- Corner Accents -->
+  <div class="corner-accent tl"></div>
+  <div class="corner-accent tr"></div>
+  <div class="corner-accent bl"></div>
+  <div class="corner-accent br"></div>
 
-  <div class="progress-bar">
-    <div class="progress-fill" id="progress-fill"></div>
+  <div class="logo-wrapper">
+    <div class="logo">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <!-- Butcher Knife / Meat Icon -->
+        <path d="M14.5 9.5 L19.5 4.5 C20.2 3.8 21.3 3.8 22 4.5 C22.7 5.2 22.7 6.3 22 7 L17 12"/>
+        <path d="M12 14 L6 20 C5.3 20.7 4.2 20.7 3.5 20 C2.8 19.3 2.8 18.2 3.5 17.5 L9.5 11.5"/>
+        <path d="M12 14 L9 17"/>
+        <path d="M15 11 L18 8"/>
+        <path d="M10 16 L7 19"/>
+        <path d="M5.5 18.5 L3.5 16.5"/>
+        <!-- Meat shape -->
+        <path d="M8 10 C9 8 12 7 14 8 C16 9 17 12 16 14 C15 16 12 17 10 16 C8 15 7 12 8 10Z" stroke-width="1.2"/>
+        <path d="M10 11 L13 11 M11 13 L12 13" stroke-width="1.5"/>
+      </svg>
+    </div>
   </div>
-  <div class="loading-text" id="loading-text">Initializing...</div>
+
+  <h1>Meatify</h1>
+  <div class="sub">Premium Meat POS System</div>
+
+  <div class="progress-container">
+    <div class="progress-bar">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+  </div>
+
+  <div class="loading-text" id="loading-text">
+    <span>Initializing</span>
+    <span class="dot">.</span>
+    <span class="dot">.</span>
+    <span class="dot">.</span>
+  </div>
 
   <div class="migration-status" id="migration-status">
+    <span class="icon" id="migration-icon">⏳</span>
     <span id="migration-message"></span>
   </div>
 
-  <div class="version" id="version-text">v1.1.1</div>
+  <div class="version" id="version-text">v1.0.0</div>
 </div>
 
 <script>
-  const loadingMessages = [
-    "Starting modules...",
-    "Connecting to database...",
-    "Loading inventory...",
-    "Preparing sales engine...",
-    "Almost ready...",
-    "Welcome!"
-  ];
-  let step = 0;
-  const loadingEl = document.getElementById("loading-text");
-  const migrationStatusDiv = document.getElementById("migration-status");
-  const migrationMsgSpan = document.getElementById("migration-message");
+  (function() {
+    const loadingMessages = [
+      "Preparing meat inventory",
+      "Connecting to database",
+      "Loading batch system",
+      "Initializing FIFO engine",
+      "Setting up scales",
+      "Almost ready",
+      "Welcome to Meatify!"
+    ];
 
-  let msgInterval = setInterval(() => {
-    if (migrationStatusDiv.style.display === "block") return;
-    loadingEl.style.opacity = "0.5";
-    setTimeout(() => {
-      step = (step + 1) % loadingMessages.length;
-      loadingEl.textContent = loadingMessages[step];
-      loadingEl.style.opacity = "1";
-    }, 150);
-  }, 1800);
+    let step = 0;
+    const loadingEl = document.getElementById("loading-text");
+    const progressFill = document.getElementById("progress-fill");
+    const migrationStatusDiv = document.getElementById("migration-status");
+    const migrationMsgSpan = document.getElementById("migration-message");
+    const migrationIcon = document.getElementById("migration-icon");
+    const container = document.querySelector('.container');
 
-  if (window.backendAPI) {
-    window.backendAPI.on("migration:status", (event, data) => {
+    // Rotate through loading messages
+    let msgInterval = setInterval(() => {
+      if (migrationStatusDiv.style.display === "block") return;
+      
+      loadingEl.style.opacity = "0.4";
+      setTimeout(() => {
+        step = (step + 1) % loadingMessages.length;
+        const msg = loadingMessages[step];
+        loadingEl.innerHTML = msg + 
+          '<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>';
+        loadingEl.style.opacity = "1";
+      }, 150);
+    }, 2000);
+
+    // Handle migration status updates from main process
+    function handleMigrationStatus(data) {
       clearInterval(msgInterval);
       migrationStatusDiv.style.display = "block";
 
       if (data.status === "running") {
+        migrationStatusDiv.className = "migration-status running";
+        migrationIcon.textContent = "⏳";
         migrationMsgSpan.textContent = data.message || "Updating database structure...";
-        migrationStatusDiv.style.background = "#fefce8";
-        migrationStatusDiv.style.borderColor = "#fde047";
-        migrationStatusDiv.style.color = "#854d0e";
-        loadingEl.textContent = "Applying updates...";
-      } else if (data.status === "completed") {
-        migrationMsgSpan.textContent = data.message || "Database update completed ✓";
-        migrationStatusDiv.style.background = "#ecfdf5";
-        migrationStatusDiv.style.borderColor = "#a7f3d0";
-        migrationStatusDiv.style.color = "#065f46";
-        loadingEl.textContent = "Ready ✓";
-        loadingEl.classList.add("ready");
-        document.getElementById("progress-fill").style.animation = "none";
-        document.getElementById("progress-fill").style.width = "100%";
-      } else if (data.status === "failed") {
-        migrationMsgSpan.textContent = data.message || "Migration failed ✗";
-        migrationStatusDiv.style.background = "#fef2f2";
-        migrationStatusDiv.style.borderColor = "#fecaca";
-        migrationStatusDiv.style.color = "#991b1b";
-        loadingEl.textContent = "Database issue detected";
+        loadingEl.innerHTML = "Applying updates<span class='dot'>.</span><span class='dot'>.</span><span class='dot'>.</span>";
+        progressFill.style.animation = "loading 1.5s ease-in-out infinite";
+      } 
+      else if (data.status === "completed") {
+        migrationStatusDiv.className = "migration-status completed";
+        migrationIcon.textContent = "✅";
+        migrationMsgSpan.textContent = data.message || "Database update completed";
+        loadingEl.innerHTML = "Ready ✓";
+        loadingEl.style.color = "#6ee7b7";
+        progressFill.style.animation = "none";
+        progressFill.style.width = "100%";
+        container.classList.add("ready");
+      } 
+      else if (data.status === "failed") {
+        migrationStatusDiv.className = "migration-status failed";
+        migrationIcon.textContent = "❌";
+        migrationMsgSpan.textContent = data.message || "Migration failed";
+        loadingEl.innerHTML = "Database issue detected";
+        loadingEl.style.color = "#fca5a5";
       }
-    });
-  } else {
-    console.warn("backendAPI not available, cannot listen to migration events");
-  }
+    }
+
+    // Listen for migration events via backendAPI
+    if (window.backendAPI && typeof window.backendAPI.on === 'function') {
+      // Use the generic 'on' method if available
+      window.backendAPI.on("migration:status", (event, data) => {
+        handleMigrationStatus(data);
+      });
+    } 
+    // Fallback: try direct event listener via ipcRenderer (if exposed)
+    else if (window.backendAPI && typeof window.backendAPI.onMigrationStatus === 'function') {
+      // Some preloads expose specific event listeners
+      window.backendAPI.onMigrationStatus(handleMigrationStatus);
+    }
+    else {
+      console.warn("backendAPI not available, cannot listen to migration events");
+      
+      // Simulate completion after 3 seconds for development
+      if (process.env.NODE_ENV === 'development') {
+        setTimeout(() => {
+          handleMigrationStatus({ 
+            status: "completed", 
+            message: "Database ready (simulated)" 
+          });
+        }, 3000);
+      }
+    }
+
+    // Handle database status updates
+    if (window.backendAPI && typeof window.backendAPI.on === 'function') {
+      window.backendAPI.on("app:database-status", (event, data) => {
+        if (data.initialized) {
+          // Database is ready, but migration might still be running
+          // Don't override migration status
+        }
+      });
+    }
+
+    // Expose version dynamically if possible
+    if (window.backendAPI && typeof window.backendAPI.getAppVersion === 'function') {
+      window.backendAPI.getAppVersion().then(version => {
+        if (version) {
+          document.getElementById("version-text").textContent = 'v' + version;
+        }
+      }).catch(() => {});
+    }
+
+    console.log('🍖 Meatify splash screen loaded');
+  })();
 </script>
 </body>
 </html>

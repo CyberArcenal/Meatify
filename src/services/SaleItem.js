@@ -324,12 +324,12 @@ class SaleItemService {
       end.setHours(23, 59, 59, 999);
       qb.andWhere("saleItem.createdAt <= :endDate", { endDate: end });
     }
-    if (options.search) {
-      qb.andWhere(
-        "(meat.name LIKE :search OR sale.referenceNo LIKE :search OR batch.batchCode LIKE :search)",
-        { search: `%${options.search}%` }
-      );
-    }
+ if (options.search) {
+  qb.andWhere(
+    "(meat.name LIKE :search OR CAST(sale.id AS TEXT) LIKE :search OR batch.batchCode LIKE :search)",
+    { search: `%${options.search}%` }
+  );
+}
 
     // Sorting
     let sortBy = options.sortBy || "createdAt";

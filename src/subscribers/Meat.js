@@ -1,57 +1,96 @@
-// Meat.js (dating Product.js)
-const { EntitySchema } = require("typeorm");
+// src/subscribers/MeatSubscriber.js
+const Meat = require("../entities/Meat");
+const { logger } = require("../utils/logger");
 
-const Meat = new EntitySchema({
-  name: "Meat",
-  tableName: "meats",
-  columns: {
-    id: { type: Number, primary: true, generated: true },
-    sku: { type: String, unique: true },
-    name: { type: String },
-    image: { type: "varchar", nullable: true },
-    barcode: { type: "varchar", unique: true, nullable: true },
-    description: { type: String, nullable: true },
-    
-    // ✅ BAGO: Presyo per Kilo (decimal)
-    pricePerKg: { type: "decimal", precision: 10, scale: 2, default: 0.00 },
-    
-    // ❌ TANGGALIN: stockQty (integer) - lipat sa Batch
-    // ❌ TANGGALIN: reorderLevel, reorderQty (kung gusto mong i-retain, pwede pa, pero i-base mo na lang sa kabuuang remaining ng lahat ng batches)
-    
-    isActive: { type: Boolean, default: true },
-    createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },
-    updatedAt: { type: Date, nullable: true },
-  },
-  relations: {
-    // Palitan ang target ng "SaleItem" at "InventoryMovement" kung gusto mong i-link sa Meat
-    saleItems: {
-      target: "SaleItem",
-      type: "one-to-many",
-      inverseSide: "meat", // palitan ang inverseSide
-    },
-    inventoryMovements: {
-      target: "InventoryMovement",
-      type: "one-to-many",
-      inverseSide: "meat",
-    },
-    batches: { // ✅ BAGONG RELATION
-      target: "Batch",
-      type: "one-to-many",
-      inverseSide: "meat",
-    },
-    category: {
-      target: "Category",
-      type: "many-to-one",
-      joinColumn: true,
-      eager: true,
-    },
-    supplier: {
-      target: "Supplier",
-      type: "many-to-one",
-      joinColumn: true,
-      eager: true,
-    },
-  },
-});
+console.log("[Subscriber] Loading MeatSubscriber");
 
-module.exports = Meat;
+class MeatSubscriber {
+  listenTo() {
+    return Meat;
+  }
+
+  /**
+   * @param {import("../entities/Meat")} entity
+   */
+  beforeInsert(entity) {
+    logger.debug("[MeatSubscriber] beforeInsert:", {
+      id: entity?.id,
+      name: entity?.name,
+      sku: entity?.sku,
+      pricePerKg: entity?.pricePerKg,
+    });
+  }
+
+  /**
+   * @param {import("../entities/Meat")} entity
+   */
+  afterInsert(entity, { manager, queryRunner }) {
+    logger.info("[MeatSubscriber] afterInsert:", {
+      id: entity.id,
+      name: entity.name,
+      sku: entity.sku,
+      pricePerKg: entity.pricePerKg,
+      categoryId: entity.categoryId,
+      supplierId: entity.supplierId,
+    });
+  }
+
+  /**
+   * @param {import("../entities/Meat")} entity
+   */
+  beforeUpdate(entity) {
+    logger.debug("[MeatSubscriber] beforeUpdate:", {
+      id: entity?.id,
+      name: entity?.name,
+      pricePerKg: entity?.pricePerKg,
+      isActive: entity?.isActive,
+    });
+  }
+
+  /**
+   * @param {{ databaseEntity: any; entity: any }} event
+   */
+  afterUpdate(event, { manager, queryRunner }) {
+    const { entity, databaseEntity } = event;
+    logger.info("[MeatSubscriber] afterUpdate:", {
+      id: entity?.id,
+      oldName: databaseEntity?.name,
+      newName: entity?.name,
+      oldPrice: databaseEntity?.pricePerKg,
+      newPrice: entity?.pricePerKg,
+      oldStatus: databaseEntity?.isActive,
+      newStatus: entity?.isActive,
+    });
+
+    // Detect price change
+    if (databaseEntity && databaseEntity.pricePerKg !== entity.pricePerKg) {
+      logger.info(`[MeatSubscriber] Meat #${entity.id} price changed: ${databaseEntity.pricePerKg} → ${entity.pricePerKg}`);
+    }
+
+    // Detect status change
+    if (databaseEntity && databaseEntity.isActive !== entity.isActive) {
+      logger.info(`[MeatSubscriber] Meat #${entity.id} status changed: ${databaseEntity.isActive ? 'active' : 'inactive'} → ${entity.isActive ? 'active' : 'inactive'}`);
+    }
+  }
+
+  /**
+   * @param {import("../entities/Meat")} entity
+   */
+  beforeRemove(entity) {
+    logger.debug("[MeatSubscriber] beforeRemove:", {
+      id: entity?.id,
+      name: entity?.name,
+    });
+  }
+
+  /**
+   * @param {{ databaseEntity?: any; entityId: any }} event
+   */
+  afterRemove(event) {
+    logger.info("[MeatSubscriber] afterRemove:", {
+      id: event.entityId,
+    });
+  }
+}
+
+module.exports = MeatSubscriber;

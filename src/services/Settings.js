@@ -1,5 +1,6 @@
-// src/main/services/SystemSettingService.js
-
+// src/services/SystemSettingService.js
+//@ts-check
+const { app } = require("electron");
 const auditLogger = require("../utils/auditLogger");
 const { saveDb, updateDb, removeDb } = require("../utils/dbUtils/dbActions");
 
@@ -22,31 +23,30 @@ class SystemSettingService {
   }
 
   /**
-     * @param {{ manager: { getRepository: (arg0: any) => any; }; } | null} qr
-     * @param {string | Function | import("typeorm").EntitySchema<{ id: unknown; key: unknown; value: unknown; setting_type: unknown; description: unknown; is_public: unknown; is_deleted: unknown; created_at: unknown; updated_at: unknown; }> | import("typeorm").EntitySchema<import("typeorm").ObjectLiteral> | { type: import("typeorm").ObjectLiteral; name: string; }} entityClass
-     */
+   * Helper: get a repository (transactional if queryRunner provided)
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @param {Function} entityClass
+   * @returns {import("typeorm").Repository<any>}
+   */
   _getRepo(qr, entityClass) {
-    // Log the type for debugging
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
     console.log(
-      `[Global._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
+      `[SystemSetting._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
-    // Only use the transactional manager if qr is a valid QueryRunner object
     if (hasManager && typeof qr.manager.getRepository === "function") {
       return qr.manager.getRepository(entityClass);
     }
-    // Fallback to global data source
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[Global._getRepo] Using global repository (fallback)`);
+    console.log(`[SystemSetting._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
   /**
-     * @param {null | undefined} value
-     */
+   * @param {null | undefined} value
+   */
   _prepareValueForStorage(value) {
     if (value === null || value === undefined) return "";
     if (typeof value === "boolean") return value ? "true" : "false";
@@ -55,8 +55,8 @@ class SystemSettingService {
   }
 
   /**
-     * @param {unknown} value
-     */
+   * @param {unknown} value
+   */
   _normalizeOutput(value) {
     if (typeof value === "string") {
       const lower = value.toLowerCase();
@@ -100,8 +100,8 @@ class SystemSettingService {
   }
 
   /**
-     * @param {any} settingType
-     */
+   * @param {any} settingType
+   */
   async getByType(settingType) {
     const { setting: repo } = await this.getRepositories();
     const settings = await repo.find({
@@ -114,8 +114,8 @@ class SystemSettingService {
   }
 
   /**
-     * @param {any} key
-     */
+   * @param {any} key
+   */
   async getSettingByKey(key, settingType = null) {
     const { setting: repo } = await this.getRepositories();
     const where = { key, is_deleted: false };
@@ -126,8 +126,8 @@ class SystemSettingService {
   }
 
   /**
-     * @param {any} key
-     */
+   * @param {any} key
+   */
   async getValueByKey(key, defaultValue = null) {
     const setting = await this.getSettingByKey(key);
     return setting ? setting.value : defaultValue;
@@ -138,8 +138,8 @@ class SystemSettingService {
   // ----------------------------------------------------------------------
 
   /**
-     * @param {{ key: any; value: any; setting_type: any; description: any; is_public: any; }} data
-     */
+   * @param {{ key: any; value: any; setting_type: any; description: any; is_public: any; }} data
+   */
   async createSetting(data, user = "system", qr = null) {
     const { SystemSetting } = require("../entities/systemSettings");
     const repo = this._getRepo(qr, SystemSetting);
@@ -158,9 +158,9 @@ class SystemSettingService {
   }
 
   /**
-     * @param {unknown} id
-     * @param {{ value: any; key?: any; setting_type?: any; description?: any; is_public?: any; is_deleted?: any; }} data
-     */
+   * @param {unknown} id
+   * @param {{ value: any; key?: any; setting_type?: any; description?: any; is_public?: any; is_deleted?: any; }} data
+   */
   async updateSetting(id, data, user = "system", qr = null) {
     const { SystemSetting } = require("../entities/systemSettings");
     const repo = this._getRepo(qr, SystemSetting);
@@ -182,12 +182,11 @@ class SystemSettingService {
   }
 
   /**
-     * @param {string} key
-     * @param {any} value
-     */
+   * @param {string} key
+   * @param {any} value
+   */
   async setValueByKey(key, value, options = {}, user = "system", qr = null) {
     const existing = await this.getSettingByKey(key, options.setting_type);
-    const now = new Date();
     if (existing) {
       return this.updateSetting(existing.id, { value, ...options }, user, qr);
     } else {
@@ -207,8 +206,8 @@ class SystemSettingService {
   }
 
   /**
-     * @param {any} id
-     */
+   * @param {any} id
+   */
   async deleteSetting(id, user = "system", qr = null) {
     const { SystemSetting } = require("../entities/systemSettings");
     const repo = this._getRepo(qr, SystemSetting);
@@ -222,8 +221,8 @@ class SystemSettingService {
   }
 
   /**
-     * @param {any} settingsArray
-     */
+   * @param {any} settingsArray
+   */
   async bulkUpdate(settingsArray, user = "system", qr = null) {
     const results = { updated: [], errors: [] };
     for (const item of settingsArray) {
@@ -248,8 +247,8 @@ class SystemSettingService {
   }
 
   /**
-     * @param {any} ids
-     */
+   * @param {any} ids
+   */
   async bulkDelete(ids, user = "system", qr = null) {
     const results = { deleted: [], errors: [] };
     for (const id of ids) {
@@ -274,8 +273,8 @@ class SystemSettingService {
   }
 
   /**
-     * @param {{ [s: string]: any; } | ArrayLike<any>} configData
-     */
+   * @param {{ [s: string]: any; } | ArrayLike<any>} configData
+   */
   async updateGroupedConfig(configData, user = "system", qr = null) {
     const results = { updated: [], errors: [] };
     for (const [category, dict] of Object.entries(configData)) {
@@ -297,11 +296,19 @@ class SystemSettingService {
     return results;
   }
 
-  async getSystemInfo() {
-    const { version } = require("../../package.json");
+  /**
+   * Get system information
+   * @param {Object} options
+   * @param {string} [options.appName] - Override app name
+   */
+  async getSystemInfo(options = {}) {
+    // Use app.getVersion() instead of reading package.json
+    const version = app ? app.getVersion() : "1.0.0";
+    const appName = options.appName || "Meatify";
+
     return {
       version,
-      name: "Collectly",
+      name: appName,
       environment:
         process.env.NODE_ENV === "production" ? "production" : "development",
       debug_mode: process.env.NODE_ENV === "development",

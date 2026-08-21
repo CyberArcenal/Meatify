@@ -1,30 +1,83 @@
-// ReturnRefundItem.js
-const { EntitySchema } = require("typeorm");
+// src/subscribers/ReturnRefundItemSubscriber.js
+const ReturnRefundItem = require("../entities/ReturnRefundItem");
+const { logger } = require("../utils/logger");
 
-const ReturnRefundItem = new EntitySchema({
-  name: "ReturnRefundItem",
-  tableName: "return_refund_items",
-  columns: {
-    id: { type: Number, primary: true, generated: true },
-    quantity: { type: Number },
-    unitPrice: { type: "decimal" },
-    subtotal: { type: "decimal" },
-    reason: { type: String, nullable: true },
-    createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" }
-  },
-  relations: {
-    returnRefund: {
-      target: "ReturnRefund",
-      type: "many-to-one",
-      joinColumn: true
-    },
-    product: {
-      target: "Product",
-      type: "many-to-one",
-      joinColumn: true,
-      eager: true
-    }
+console.log("[Subscriber] Loading ReturnRefundItemSubscriber");
+
+class ReturnRefundItemSubscriber {
+  listenTo() {
+    return ReturnRefundItem;
   }
-});
 
-module.exports = ReturnRefundItem;
+  /**
+   * @param {import("../entities/ReturnRefundItem")} entity
+   */
+  beforeInsert(entity) {
+    logger.debug("[ReturnRefundItemSubscriber] beforeInsert:", {
+      id: entity?.id,
+      returnRefundId: entity?.returnRefundId,
+      meatId: entity?.meatId,
+      batchId: entity?.batchId,
+      weightKg: entity?.weightKg,
+    });
+  }
+
+  /**
+   * @param {import("../entities/ReturnRefundItem")} entity
+   */
+  afterInsert(entity, { manager, queryRunner }) {
+    logger.info("[ReturnRefundItemSubscriber] afterInsert:", {
+      id: entity.id,
+      returnRefundId: entity.returnRefundId,
+      meatId: entity.meatId,
+      batchId: entity.batchId,
+      weightKg: entity.weightKg,
+      subtotal: entity.subtotal,
+    });
+  }
+
+  /**
+   * @param {import("../entities/ReturnRefundItem")} entity
+   */
+  beforeUpdate(entity) {
+    logger.debug("[ReturnRefundItemSubscriber] beforeUpdate:", {
+      id: entity?.id,
+      weightKg: entity?.weightKg,
+    });
+  }
+
+  /**
+   * @param {{ databaseEntity: any; entity: any }} event
+   */
+  afterUpdate(event, { manager, queryRunner }) {
+    const { entity, databaseEntity } = event;
+    logger.info("[ReturnRefundItemSubscriber] afterUpdate:", {
+      id: entity?.id,
+      oldWeight: databaseEntity?.weightKg,
+      newWeight: entity?.weightKg,
+      oldReason: databaseEntity?.reason,
+      newReason: entity?.reason,
+    });
+  }
+
+  /**
+   * @param {import("../entities/ReturnRefundItem")} entity
+   */
+  beforeRemove(entity) {
+    logger.debug("[ReturnRefundItemSubscriber] beforeRemove:", {
+      id: entity?.id,
+      returnRefundId: entity?.returnRefundId,
+    });
+  }
+
+  /**
+   * @param {{ databaseEntity?: any; entityId: any }} event
+   */
+  afterRemove(event) {
+    logger.info("[ReturnRefundItemSubscriber] afterRemove:", {
+      id: event.entityId,
+    });
+  }
+}
+
+module.exports = ReturnRefundItemSubscriber;
