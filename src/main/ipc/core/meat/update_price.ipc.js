@@ -1,5 +1,5 @@
 // src/main/ipc/core/meat/update_price.ipc.js
-const { MeatStateService } = require("../../../../stateServices/MeatStateService");
+const { MeatStateService } = require("../../../../stateServices/Meat");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params, queryRunner) => {

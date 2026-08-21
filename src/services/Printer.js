@@ -20,21 +20,21 @@ class PrinterService {
   async _loadDriver(type) {
     switch (type.toLowerCase()) {
       case "thermal":
-        const ThermalDriver = require("../drivers/thermalDriver");
+        const ThermalDriver = require("../drivers/thermal");
         return new ThermalDriver();
       case "dot_matrix":
         // TODO: implement dot matrix driver if needed
         console.warn(
           "[PrinterService] Dot matrix driver not implemented, falling back to thermal",
         );
-        const FallbackThermal = require("../drivers/thermalDriver");
+        const FallbackThermal = require("../drivers/thermal");
         return new FallbackThermal();
       case "laser":
         // TODO: implement laser driver (e.g., PDF generation + system print)
         console.warn(
           "[PrinterService] Laser printer driver not implemented, falling back to thermal",
         );
-        const FallbackThermal2 = require("../drivers/thermalDriver");
+        const FallbackThermal2 = require("../drivers/thermal");
         return new FallbackThermal2();
       default:
         throw new Error(`Unsupported printer type: ${type}`);
@@ -56,7 +56,7 @@ class PrinterService {
    */
   async printReceipt(saleId) {
     const { AppDataSource } = require("../main/db/data-source");
-    const notificationService = require("./NotificationService");
+    const notificationService = require("./Notification");
     let driver;
     try {
       driver = await this._getDriver();

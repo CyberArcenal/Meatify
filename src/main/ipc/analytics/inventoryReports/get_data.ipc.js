@@ -1,7 +1,8 @@
 // src/main/ipc/analytics/inventoryReports/get_data.ipc.js
-const meatService = require("../../../services/MeatService");
-const batchService = require("../../../services/BatchService");
-const inventoryMovementService = require("../../../services/InventoryMovementService");
+//@ts-check
+const meatService = require("../../../../services/Meat");
+const batchService = require("../../../../services/Batch");
+const inventoryMovementService = require("../../../../services/InventoryMovement");
 
 module.exports = async (params) => {
   const { 

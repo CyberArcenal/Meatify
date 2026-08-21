@@ -1,5 +1,5 @@
 // src/main/ipc/core/category/merge_categories.ipc.js
-const { CategoryStateService } = require("../../../../stateServices/CategoryStateService");
+const { CategoryStateService } = require("../../../../stateServices/Category");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params, queryRunner) => {

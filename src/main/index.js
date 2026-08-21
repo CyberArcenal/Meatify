@@ -26,8 +26,8 @@ const url = require("url");
 // TypeORM and Database
 require("reflect-metadata");
 const MigrationManager = require("../utils/dbUtils/migrationManager");
-const PrinterService = require("../services/PrinterService");
-const CashDrawerService = require("../services/CashDrawerService");
+const PrinterService = require("../services/Printer");
+const CashDrawerService = require("../services/CashDrawer");
 const { registerImageProtocol } = require("./protocols/imageProtocol.js");
 
 protocol.registerSchemesAsPrivileged([
@@ -868,6 +868,7 @@ function registerIpcHandlers() {
       "./ipc/core/returnRefundItem/index.ipc.js",
 
       // Additional Utilities
+      "./ipc/analytics/dashboard/index.ipc.js",
       "./ipc/analytics/customerInsights/index.ipc.js",
       "./ipc/analytics/dailySales/index.ipc.js",
       "./ipc/analytics/financialReports/index.ipc.js",

@@ -1,7 +1,8 @@
 // src/main/ipc/analytics/financialReports/get_summary.ipc.js
-const saleService = require("../../../services/SaleService");
-const purchaseService = require("../../../services/PurchaseService");
-const returnRefundService = require("../../../services/ReturnRefundService");
+//@ts-check
+const saleService = require("../../../../services/Sale");
+const purchaseService = require("../../../../services/Purchase");
+const returnRefundService = require("../../../../services/ReturnRefund");
 
 module.exports = async (params) => {
   const { period = "month" } = params || {};

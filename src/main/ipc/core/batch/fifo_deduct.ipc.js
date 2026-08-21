@@ -1,5 +1,5 @@
 // src/main/ipc/core/batch/fifo_deduct.ipc.js
-const { BatchStateService } = require("../../../../stateServices/BatchStateService");
+const { BatchStateService } = require("../../../../stateServices/Batch");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params, queryRunner) => {

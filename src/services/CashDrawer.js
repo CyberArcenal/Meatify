@@ -19,12 +19,12 @@ class CashDrawerService {
 
     if (connectionType === "printer") {
       // Reuse the thermal printer driver (which can send drawer commands)
-      const ThermalDriver = require("../drivers/thermalDriver");
+      const ThermalDriver = require("../drivers/thermal");
       return new ThermalDriver();
     } else if (connectionType === "usb") {
       // Dedicated USB cash drawer driver (e.g., via serial or HID)
       // You need to implement this driver based on your hardware
-      const UsbDrawerDriver = require("../drivers/usbDrawerDriver");
+      const UsbDrawerDriver = require("../drivers/usbDrawer");
       return new UsbDrawerDriver();
     } else {
       throw new Error(
@@ -46,7 +46,7 @@ class CashDrawerService {
    * @returns {Promise<boolean>}
    */
   async openDrawer(reason = "sale") {
-    const notificationService = require("./NotificationService");
+    const notificationService = require("./Notification");
     const drawerEnabled = await enableCashDrawer();
     if (!drawerEnabled) {
       console.log("[CashDrawerService] Cash drawer is disabled in settings");

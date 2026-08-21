@@ -1,7 +1,7 @@
 // src/main/ipc/analytics/customerInsights/get_data.ipc.js
-const customerService = require("../../../services/CustomerService");
-const saleService = require("../../../services/SaleService");
-const loyaltyTransactionService = require("../../../services/LoyaltyTransactionService");
+const customerService = require("../../../../services/Customer");
+const saleService = require("../../../../services/Sale");
+const loyaltyTransactionService = require("../../../../services/LoyaltyTransaction");
 
 module.exports = async (params) => {
   const { 

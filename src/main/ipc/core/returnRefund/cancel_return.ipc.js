@@ -1,5 +1,5 @@
 // src/main/ipc/core/returnRefund/cancel_return.ipc.js
-const { ReturnRefundStateService } = require("../../../../stateServices/ReturnRefundStateService");
+const { ReturnRefundStateService } = require("../../../../stateServices/ReturnRefund");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params, queryRunner) => {

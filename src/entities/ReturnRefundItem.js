@@ -6,9 +6,9 @@ const ReturnRefundItem = new EntitySchema({
   tableName: "return_refund_items",
   columns: {
     id: { type: Number, primary: true, generated: true },
-    quantity: { type: Number },
-    unitPrice: { type: "decimal" },
-    subtotal: { type: "decimal" },
+    weightKg: { type: "decimal", precision: 10, scale: 3 },
+    unitPrice: { type: "decimal", precision: 10, scale: 2 },
+    subtotal: { type: "decimal", precision: 10, scale: 2 },
     reason: { type: String, nullable: true },
     createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" }
   },
@@ -18,11 +18,17 @@ const ReturnRefundItem = new EntitySchema({
       type: "many-to-one",
       joinColumn: true
     },
-    product: {
-      target: "Product",
+    meat: {
+      target: "Meat",
       type: "many-to-one",
       joinColumn: true,
       eager: true
+    },
+    batch: {
+      target: "Batch",
+      type: "many-to-one",
+      joinColumn: true,
+      nullable: false,
     }
   }
 });

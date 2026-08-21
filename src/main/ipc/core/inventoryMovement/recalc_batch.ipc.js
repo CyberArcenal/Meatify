@@ -1,5 +1,5 @@
 // src/main/ipc/core/inventoryMovement/recalc_batch.ipc.js
-const { InventoryMovementStateService } = require("../../../../stateServices/InventoryMovementStateService");
+const { InventoryMovementStateService } = require("../../../../stateServices/InventoryMovement");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params, queryRunner) => {

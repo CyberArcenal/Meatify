@@ -4,6 +4,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("backendAPI", {
 
   // 🆕 BATCH API
+  dashboard: (payload) => ipcRenderer.invoke("dashboard", payload),
   customerInsights: (payload) => ipcRenderer.invoke("customerInsights", payload),
   dailySales: (payload) => ipcRenderer.invoke("dailySales", payload),
   financialReports: (payload) => ipcRenderer.invoke("financialReports", payload),

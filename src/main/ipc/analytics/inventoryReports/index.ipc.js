@@ -1,8 +1,8 @@
 // src/main/ipc/analytics/inventoryReports/index.ipc.js - Inventory Reports Analytics Handler (Offline Only)
-
+//@ts-check
 const { ipcMain } = require("electron");
-const { logger } = require("../../../utils/logger");
-const { withErrorHandling } = require("../../../middlewares/errorHandler");
+const { withErrorHandling } = require("../../../../middlewares/errorHandler");
+const { logger } = require("../../../../utils/logger");
 
 class InventoryReportsHandler {
   constructor() {

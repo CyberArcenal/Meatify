@@ -1,6 +1,6 @@
 // src/main/ipc/analytics/dailySales/get_summary.ipc.js
-const saleService = require("../../../services/SaleService");
-const saleItemService = require("../../../services/SaleItemService");
+const saleService = require("../../../../services/Sale");
+const saleItemService = require("../../../../services/SaleItem");
 
 module.exports = async (params) => {
   const { date } = params || {};

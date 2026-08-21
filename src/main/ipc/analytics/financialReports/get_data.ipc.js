@@ -1,9 +1,10 @@
 // src/main/ipc/analytics/financialReports/get_data.ipc.js
-const saleService = require("../../../services/SaleService");
-const purchaseService = require("../../../services/PurchaseService");
-const returnRefundService = require("../../../services/ReturnRefundService");
-const batchService = require("../../../services/BatchService");
-const meatService = require("../../../services/MeatService");
+//@ts-check
+const saleService = require("../../../../services/Sale");
+const purchaseService = require("../../../../services/Purchase");
+const returnRefundService = require("../../../../services/ReturnRefund");
+const batchService = require("../../../../services/Batch");
+const meatService = require("../../../../services/Meat");
 
 module.exports = async (params) => {
   const { 

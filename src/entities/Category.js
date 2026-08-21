@@ -13,8 +13,8 @@ const Category = new EntitySchema({
     updatedAt: { type: Date, nullable: true },
   },
   relations: {
-    products: {
-      target: "Product",
+    meats: {
+      target: "Meat",
       type: "one-to-many",
       inverseSide: "category",
     },

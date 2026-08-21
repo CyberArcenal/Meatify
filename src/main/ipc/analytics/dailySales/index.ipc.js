@@ -1,8 +1,8 @@
 // src/main/ipc/analytics/dailySales/index.ipc.js - Daily Sales Analytics Handler (Offline Only)
 
 const { ipcMain } = require("electron");
-const { logger } = require("../../../utils/logger");
-const { withErrorHandling } = require("../../../middlewares/errorHandler");
+const { logger } = require("../../../../utils/logger");
+const { withErrorHandling } = require("../../../../middlewares/errorHandler");
 
 class DailySalesHandler {
   constructor() {

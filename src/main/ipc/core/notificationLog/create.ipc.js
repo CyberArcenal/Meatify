@@ -1,5 +1,5 @@
 // src/main/ipc/core/notificationLog/create.ipc.js
-const notificationLogService = require("../../../../services/NotificationLogService");
+const notificationLogService = require("../../../../services/NotificationLog");
 
 module.exports = async (params, queryRunner) => {
   const { user = "system", ...data } = params;

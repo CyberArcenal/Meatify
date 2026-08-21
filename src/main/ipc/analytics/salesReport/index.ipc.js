@@ -1,8 +1,8 @@
 // src/main/ipc/analytics/salesReport/index.ipc.js - Sales Report Analytics Handler (Offline Only)
-
+//@ts-check
 const { ipcMain } = require("electron");
-const { logger } = require("../../../utils/logger");
-const { withErrorHandling } = require("../../../middlewares/errorHandler");
+const { withErrorHandling } = require("../../../../middlewares/errorHandler");
+const { logger } = require("../../../../utils/logger");
 
 class SalesReportHandler {
   constructor() {

@@ -1,5 +1,5 @@
 // src/main/ipc/analytics/customerInsights/get_summary.ipc.js
-const customerService = require("../../../services/CustomerService");
+const customerService = require("../../../../services/Customer");
 
 module.exports = async (params) => {
   const { startDate, endDate } = params || {};

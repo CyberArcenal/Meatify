@@ -1,5 +1,5 @@
 // src/main/ipc/core/supplier/merge_suppliers.ipc.js
-const { SupplierStateService } = require("../../../../stateServices/SupplierStateService");
+const { SupplierStateService } = require("../../../../stateServices/Supplier");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params, queryRunner) => {

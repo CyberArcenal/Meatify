@@ -1,5 +1,5 @@
 // src/main/ipc/core/customer/reverse_transaction.ipc.js
-const { CustomerStateService } = require("../../../../stateServices/CustomerStateService");
+const { CustomerStateService } = require("../../../../stateServices/Customer");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params, queryRunner) => {

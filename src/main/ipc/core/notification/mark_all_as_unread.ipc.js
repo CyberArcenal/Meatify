@@ -1,5 +1,5 @@
 // src/main/ipc/core/notification/mark_all_as_unread.ipc.js
-const { NotificationStateService } = require("../../../../stateServices/NotificationStateService");
+const { NotificationStateService } = require("../../../../stateServices/Notification");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params, queryRunner) => {

@@ -4,6 +4,7 @@ export {};
 declare global {
   interface Window {
     backendAPI: {
+      dashboard: (payload: any) => Promise<any>;
       customerInsights: (payload: any) => Promise<any>;
       dailySales: (payload: any) => Promise<any>;
       financialReports: (payload: any) => Promise<any>;

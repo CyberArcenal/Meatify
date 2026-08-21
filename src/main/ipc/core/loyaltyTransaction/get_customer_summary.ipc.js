@@ -1,5 +1,5 @@
 // src/main/ipc/core/loyaltyTransaction/get_customer_summary.ipc.js
-const { LoyaltyTransactionStateService } = require("../../../../stateServices/LoyaltyTransactionStateService");
+const { LoyaltyTransactionStateService } = require("../../../../stateServices/LoyaltyTransaction");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params) => {

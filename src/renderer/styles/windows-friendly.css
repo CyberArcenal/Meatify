@@ -1,0 +1,262 @@
+/* I-remove ang invalid Tailwind directives at gumamit ng regular CSS */
+
+/* Windows-like buttons */
+
+/* Windows-like table */
+.windows-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.windows-table th {
+  padding: 0.75rem 0.75rem;
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary, #aaaaaa);
+  background-color: var(--table-header-bg, #1a1a1a);
+  border-bottom: 1px solid var(--border-color, #444444);
+}
+
+.windows-table td {
+  padding: 0.75rem 0.75rem;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  color: var(--text-primary, #f5f5f5);
+  border-bottom: 1px solid var(--border-color, #444444);
+}
+
+/* Windows-like card */
+.windows-card {
+  background-color: var(--card-bg, #2d2d2d);
+  border: 1px solid var(--border-color, #444444);
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+
+.windows-card:hover {
+  border-color: var(--border-dark, #555555);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Windows-like input */
+.windows-input {
+  display: block;
+  width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid var(--input-border, #444444);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  background-color: var(--input-bg, #1a1a1a);
+  color: var(--text-primary, #f5f5f5);
+}
+
+.windows-input:focus {
+  border-color: var(--input-focus, #d4af37);
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.5);
+}
+
+/* Windows-like Buttons */
+.windows-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.windows-btn-primary {
+  background-color: var(--primary-color, #d4af37);
+  color: var(--btn-primary-text, #1a1a1a);
+  border-color: var(--primary-color, #d4af37);
+}
+
+.windows-btn-primary:hover {
+  background-color: var(--primary-hover, #b8960f);
+  border-color: var(--primary-hover, #b8960f);
+}
+
+.windows-btn-primary:active {
+  background-color: var(--accent-gold-dark, #a0850a);
+}
+
+.windows-btn-secondary {
+  background-color: var(--card-bg, #2d2d2d);
+  color: var(--text-primary, #f5f5f5);
+  border: 1px solid var(--border-color, #444444);
+}
+
+.windows-btn-secondary:hover {
+  background-color: var(--card-hover-bg, #3d3d3d);
+  border-color: var(--border-dark, #555555);
+}
+
+.windows-btn-secondary:active {
+  background-color: var(--border-color, #444444);
+}
+
+.windows-btn:focus {
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.5);
+}
+
+/* Windows-like Typography */
+.windows-title {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.windows-text {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.5;
+}
+
+/* Windows-like Modals */
+.windows-modal {
+  background: var(--card-bg, #2d2d2d);
+  border-radius: 0.5rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-color, #444444);
+}
+
+/* Animation for Windows-like feel */
+@keyframes windowsFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.windows-fade-in {
+  animation: windowsFadeIn 0.3s ease-out;
+}
+
+/* Add these to your existing index.css file */
+
+/* Note indicator animation */
+.note-indicator {
+  animation: pulse-note 2s infinite;
+}
+
+@keyframes pulse-note {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(1.1); }
+}
+
+/* Tooltip styles for better UX */
+.tooltip-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip-text {
+  visibility: hidden;
+  background-color: var(--text-primary, #f5f5f5);
+  color: var(--background-color, #1a1a1a);
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px 10px;
+  position: absolute;
+  z-index: 1000;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+}
+
+.tooltip-wrapper:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Enhanced status badge with indicator dot */
+.status-badge {
+  position: relative;
+  padding-left: 20px !important;
+}
+
+.status-badge::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* Update status colors to match new palette */
+.status-badge.active::before { background-color: var(--status-completed, #27ae60); }
+.status-badge.inactive::before { background-color: var(--status-cancelled, #e74c3c); }
+.status-badge.pending::before { background-color: var(--status-pending, #f39c12); }
+
+/* Data highlight with gold border */
+.data-highlight {
+  background: linear-gradient(120deg, rgba(212, 175, 55, 0.1) 0%, rgba(212, 175, 55, 0.05) 100%);
+  border-left: 3px solid var(--accent-gold, #d4af37);
+}
+
+/* Truncation with ellipsis but show on hover */
+.truncate-hover {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.truncate-hover:hover {
+  overflow: visible;
+  white-space: normal;
+  background: var(--card-bg, #2d2d2d);
+  position: relative;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+/* Custom scrollbar for notes section */
+.notes-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.notes-scrollbar::-webkit-scrollbar-track {
+  background: var(--table-header-bg, #1a1a1a);
+  border-radius: 3px;
+}
+.notes-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--accent-gold, #d4af37);
+  border-radius: 3px;
+}
+.notes-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-gold-hover, #b8960f);
+}
+
+/* Animation for expanded row */
+@keyframes expandRow {
+  from { max-height: 0; opacity: 0; }
+  to { max-height: 500px; opacity: 1; }
+}
+
+tr.expanded-row {
+  animation: expandRow 0.3s ease-out;
+}

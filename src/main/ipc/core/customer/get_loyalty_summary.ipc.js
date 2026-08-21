@@ -1,5 +1,5 @@
 // src/main/ipc/core/customer/get_loyalty_summary.ipc.js
-const { CustomerStateService } = require("../../../../stateServices/CustomerStateService");
+const { CustomerStateService } = require("../../../../stateServices/Customer");
 const { AppDataSource } = require("../../db/data-source");
 
 module.exports = async (params) => {

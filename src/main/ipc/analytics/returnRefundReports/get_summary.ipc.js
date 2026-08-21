@@ -1,6 +1,6 @@
 // src/main/ipc/analytics/returnRefundReports/get_summary.ipc.js
-const returnRefundService = require("../../../services/ReturnRefundService");
-const saleService = require("../../../services/SaleService");
+const returnRefundService = require("../../../../services/ReturnRefund");
+const saleService = require("../../../../services/Sale");
 
 module.exports = async (params) => {
   const { 

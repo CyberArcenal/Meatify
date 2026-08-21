@@ -1,39 +1,43 @@
-// ReturnRefundItem.js
+// ReturnRefund.js
 const { EntitySchema } = require("typeorm");
 
-const ReturnRefundItem = new EntitySchema({
-  name: "ReturnRefundItem",
-  tableName: "return_refund_items",
+const ReturnRefund = new EntitySchema({
+  name: "ReturnRefund",
+  tableName: "return_refunds",
   columns: {
     id: { type: Number, primary: true, generated: true },
-    
-    // ✅ BAGO: gawing decimal
-    quantity: { type: "decimal", precision: 10, scale: 3 }, 
-    unitPrice: { type: "decimal", precision: 10, scale: 2 },
-    subtotal: { type: "decimal", precision: 10, scale: 2 },
+    referenceNo: { type: String, unique: true },
     reason: { type: String, nullable: true },
-    createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" }
+    refundMethod: { type: String }, // Cash, Card, Store Credit
+    totalAmount: { type: "decimal", precision: 10, scale: 2, default: 0 },
+    status: { 
+      type: String, 
+      default: "pending", 
+      enum: ["pending", "processed", "cancelled"] 
+    },
+    createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },
+    updatedAt: { type: Date, nullable: true },
   },
   relations: {
-    returnRefund: {
-      target: "ReturnRefund",
-      type: "many-to-one",
-      joinColumn: true
-    },
-    meat: { // Palitan product -> meat
-      target: "Meat", 
-      type: "many-to-one", 
-      joinColumn: true, 
-      eager: true 
-    },
-    // ✅ BAGO: i-link sa batch para maibalik sa tamang batch
-    batch: {
-      target: "Batch",
+    sale: {
+      target: "Sale",
       type: "many-to-one",
       joinColumn: true,
-      nullable: false,
-    }
-  }
+      eager: true,
+    },
+    customer: {
+      target: "Customer",
+      type: "many-to-one",
+      joinColumn: true,
+      eager: true,
+    },
+    items: {
+      target: "ReturnRefundItem",
+      type: "one-to-many",
+      inverseSide: "returnRefund",
+      cascade: true,
+    },
+  },
 });
 
-module.exports = ReturnRefundItem;
+module.exports = ReturnRefund;
