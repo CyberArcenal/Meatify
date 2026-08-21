@@ -1,12 +1,11 @@
 // src/main/ipc/core/notificationLog/export.ipc.js
-const { ReminderLogService } = require("../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
+const notificationLogService = require("../../../../services/NotificationLog");
 
 module.exports = async (params) => {
   const { format = "json", filters = {}, user = "system" } = params;
 
   try {
-    const result = await reminderLogService.exportNotifications(format, filters, user);
+    const result = await notificationLogService.exportLogs(format, filters, user);
     return {
       status: true,
       message: "Export completed successfully",

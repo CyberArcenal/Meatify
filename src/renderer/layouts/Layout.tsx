@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import TopBar from './TopBar';
-import Sidebar from './Sidebar'; // ← Now points to the modular Sidebar
+import Sidebar from './SideBar'; // ← Now points to the modular Sidebar
 import { NotificationToastListener } from '../components/Shared/NotificationToastListener';
 import { PaginationProvider, usePagination } from '../contexts/PaginationContext';
 import Pagination from '../components/UI/Pagination';

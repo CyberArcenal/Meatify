@@ -877,7 +877,7 @@ function registerIpcHandlers() {
       "./ipc/analytics/sales/index.ipc.js",
       "./ipc/dashboard/index.ipc.js",
       
-      "./ipc/utils/system_config.ipc.js",
+      "./ipc/utils/system_config/index.ipc.js",
       "./ipc/utils/windows_control.ipc.js",
       "./ipc/utils/updater/index.ipc.js",
     ];

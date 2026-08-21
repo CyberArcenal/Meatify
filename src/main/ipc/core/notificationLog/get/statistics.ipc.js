@@ -1,12 +1,10 @@
 // src/main/ipc/core/notificationLog/get/statistics.ipc.js
-const { ReminderLogService } = require("../../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
-
+const notificationLogService = require("../../../../../services/NotificationLog");
 module.exports = async (params) => {
   const { startDate, endDate } = params || {};
 
   try {
-    const result = await reminderLogService.getReminderStats({ startDate, endDate });
+    const result = await notificationLogService.getReminderStats({ startDate, endDate });
     return {
       status: true,
       message: "Statistics retrieved successfully",

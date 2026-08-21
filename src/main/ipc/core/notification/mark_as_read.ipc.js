@@ -1,6 +1,6 @@
 // src/main/ipc/core/notification/mark_as_read.ipc.js
 const { NotificationStateService } = require("../../../../stateServices/Notification");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { notificationId, user = "system" } = params;

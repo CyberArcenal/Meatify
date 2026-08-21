@@ -1,9 +1,9 @@
 // src/main/ipc/core/sale/index.ipc.js - Sale Management Handler (Offline Only)
 
 const { ipcMain } = require("electron");
-const { logger } = require("../../../utils/logger");
-const { AppDataSource } = require("../../db/data-source");
-const { withErrorHandling } = require("../../../middlewares/errorHandler");
+const { logger } = require("../../../../utils/logger");
+const { AppDataSource } = require("../../../db/data-source");
+const { withErrorHandling } = require("../../../../middlewares/errorHandler");
 
 class SaleHandler {
   constructor() {

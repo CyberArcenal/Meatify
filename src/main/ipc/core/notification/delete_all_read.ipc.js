@@ -1,6 +1,6 @@
 // src/main/ipc/core/notification/delete_all_read.ipc.js
 const { NotificationStateService } = require("../../../../stateServices/Notification");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { userId, user = "system" } = params;

@@ -1,6 +1,6 @@
 // src/main/ipc/core/category/activate_category.ipc.js
 const { CategoryStateService } = require("../../../../stateServices/Category");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { categoryId, user = "system" } = params;

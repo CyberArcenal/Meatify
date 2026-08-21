@@ -28,7 +28,7 @@
     "src/subscribers/**/*",
     "src/utils/**/*",
     "src/middlewares/**/*",
-    "src/StateTransitionServices/**/*",
+    "src/StateServices/**/*",
     "src/channels/**/*",
     "src/drivers/**/*",
     "src/scheduler/**/*",

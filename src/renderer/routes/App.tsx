@@ -3,6 +3,7 @@ import Layout from "../layouts/Layout";
 
 import { Help } from "../pages/help";
 import { useEffect, useState } from "react";
+import DashboardPage from "../pages/Analytics/dashboard";
 
 
 const PageNotFound = () => <div> Page Not Found</div>;
@@ -42,7 +43,7 @@ function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
 
         {/* Core POS */}
-        {/* <Route path="dashboard" element={<DashboardPage />} /> */}
+        <Route path="dashboard" element={<DashboardPage />} />
         {/* <Route path="pos/cashier" element={<Cashier />} /> */}
         {/* <Route path="pos/transactions" element={<Transactions />} /> */}
         {/* <Route path="pos/products" element={<ProductPage />} /> */}

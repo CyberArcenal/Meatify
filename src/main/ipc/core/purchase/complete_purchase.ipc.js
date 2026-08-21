@@ -1,6 +1,6 @@
 // src/main/ipc/core/purchase/complete_purchase.ipc.js
 const { PurchaseStateTransitionService } = require("../../../../stateServices/Purchase");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { purchaseId, user = "system" } = params;

@@ -12,7 +12,7 @@ import { FilterBar } from "./components/FilterBar";
 import { CustomerTable } from "./components/CustomerTable";
 import { CustomerFormDialog } from "./components/CustomerFormDialog";
 import { CustomerViewDialog } from "./components/CustomerViewDialog";
-import Pagination from "../../components/Shared/Pagination1";
+import Pagination from "../../components/Shared/Pagination";
 
 const CustomerPage: React.FC = () => {
   const {

@@ -1,6 +1,10 @@
 // src/main/ipc/core/batch/deduct_from_batch.ipc.js
+//@ts-check
 const { BatchStateService } = require("../../../../stateServices/Batch");
-const { AppDataSource } = require("../../db/data-source");
+const { logger } = require("../../../../utils/logger");
+const { AppDataSource } = require("../../../db/data-source");
+const { withErrorHandling } = require("../../../../middlewares/errorHandler");
+
 
 module.exports = async (params, queryRunner) => {
   const { batchId, weightKg, reason = "adjustment", metadata = {}, user = "system" } = params;

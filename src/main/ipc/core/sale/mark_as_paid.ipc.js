@@ -1,6 +1,6 @@
 // src/main/ipc/core/sale/mark_as_paid.ipc.js
 const { SaleStateService } = require("../../../../stateServices/Sale");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { saleId, user = "system" } = params;

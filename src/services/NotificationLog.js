@@ -51,114 +51,87 @@ class NotificationLogService {
 
   /**
    * Helper: get a repository (transactional if queryRunner provided)
-   * @param {import("typeorm").QueryRunner | null} qr
-   * @param {Function} entityClass
-   * @returns {import("typeorm").Repository<any>}
    */
   _getRepo(qr, entityClass) {
-    const qrType =
-      qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
-      `[NotificationLog._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
-    );
-
     if (hasManager && typeof qr.manager.getRepository === "function") {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[NotificationLog._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
+  // ============================================================
+  // 📌 CORE CRUD METHODS (used internally)
+  // ============================================================
+
   /**
    * Create a new notification log entry (queued status)
-   * @param {Object} data - { to, subject, payload, channel? }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
    */
   async create(data, user = "system", qr = null) {
     const { saveDb } = require("../utils/dbUtils/dbActions");
     const NotificationLog = require("../entities/NotificationLog");
     const repo = this._getRepo(qr, NotificationLog);
 
-    try {
-      // Validate required fields
-      if (!data.to) throw new Error("Recipient (to) is required");
-      if (!data.subject) throw new Error("Subject is required");
-      if (!data.payload) throw new Error("Payload is required");
+    if (!data.to) throw new Error("Recipient (to) is required");
+    if (!data.subject) throw new Error("Subject is required");
+    if (!data.payload) throw new Error("Payload is required");
 
-      const log = repo.create({
-        recipient_email: data.to,
-        subject: data.subject,
-        payload: data.payload,
-        channel: data.channel || "email", // email or sms
-        status: LOG_STATUS.QUEUED,
-        retry_count: 0,
-        resend_count: 0,
-        created_at: new Date(),
-        updated_at: new Date(),
-      });
+    const log = repo.create({
+      recipient_email: data.to,
+      subject: data.subject,
+      payload: data.payload,
+      channel: data.channel || "email",
+      status: LOG_STATUS.QUEUED,
+      retry_count: 0,
+      resend_count: 0,
+      created_at: new Date(),
+      updated_at: new Date(),
+    });
 
-      const saved = await saveDb(repo, log, { queryRunner: qr });
-      await auditLogger.logCreate("NotificationLog", saved.id, saved, user);
-      console.log(`NotificationLog created: #${saved.id} - ${saved.subject}`);
-      return saved;
-    } catch (error) {
-      console.error("Failed to create notification log:", error.message);
-      throw error;
-    }
+    const saved = await saveDb(repo, log, { queryRunner: qr });
+    await auditLogger.logCreate("NotificationLog", saved.id, saved, user);
+    console.log(`NotificationLog created: #${saved.id} - ${saved.subject}`);
+    return saved;
   }
 
   /**
    * Update an existing notification log
-   * @param {number} id
-   * @param {Object} data - { status?, error_message?, retry_count?, resend_count?, sent_at?, last_error_at? }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
    */
   async update(id, data, user = "system", qr = null) {
     const { updateDb } = require("../utils/dbUtils/dbActions");
     const NotificationLog = require("../entities/NotificationLog");
     const repo = this._getRepo(qr, NotificationLog);
 
-    try {
-      const existing = await repo.findOne({ where: { id } });
-      if (!existing) {
-        throw new Error(`NotificationLog with ID ${id} not found`);
-      }
-
-      const oldData = { ...existing };
-
-      // Prevent updating recipient_email, subject, payload
-      if (data.recipient_email !== undefined) {
-        throw new Error("Cannot update recipient_email");
-      }
-      if (data.subject !== undefined) {
-        throw new Error("Cannot update subject");
-      }
-      if (data.payload !== undefined) {
-        throw new Error("Cannot update payload");
-      }
-
-      Object.assign(existing, data);
-      existing.updated_at = new Date();
-
-      const saved = await updateDb(repo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("NotificationLog", id, oldData, saved, user);
-      console.log(`NotificationLog updated: #${id}`);
-      return saved;
-    } catch (error) {
-      console.error("Failed to update notification log:", error.message);
-      throw error;
+    const existing = await repo.findOne({ where: { id } });
+    if (!existing) {
+      throw new Error(`NotificationLog with ID ${id} not found`);
     }
+
+    const oldData = { ...existing };
+
+    // Prevent updating recipient_email, subject, payload
+    if (data.recipient_email !== undefined) {
+      throw new Error("Cannot update recipient_email");
+    }
+    if (data.subject !== undefined) {
+      throw new Error("Cannot update subject");
+    }
+    if (data.payload !== undefined) {
+      throw new Error("Cannot update payload");
+    }
+
+    Object.assign(existing, data);
+    existing.updated_at = new Date();
+
+    const saved = await updateDb(repo, existing, { queryRunner: qr });
+    await auditLogger.logUpdate("NotificationLog", id, oldData, saved, user);
+    console.log(`NotificationLog updated: #${id}`);
+    return saved;
   }
 
   /**
-   * Delete a notification log (hard delete)
-   * @param {number} id
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
+   * Permanently delete a notification log
    */
   async permanentlyDelete(id, user = "system", qr = null) {
     const { removeDb } = require("../utils/dbUtils/dbActions");
@@ -177,8 +150,6 @@ class NotificationLogService {
 
   /**
    * Find log by ID
-   * @param {number} id
-   * @param {import("typeorm").QueryRunner | null} qr
    */
   async findById(id, qr = null) {
     const NotificationLog = require("../entities/NotificationLog");
@@ -194,8 +165,6 @@ class NotificationLogService {
 
   /**
    * Find all logs with filters, pagination, sorting
-   * @param {Object} options
-   * @param {import("typeorm").QueryRunner | null} qr
    */
   async findAll(options = {}, qr = null) {
     const NotificationLog = require("../entities/NotificationLog");
@@ -203,7 +172,6 @@ class NotificationLogService {
 
     const qb = repo.createQueryBuilder("log");
 
-    // Filters
     if (options.status) {
       const statuses = Array.isArray(options.status) ? options.status : [options.status];
       qb.andWhere("log.status IN (:...statuses)", { statuses });
@@ -229,28 +197,24 @@ class NotificationLogService {
       );
     }
 
-    // Sorting
     let sortBy = options.sortBy || "created_at";
     if (!ALLOWED_SORT_COLUMNS.has(sortBy)) {
-      console.warn(`[NotificationLog] Invalid sortBy: ${sortBy}, falling back to created_at`);
       sortBy = "created_at";
     }
     const sortOrder = options.sortOrder === "ASC" ? "ASC" : "DESC";
     qb.orderBy(`log.${sortBy}`, sortOrder);
 
-    // Pagination
     const result = await paginateQueryBuilder(qb, {
       page: options.page,
       limit: options.limit,
     });
 
     await auditLogger.logView("NotificationLog", null, "system");
-    return result; // { data: [], pagination: {} }
+    return result;
   }
 
   /**
    * Get log statistics
-   * @param {import("typeorm").QueryRunner | null} qr
    */
   async getStatistics(qr = null) {
     const NotificationLog = require("../entities/NotificationLog");
@@ -258,7 +222,6 @@ class NotificationLogService {
 
     const qb = repo.createQueryBuilder("log");
 
-    // By status
     const byStatus = await qb
       .clone()
       .select("log.status", "status")
@@ -266,7 +229,6 @@ class NotificationLogService {
       .groupBy("log.status")
       .getRawMany();
 
-    // By channel
     const byChannel = await qb
       .clone()
       .select("log.channel", "channel")
@@ -274,10 +236,8 @@ class NotificationLogService {
       .groupBy("log.channel")
       .getRawMany();
 
-    // Total
     const total = await qb.clone().getCount();
 
-    // Last 24 hours
     const oneDayAgo = new Date();
     oneDayAgo.setDate(oneDayAgo.getDate() - 1);
     const last24h = await qb
@@ -285,7 +245,6 @@ class NotificationLogService {
       .where("log.created_at >= :oneDayAgo", { oneDayAgo })
       .getCount();
 
-    // Failed count
     const failed = await qb
       .clone()
       .where("log.status = 'failed'")
@@ -308,10 +267,6 @@ class NotificationLogService {
 
   /**
    * Export logs to CSV or JSON
-   * @param {string} format
-   * @param {Object} filters
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
    */
   async exportLogs(format = "json", filters = {}, user = "system", qr = null) {
     try {
@@ -321,18 +276,9 @@ class NotificationLogService {
       let exportData;
       if (format === "csv") {
         const headers = [
-          "ID",
-          "Recipient",
-          "Subject",
-          "Channel",
-          "Status",
-          "Retry Count",
-          "Resend Count",
-          "Sent At",
-          "Last Error At",
-          "Error Message",
-          "Created At",
-          "Updated At",
+          "ID", "Recipient", "Subject", "Channel", "Status",
+          "Retry Count", "Resend Count", "Sent At", "Last Error At",
+          "Error Message", "Created At", "Updated At",
         ];
         const rows = logs.map((l) => [
           l.id,
@@ -372,9 +318,6 @@ class NotificationLogService {
 
   /**
    * Bulk create logs
-   * @param {Array<Object>} logsArray
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
    */
   async bulkCreate(logsArray, user = "system", qr = null) {
     const results = { created: [], errors: [] };
@@ -388,7 +331,158 @@ class NotificationLogService {
     }
     return results;
   }
+
+  // ============================================================
+  // 📌 PUBLIC API METHODS (called by IPC handlers)
+  // ============================================================
+
+  /**
+   * Create a reminder/notification log
+   * Alias for create() with validation
+   */
+  async createReminder(data, user = "system", qr = null) {
+    // Convert field names if needed
+    const payload = {
+      to: data.to || data.recipient_email,
+      subject: data.subject,
+      payload: data.html || data.text || data.payload,
+      channel: data.channel || "email",
+    };
+    return this.create(payload, user, qr);
+  }
+
+  /**
+   * Update reminder status
+   */
+  async updateReminderStatus({ id, status, errorMessage = null }, user = "system", qr = null) {
+    const updateData = { status };
+    if (errorMessage !== undefined) {
+      updateData.error_message = errorMessage;
+    }
+    if (status === "sent") {
+      updateData.sent_at = new Date();
+    }
+    if (status === "failed") {
+      updateData.last_error_at = new Date();
+      // Increment retry_count if it's a failure
+      const existing = await this.findById(id, qr);
+      updateData.retry_count = (existing.retry_count || 0) + 1;
+    }
+    return this.update(id, updateData, user, qr);
+  }
+
+  /**
+   * Delete a reminder (hard delete)
+   */
+  async deleteReminder({ id }, user = "system", qr = null) {
+    return this.permanentlyDelete(id, user, qr);
+  }
+
+  /**
+   * Retry a failed reminder
+   */
+  async retryReminder({ id }, user = "system", qr = null) {
+    const existing = await this.findById(id, qr);
+    if (existing.status !== "failed" && existing.status !== "resend") {
+      throw new Error(`Cannot retry a log with status "${existing.status}"`);
+    }
+    // Reset status to queued and increment retry count
+    const updateData = {
+      status: LOG_STATUS.QUEUED,
+      retry_count: (existing.retry_count || 0) + 1,
+      last_error_at: null,
+      error_message: null,
+    };
+    return this.update(id, updateData, user, qr);
+  }
+
+  /**
+   * Retry all failed reminders
+   */
+  async retryAllFailedReminders({ filters = {} }, user = "system", qr = null) {
+    const options = {
+      status: ["failed", "resend"],
+      limit: 1000,
+      ...filters,
+    };
+    const result = await this.findAll(options, qr);
+    const logs = result.data;
+
+    let successCount = 0;
+    let failCount = 0;
+    const results = [];
+
+    for (const log of logs) {
+      try {
+        await this.retryReminder({ id: log.id }, user, qr);
+        successCount++;
+        results.push({ id: log.id, success: true });
+      } catch (err) {
+        failCount++;
+        results.push({ id: log.id, success: false, error: err.message });
+      }
+    }
+
+    return { successCount, failCount, results };
+  }
+
+  /**
+   * Resend a reminder (manual resend, regardless of status)
+   */
+  async resendReminder({ id }, user = "system", qr = null) {
+    const existing = await this.findById(id, qr);
+    // Increment resend count
+    const updateData = {
+      status: LOG_STATUS.QUEUED,
+      resend_count: (existing.resend_count || 0) + 1,
+      sent_at: null,
+      last_error_at: null,
+      error_message: null,
+    };
+    return this.update(id, updateData, user, qr);
+  }
+
+  /**
+   * Get reminder by ID (alias)
+   */
+  async getReminderById({ id }, qr = null) {
+    return this.findById(id, qr);
+  }
+
+  /**
+   * Get all reminders with filters
+   */
+  async getAllReminders(options = {}, qr = null) {
+    return this.findAll(options, qr);
+  }
+
+  /**
+   * Search reminders by keyword
+   */
+  async searchReminders({ keyword, page, limit }, qr = null) {
+    const options = {
+      search: keyword,
+      page,
+      limit,
+      sortBy: "created_at",
+      sortOrder: "DESC",
+    };
+    return this.findAll(options, qr);
+  }
+
+  /**
+   * Get reminder statistics
+   */
+  async getReminderStats({ startDate, endDate } = {}, qr = null) {
+    const options = {};
+    if (startDate) options.startDate = startDate;
+    if (endDate) options.endDate = endDate;
+    return this.getStatistics(qr);
+  }
 }
 
-// Export constants
-module.exports = { NotificationLogService, LOG_STATUS };
+// Export singleton instance
+const notificationLogService = new NotificationLogService();
+module.exports = notificationLogService;
+module.exports.NotificationLogService = NotificationLogService;
+module.exports.LOG_STATUS = LOG_STATUS;

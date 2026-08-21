@@ -1,6 +1,5 @@
 // src/main/ipc/core/notificationLog/permanent_delete.ipc.js
-const { ReminderLogService } = require("../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
+const notificationLogService = require("../../../../services/NotificationLog");
 
 module.exports = async (params, queryRunner) => {
   const { id, user = "system" } = params;
@@ -10,7 +9,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    await reminderLogService.deleteReminder({ id }, user, queryRunner);
+    await notificationLogService.deleteReminder({ id }, user, queryRunner);
     return {
       status: true,
       message: "Notification log permanently deleted successfully",

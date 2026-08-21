@@ -1,6 +1,5 @@
 // src/main/ipc/core/notificationLog/search.ipc.js
-const { ReminderLogService } = require("../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
+const notificationLogService = require("../../../../services/NotificationLog");
 
 module.exports = async (params) => {
   const { search, page, limit, sortBy, sortOrder, status, startDate, endDate, ...filters } = params;
@@ -17,9 +16,8 @@ module.exports = async (params) => {
       ...filters,
     };
 
-    // If search keyword provided, use search method
     if (search) {
-      const result = await reminderLogService.searchReminders({ keyword: search, page, limit });
+      const result = await notificationLogService.searchReminders({ keyword: search, page, limit });
       return {
         status: true,
         message: "Search completed successfully",
@@ -30,8 +28,7 @@ module.exports = async (params) => {
       };
     }
 
-    // Otherwise use getAllReminders with filters
-    const result = await reminderLogService.getAllReminders(options);
+    const result = await notificationLogService.getAllReminders(options);
     return {
       status: true,
       message: "Search completed successfully",

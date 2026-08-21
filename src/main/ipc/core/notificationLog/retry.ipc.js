@@ -1,6 +1,5 @@
 // src/main/ipc/core/notificationLog/retry.ipc.js
-const { ReminderLogService } = require("../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
+const notificationLogService = require("../../../../services/NotificationLog");
 
 module.exports = async (params, queryRunner) => {
   const { id, user = "system" } = params;
@@ -10,7 +9,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const result = await reminderLogService.retryReminder({ id }, user, queryRunner);
+    const result = await notificationLogService.retryReminder({ id }, user, queryRunner);
     return {
       status: true,
       message: `Notification log #${id} retried successfully`,

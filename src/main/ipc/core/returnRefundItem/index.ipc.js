@@ -1,9 +1,10 @@
+//@ts-check
 // src/main/ipc/core/returnRefundItem/index.ipc.js - Return Refund Item Management Handler (Offline Only)
 
 const { ipcMain } = require("electron");
-const { logger } = require("../../../utils/logger");
-const { AppDataSource } = require("../../db/data-source");
-const { withErrorHandling } = require("../../../middlewares/errorHandler");
+const { logger } = require("../../../../utils/logger");
+const { AppDataSource } = require("../../../db/data-source");
+const { withErrorHandling } = require("../../../../middlewares/errorHandler");
 
 class ReturnRefundItemHandler {
   constructor() {

@@ -1,6 +1,5 @@
 // src/main/ipc/core/notificationLog/bulk_update.ipc.js
-const { ReminderLogService } = require("../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
+const notificationLogService = require("../../../../services/NotificationLog");
 
 module.exports = async (params, queryRunner) => {
   const { updatesArray, user = "system" } = params;
@@ -18,7 +17,7 @@ module.exports = async (params, queryRunner) => {
     for (const { id, updates } of updatesArray) {
       try {
         if (updates.status) {
-          const result = await reminderLogService.updateReminderStatus(
+          const result = await notificationLogService.updateReminderStatus(
             { id, status: updates.status, errorMessage: updates.errorMessage || null },
             user,
             queryRunner

@@ -1,6 +1,6 @@
 // src/main/ipc/core/supplier/notify_supplier.ipc.js
 const { SupplierStateService } = require("../../../../stateServices/Supplier");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { supplierId, subject, message, user = "system" } = params;

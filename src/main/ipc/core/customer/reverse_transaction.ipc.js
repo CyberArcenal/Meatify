@@ -1,6 +1,7 @@
 // src/main/ipc/core/customer/reverse_transaction.ipc.js
+//@ts-check
 const { CustomerStateService } = require("../../../../stateServices/Customer");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { transactionId, reason, user = "system" } = params;

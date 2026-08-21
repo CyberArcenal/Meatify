@@ -1,9 +1,8 @@
-// src/main/ipc/core/notificationLog/index.ipc.js - NotificationLog Management Handler (Offline Only)
-
+// src/main/ipc/core/notificationLog/index.ipc.js
 const { ipcMain } = require("electron");
-const { logger } = require("../../../utils/logger");
-const { AppDataSource } = require("../../db/data-source");
-const { withErrorHandling } = require("../../../middlewares/errorHandler");
+const { logger } = require("../../../../utils/logger");
+const { AppDataSource } = require("../../../db/data-source");
+const { withErrorHandling } = require("../../../../middlewares/errorHandler");
 
 class NotificationLogHandler {
   constructor() {
@@ -25,7 +24,7 @@ class NotificationLogHandler {
     this.deleteLog = this.importHandler("./delete.ipc");
     this.permanentlyDeleteLog = this.importHandler("./permanent_delete.ipc");
 
-    // 🔄 RETRY OPERATIONS (via StateService)
+    // 🔄 RETRY OPERATIONS
     this.retryLog = this.importHandler("./retry.ipc");
     this.retryAllFailed = this.importHandler("./retry_all.ipc");
     this.resendLog = this.importHandler("./resend.ipc");

@@ -1,12 +1,12 @@
 // src/renderer/layouts/Sidebar/index.tsx
 import React, { useCallback } from 'react';
+import { useMenuItems } from './hooks/useMenuItems';
+import SidebarFooter from './components/SidebarFooter';
 import SidebarHeader from './components/SidebarHeader';
+import SidebarNav from './components/SidebarNav';
 import SidebarStats from './components/SidebarStats';
 import { useSidebarState } from './hooks/useSidebarState';
-import { useMenuItems } from './hooks/useMenuItems';
 import { useSidebarStats } from './hooks/useSidebarStats';
-import SidebarNav from './components/SidebarNav';
-import SidebarFooter from './components/SidebarFooter';
 
 interface SidebarProps {
   isOpen: boolean;

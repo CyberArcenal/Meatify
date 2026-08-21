@@ -1,7 +1,5 @@
 // src/main/ipc/core/notificationLog/get/by_recipient.ipc.js
-const { ReminderLogService } = require("../../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
-
+const notificationLogService = require("../../../../../services/NotificationLog");
 module.exports = async (params) => {
   const { recipientEmail, page, limit } = params;
 
@@ -10,9 +8,13 @@ module.exports = async (params) => {
   }
 
   try {
-    const result = await reminderLogService.getRemindersByRecipient(
-      { recipient_email: recipientEmail, page, limit }
-    );
+    const result = await notificationLogService.getAllReminders({
+      recipient_email: recipientEmail,
+      page,
+      limit,
+      sortBy: "created_at",
+      sortOrder: "DESC",
+    });
     return {
       status: true,
       message: "Notification logs retrieved successfully",

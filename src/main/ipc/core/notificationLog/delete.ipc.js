@@ -1,6 +1,5 @@
 // src/main/ipc/core/notificationLog/delete.ipc.js
-const { ReminderLogService } = require("../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
+const notificationLogService = require("../../../../services/NotificationLog");
 
 module.exports = async (params, queryRunner) => {
   const { id, user = "system" } = params;
@@ -10,8 +9,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    // NotificationLog uses hard delete only (no soft delete)
-    await reminderLogService.deleteReminder({ id }, user, queryRunner);
+    await notificationLogService.deleteReminder({ id }, user, queryRunner);
     return {
       status: true,
       message: "Notification log deleted successfully",

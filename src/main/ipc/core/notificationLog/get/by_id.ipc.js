@@ -1,7 +1,5 @@
 // src/main/ipc/core/notificationLog/get/by_id.ipc.js
-const { ReminderLogService } = require("../../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
-
+const notificationLogService = require("../../../../../services/NotificationLog");
 module.exports = async (params) => {
   const { id } = params;
 
@@ -10,7 +8,7 @@ module.exports = async (params) => {
   }
 
   try {
-    const result = await reminderLogService.getReminderById({ id });
+    const result = await notificationLogService.getReminderById({ id });
     return {
       status: true,
       message: "Notification log retrieved successfully",

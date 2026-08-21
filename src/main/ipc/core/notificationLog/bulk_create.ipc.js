@@ -1,6 +1,5 @@
 // src/main/ipc/core/notificationLog/bulk_create.ipc.js
-const { ReminderLogService } = require("../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
+const notificationLogService = require("../../../../services/NotificationLog");
 
 module.exports = async (params, queryRunner) => {
   const { logsArray, user = "system" } = params;
@@ -14,7 +13,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const result = await reminderLogService.bulkCreate(logsArray, user, queryRunner);
+    const result = await notificationLogService.bulkCreate(logsArray, user, queryRunner);
     return {
       status: true,
       message: `Bulk create completed. ${result.created.length} created, ${result.errors.length} failed.`,

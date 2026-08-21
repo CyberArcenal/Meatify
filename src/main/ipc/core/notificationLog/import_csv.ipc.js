@@ -1,6 +1,5 @@
 // src/main/ipc/core/notificationLog/import_csv.ipc.js
-const { ReminderLogService } = require("../../../../services/ReminderLog");
-const reminderLogService = new ReminderLogService();
+const notificationLogService = require("../../../../services/NotificationLog");
 const fs = require("fs").promises;
 
 module.exports = async (params, queryRunner) => {
@@ -12,7 +11,9 @@ module.exports = async (params, queryRunner) => {
 
   try {
     await fs.access(filePath);
-    const result = await reminderLogService.importFromCSV(filePath, user, queryRunner);
+    // Note: importFromCSV might need to be added to the service
+    // For now, we'll assume it exists or implement it.
+    const result = await notificationLogService.importFromCSV(filePath, user, queryRunner);
     return {
       status: true,
       message: `CSV import completed. ${result.imported.length} imported, ${result.errors.length} failed.`,

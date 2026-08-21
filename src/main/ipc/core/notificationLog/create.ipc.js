@@ -4,15 +4,14 @@ const notificationLogService = require("../../../../services/NotificationLog");
 module.exports = async (params, queryRunner) => {
   const { user = "system", ...data } = params;
 
-  // Validate required fields
   if (!data.to) {
     return { status: false, message: "recipient (to) is required", data: null };
   }
   if (!data.subject) {
     return { status: false, message: "subject is required", data: null };
   }
-  if (!data.html && !data.text) {
-    return { status: false, message: "html or text content is required", data: null };
+  if (!data.html && !data.text && !data.payload) {
+    return { status: false, message: "html, text, or payload content is required", data: null };
   }
 
   try {

@@ -1,6 +1,6 @@
 // src/main/ipc/core/loyaltyTransaction/adjust_points.ipc.js
 const { LoyaltyTransactionStateService } = require("../../../../stateServices/LoyaltyTransaction");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { customerId, pointsChange, reason, user = "system" } = params;

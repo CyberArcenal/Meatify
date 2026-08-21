@@ -1,6 +1,6 @@
 // src/main/ipc/core/category/deactivate_category.ipc.js
 const { CategoryStateService } = require("../../../../stateServices/Category");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { categoryId, reassignToCategoryId, user = "system" } = params;

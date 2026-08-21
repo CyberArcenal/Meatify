@@ -1,6 +1,7 @@
 // src/main/ipc/core/batch/mark_expired.ipc.js
+//@ts-check
 const { BatchStateService } = require("../../../../stateServices/Batch");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { batchId, user = "system" } = params;

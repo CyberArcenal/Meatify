@@ -1,6 +1,6 @@
 // src/main/ipc/core/customer/redeem_points.ipc.js
 const { CustomerStateService } = require("../../../../stateServices/Customer");
-const { AppDataSource } = require("../../db/data-source");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { customerId, pointsToRedeem, saleId, user = "system" } = params;
