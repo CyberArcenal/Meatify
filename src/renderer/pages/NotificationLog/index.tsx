@@ -1,72 +1,71 @@
-import React, { useState } from "react";
-import { Filter, RefreshCw } from "lucide-react";
-import { useNotificationLogs } from "./hooks/useNotificationLogs";
-import { NotificationSearch } from "./components/NotificationSearch";
-import { NotificationFilterPanel } from "./components/NotificationFilterPanel";
+// src/renderer/pages/system/notification-logs/index.tsx
+import React, { useState, useEffect } from "react";
+import { RefreshCw } from "lucide-react";
+import notificationLogAPI, { type NotificationLog } from "../../api/core/notificationLog";
+import { usePagination } from "../../contexts/PaginationContext";
+import { dialogs } from "../../utils/dialogs";
+import { showError, showSuccess } from "../../utils/notification";
 import { NotificationStats } from "./components/NotificationStats";
 import { NotificationTable } from "./components/NotificationTable";
 import { NotificationViewDialog } from "./Dialogs/NotificationViewDialog";
-import { dialogs } from "../../utils/dialogs";
-import notificationLogAPI from "../../api/core/notification_log";
-import { showSuccess, showError } from "../../utils/notification";
-import type { NotificationLogEntry } from "../../api/core/notification_log";
-import Pagination from "../../components/Shared/Pagination1";
+import { useNotificationLogs, type NotificationFilters } from "./hooks/useNotificationLogs";
+import { NotificationFilterBar } from "./components/NotificationFilterBar";
 
 const NotificationLogPage: React.FC = () => {
-  const {
-    logs,
-    pagination,
-    stats,
-    loading,
-    error,
-    filters,
-    updateFilters,
-    clearFilters,
-    setPage,
-    setPageSize,
-    refetch,
-  } = useNotificationLogs();
+  const { pagination, setPagination, clearPagination } = usePagination();
 
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedLog, setSelectedLog] = useState<NotificationLogEntry | null>(
-    null,
-  );
-  const [sendingRows, setSendingRows] = useState<Set<number>>(new Set());
+  const { logs, filters, setFilters, loading, error, reload, stats, totalItems } =
+    useNotificationLogs({
+      sortBy: "created_at",
+      sortOrder: "DESC",
+    });
+
+  // Dialog state
+  const [selectedLog, setSelectedLog] = useState<NotificationLog | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
+  const [sendingRows, setSendingRows] = useState<Set<number>>(new Set());
 
-  // Search handler
-  const handleSearchChange = (query: string) => {
-    setSearchQuery(query);
-    updateFilters({ keyword: query });
+  // ✅ Sync with global pagination - gaya ng Category page
+  useEffect(() => {
+    // ✅ Ensure totalItems is a number (0 if no data)
+    const safeTotalItems = totalItems || 0;
+    
+    setPagination({
+      currentPage: pagination.currentPage,
+      totalItems: safeTotalItems,
+      pageSize: pagination.pageSize,
+      onPageChange: (page) => {
+        reload({ page, limit: pagination.pageSize });
+      },
+      onPageSizeChange: (size) => {
+        reload({ page: 1, limit: size });
+      },
+      pageSizeOptions: [10, 20, 50, 100],
+      // ✅ Only show page size selector if there are items
+      showPageSize: safeTotalItems > 0,
+    });
+
+    return () => clearPagination();
+  }, [totalItems, pagination.currentPage, pagination.pageSize]); // ✅ Walang reload dito
+
+  // ✅ Gaya ng Category page - nagre-reload agad kapag nagbago ang filter
+  const handleFilterChange = (key: keyof NotificationFilters, value: any) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+    reload({ page: 1, limit: pagination.pageSize });
   };
 
-  // Filter handlers
-  const handleFilterChange = (newFilters: any) => {
-    updateFilters(newFilters);
-  };
-
-  const handleClearFilters = () => {
-    setSearchQuery("");
-    clearFilters();
-  };
-
-  // View handler
-  const handleView = (log: NotificationLogEntry) => {
+  const handleView = (log: NotificationLog) => {
     setSelectedLog(log);
     setIsViewDialogOpen(true);
   };
 
-  // ------------------------------------------------------------------
-  // 🔄 RETRY – with confirmation dialog
-  // ------------------------------------------------------------------
   const handleRetry = async (id: number) => {
-    showSuccess("The notification has been queued for retry.");
     setSendingRows((prev) => new Set(prev).add(id));
     try {
-      const response = await notificationLogAPI.retryFailed(id);
+      const response = await notificationLogAPI.retry(id);
       if (response.status) {
-        refetch();
+        showSuccess("Notification queued for retry.");
+        reload({ page: pagination.currentPage, limit: pagination.pageSize });
       } else {
         throw new Error(response.message);
       }
@@ -95,24 +94,18 @@ const NotificationLogPage: React.FC = () => {
       });
   };
 
-  // ------------------------------------------------------------------
-  // 🔄 RESEND – with confirmation dialog
-  // ------------------------------------------------------------------
   const handleResend = async (id: number) => {
-    showSuccess("The notification has been resent.");
     setSendingRows((prev) => new Set(prev).add(id));
     try {
       const response = await notificationLogAPI.resend(id);
       if (response.status) {
-        refetch();
+        showSuccess("Notification resent.");
+        reload({ page: pagination.currentPage, limit: pagination.pageSize });
       } else {
         throw new Error(response.message);
       }
     } catch (err: any) {
-      showError(
-        "Resend failed",
-        err.message || "Unable to resend notification",
-      );
+      showError("Resend failed", err.message || "Unable to resend notification");
     } finally {
       setSendingRows((prev) => {
         const next = new Set(prev);
@@ -136,15 +129,12 @@ const NotificationLogPage: React.FC = () => {
       });
   };
 
-  // ------------------------------------------------------------------
-  // 🗑️ DELETE – with confirmation dialog
-  // ------------------------------------------------------------------
   const handleDelete = async (id: number) => {
     try {
       const response = await notificationLogAPI.delete(id);
       if (response.status) {
         dialogs.success("Deleted", `Notification #${id} has been deleted.`);
-        refetch();
+        reload({ page: pagination.currentPage, limit: pagination.pageSize });
       } else {
         throw new Error(response.message);
       }
@@ -155,118 +145,81 @@ const NotificationLogPage: React.FC = () => {
 
   const confirmDelete = (id: number) => {
     dialogs
-      .delete() // uses built-in delete confirmation with danger icon
+      .delete()
       .then((confirmed) => {
         if (confirmed) handleDelete(id);
       });
   };
 
+  const handleRefresh = () => {
+    reload({ page: pagination.currentPage, limit: pagination.pageSize });
+  };
+
   return (
-    <div className="min-h-screen bg-[var(--background-color)]">
-      <main className="mx-auto px-2 py-2">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-[var(--text-primary)]">
-              Notification Logs
-            </h2>
-            <p className="text-[var(--text-secondary)] mt-1">
-              {pagination.total} total notifications
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => refetch()}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg
-                         bg-[var(--card-secondary-bg)] hover:bg-[var(--card-hover-bg)]
-                         text-[var(--text-primary)] border border-[var(--border-color)]/20
-                         hover:border-[var(--border-color)]/40 transition-all duration-200"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Refresh
-            </button>
-            <button
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg
-                         bg-[var(--card-secondary-bg)] hover:bg-[var(--card-hover-bg)]
-                         text-[var(--text-primary)] border border-[var(--border-color)]/20
-                         hover:border-[var(--border-color)]/40 transition-all duration-200"
-            >
-              <Filter className="w-4 h-4" />
-              Filters
-            </button>
-          </div>
+    <div className="h-full flex flex-col bg-[var(--card-bg)] p-6 rounded-lg">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--accent-gold)] to-[var(--accent-gold-hover)] bg-clip-text text-transparent">
+            Notification Logs
+          </h1>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">
+            {totalItems || 0} total notifications
+          </p>
         </div>
+        <button
+          onClick={handleRefresh}
+          className="px-4 py-2 bg-[var(--card-secondary-bg)] rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors flex items-center gap-2 text-[var(--text-primary)] border border-[var(--border-color)]"
+        >
+          <RefreshCw className="w-4 h-4" />
+          Refresh
+        </button>
+      </div>
 
-        {/* Stats Cards */}
-        <NotificationStats stats={stats} loading={loading} />
+      {/* Summary Cards */}
+      {!loading && !error && <NotificationStats stats={stats} />}
 
-        {/* Search Bar */}
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-          <NotificationSearch
-            value={searchQuery}
-            onChange={handleSearchChange}
-          />
-          {searchQuery && (
-            <span className="text-sm text-[var(--text-secondary)]">
-              Searching: “{searchQuery}”
-            </span>
-          )}
+      {/* Filter Bar */}
+      <NotificationFilterBar
+        filters={filters}
+        onFilterChange={handleFilterChange}
+        onClear={() => {
+          setFilters({
+            sortBy: "created_at",
+            sortOrder: "DESC",
+          });
+          reload({ page: 1, limit: pagination.pageSize });
+        }}
+        onRefresh={handleRefresh}
+      />
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mt-4 text-red-400">
+          {error}
+          <button
+            onClick={() => reload({ page: 1, limit: pagination.pageSize })}
+            className="ml-3 underline"
+          >
+            Retry
+          </button>
         </div>
+      )}
 
-        {/* Filter Panel */}
-        <NotificationFilterPanel
-          filters={{
-            status: filters.status,
-            startDate: filters.startDate,
-            endDate: filters.endDate,
-            sortBy: filters.sortBy,
-            sortOrder: filters.sortOrder,
-          }}
-          onChange={handleFilterChange}
-          onClear={handleClearFilters}
-          isOpen={isFilterOpen}
-          onToggle={() => setIsFilterOpen(!isFilterOpen)}
+      {/* Table */}
+      <div className="flex-1 mt-4">
+        <NotificationTable
+          logs={logs}
+          onView={handleView}
+          onRetry={confirmRetry}
+          onResend={confirmResend}
+          onDelete={confirmDelete}
+          isLoading={loading}
+          sendingIds={sendingRows}
         />
+      </div>
 
-        {/* Error display */}
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mt-4 text-red-400">
-            {error}
-            <button onClick={refetch} className="ml-3 underline">
-              Retry
-            </button>
-          </div>
-        )}
-
-        {/* Table */}
-        <div className="mt-6">
-          <NotificationTable
-            logs={logs}
-            onView={handleView}
-            onRetry={confirmRetry} // ← confirmation then action
-            onResend={confirmResend} // ← confirmation then action
-            onDelete={confirmDelete} // ← confirmation then action
-            isLoading={loading}
-            sendingIds={sendingRows}
-          />
-        </div>
-
-        {/* Pagination */}
-        {!loading && pagination.total > 0 && (
-          <Pagination
-            currentPage={pagination.page}
-            totalItems={pagination.total}
-            pageSize={pagination.limit}
-            onPageChange={setPage}
-            onPageSizeChange={setPageSize}
-            pageSizeOptions={[10, 25, 50, 100]}
-            showPageSize={true}
-          />
-        )}
-      </main>
-
-      {/* Only View Dialog remains */}
+      {/* View Dialog */}
       {selectedLog && (
         <NotificationViewDialog
           log={selectedLog}

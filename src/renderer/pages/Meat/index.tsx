@@ -1,37 +1,40 @@
-// src/renderer/pages/category/index.tsx
+// src/renderer/pages/inventory/meat/index.tsx
 import React, { useEffect } from "react";
 import { Plus, Loader2, AlertCircle } from "lucide-react";
-import { dialogs } from "../../utils/dialogs";
-import categoryAPI, { type Category } from "../../api/core/category";
-import { useCategories, type CategoryFilters } from "./hooks/useCategories";
-import { useCategoryForm } from "./hooks/useCategoryForm";
-import { useCategoryView } from "./hooks/useCategoryView";
 import { FilterBar } from "./components/FilterBar";
-import { CategoryTable } from "./components/CategoryTable";
-import { CategoryFormDialog } from "./components/CategoryFormDialog";
-import { CategoryViewDialog } from "./components/CategoryViewDialog";
 import { usePagination } from "../../contexts/PaginationContext";
+import { useMeat, type MeatFilters } from "./hooks/useProducts";
+import meatAPI, { type Meat } from "../../api/core/meat";
+import { dialogs } from "../../utils/dialogs";
+import { MeatFormDialog } from "./components/ProductFormDialog";
+import { MeatTable } from "./components/ProductTable";
+import { MeatViewDialog } from "./components/ProductViewDialog";
+import { useMeatForm } from "./hooks/useProductForm";
+import { useMeatView } from "./hooks/useProductView";
 
-const CategoryPage: React.FC = () => {
+
+const MeatPage: React.FC = () => {
   const { pagination, setPagination, clearPagination } = usePagination();
+
   const {
-    categories,
-    productCounts,
+    meats,
     filters,
     setFilters,
     loading,
     error,
     totalItems,
+    categories,
+    suppliers,
     reload,
-  } = useCategories({
+  } = useMeat({
     search: "",
     status: "all",
-    sortBy: "name",
-    sortOrder: "ASC",
+    categoryId: undefined,
+    supplierId: undefined,
   });
 
-  const formDialog = useCategoryForm();
-  const viewDialog = useCategoryView();
+  const formDialog = useMeatForm();
+  const viewDialog = useMeatView();
 
   // Sync with global pagination
   useEffect(() => {
@@ -52,26 +55,26 @@ const CategoryPage: React.FC = () => {
     return () => clearPagination();
   }, [totalItems, pagination.currentPage, pagination.pageSize]);
 
-  const handleFilterChange = <K extends keyof CategoryFilters>(
+  const handleFilterChange = <K extends keyof MeatFilters>(
     key: K,
-    value: CategoryFilters[K]
+    value: MeatFilters[K]
   ) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     reload({ page: 1, limit: pagination.pageSize });
   };
 
-  const handleDelete = async (category: Category) => {
+  const handleDelete = async (meat: Meat) => {
     const confirmed = await dialogs.confirm({
-      title: "Deactivate Category",
-      message: `Are you sure you want to deactivate ${category.name}? This action can be reversed later.`,
+      title: "Deactivate Meat",
+      message: `Are you sure you want to deactivate ${meat.name}? This action can be reversed later.`,
     });
     if (!confirmed) return;
 
     try {
-      await categoryAPI.delete(category.id);
+      await meatAPI.delete(meat.id);
       dialogs.alert({
         title: "Success",
-        message: "Category deactivated successfully.",
+        message: "Meat deactivated successfully.",
       });
       reload({ page: pagination.currentPage, limit: pagination.pageSize });
     } catch (err: any) {
@@ -84,14 +87,14 @@ const CategoryPage: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--accent-gold)] to-[var(--accent-gold-hover)] bg-clip-text text-transparent">
-          Categories
+          Meat Products
         </h1>
         <button
           onClick={formDialog.openAdd}
           className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors shadow-md"
         >
           <Plus className="w-4 h-4" />
-          Add Category
+          Add Meat
         </button>
       </div>
 
@@ -99,10 +102,12 @@ const CategoryPage: React.FC = () => {
       <FilterBar
         filters={filters}
         onFilterChange={handleFilterChange}
+        categories={categories}
+        suppliers={suppliers}
         onReload={() => reload({ page: pagination.currentPage, limit: pagination.pageSize })}
       />
 
-      {/* Category Table */}
+      {/* Meat Table */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
@@ -112,7 +117,7 @@ const CategoryPage: React.FC = () => {
           <div className="text-center">
             <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--accent-red)]" />
             <p className="text-[var(--text-primary)] font-medium">
-              Error loading categories
+              Error loading meats
             </p>
             <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
             <button
@@ -125,9 +130,8 @@ const CategoryPage: React.FC = () => {
         </div>
       ) : (
         <div className="flex-1">
-          <CategoryTable
-            categories={categories}
-            productCounts={productCounts}
+          <MeatTable
+            meats={meats}
             onView={viewDialog.open}
             onEdit={formDialog.openEdit}
             onDelete={handleDelete}
@@ -136,10 +140,10 @@ const CategoryPage: React.FC = () => {
       )}
 
       {/* Dialogs */}
-      <CategoryFormDialog
+      <MeatFormDialog
         isOpen={formDialog.isOpen}
         mode={formDialog.mode}
-        categoryId={formDialog.categoryId}
+        meatId={formDialog.meatId}
         initialData={formDialog.initialData}
         onClose={formDialog.close}
         onSuccess={() => {
@@ -148,9 +152,9 @@ const CategoryPage: React.FC = () => {
         }}
       />
 
-      <CategoryViewDialog
-        category={viewDialog.category}
-        products={viewDialog.products}
+      <MeatViewDialog
+        meat={viewDialog.meat}
+        batches={viewDialog.batches}
         loading={viewDialog.loading}
         isOpen={viewDialog.isOpen}
         onClose={viewDialog.close}
@@ -159,4 +163,4 @@ const CategoryPage: React.FC = () => {
   );
 };
 
-export default CategoryPage;
+export default MeatPage;

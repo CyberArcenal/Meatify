@@ -1,44 +1,48 @@
+// src/renderer/pages/Loyalty/components/LoyaltyOverview.tsx
 import React from "react";
 import { Award, TrendingUp, Users, RefreshCw } from "lucide-react";
-import type { LoyaltyStatisticsResponse } from "../../../api/core/loyalty";
+import type { TransactionStatistics } from "../../../api/core/loyaltyTransaction";
 
 interface LoyaltyOverviewProps {
-  statistics: LoyaltyStatisticsResponse["data"];
+  statistics: TransactionStatistics;
 }
 
 export const LoyaltyOverview: React.FC<LoyaltyOverviewProps> = ({
   statistics,
 }) => {
+  const totalTransactions = statistics.byType.reduce(
+    (sum, item) => sum + item.count,
+    0
+  );
+
   const cards = [
     {
       title: "Total Points Earned",
       value: statistics.totalEarned.toLocaleString(),
       icon: Award,
       color: "var(--accent-green)",
-      lightBg: "var(--accent-green-light)",
+      bg: "var(--accent-green-light)",
     },
     {
       title: "Total Points Redeemed",
       value: statistics.totalRedeemed.toLocaleString(),
       icon: TrendingUp,
       color: "var(--accent-red)",
-      lightBg: "var(--accent-red-light)",
+      bg: "var(--accent-red-light)",
     },
     {
       title: "Net Points",
       value: statistics.netPoints.toLocaleString(),
       icon: RefreshCw,
-      color: "var(--accent-blue)",
-      lightBg: "var(--accent-blue-light)",
+      color: "var(--accent-gold)",
+      bg: "var(--accent-gold-light)",
     },
     {
       title: "Total Transactions",
-      value: (
-        statistics.transactionCounts.earn + statistics.transactionCounts.redeem
-      ).toLocaleString(),
+      value: totalTransactions.toLocaleString(),
       icon: Users,
-      color: "var(--accent-purple)",
-      lightBg: "var(--accent-purple-light)",
+      color: "var(--accent-blue)",
+      bg: "var(--accent-blue-light)",
     },
   ];
 
@@ -50,7 +54,7 @@ export const LoyaltyOverview: React.FC<LoyaltyOverviewProps> = ({
           <div
             key={idx}
             className="rounded-xl p-5 border border-[var(--border-color)] transition-all duration-300 hover:scale-[1.02] hover:shadow-lg"
-            style={{ backgroundColor: card.lightBg }}
+            style={{ backgroundColor: card.bg }}
           >
             <div className="flex items-start justify-between">
               <div>

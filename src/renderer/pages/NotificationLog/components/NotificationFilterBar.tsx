@@ -1,19 +1,23 @@
-// src/renderer/pages/inventory/movements/components/FilterBar.tsx
+// src/renderer/pages/system/notification-logs/components/NotificationFilterBar.tsx
 import React from "react";
-import { Search, RefreshCw } from "lucide-react";
-import type { MovementFilters } from "../hooks/useMovements";
+import { Search, RefreshCw, X } from "lucide-react";
+import type { NotificationFilters } from "../hooks/useNotificationLogs";
 
-interface FilterBarProps {
-  filters: MovementFilters;
-  onFilterChange: (key: keyof MovementFilters, value: any) => void;
-  onReload: () => void;
+interface NotificationFilterBarProps {
+  filters: NotificationFilters;
+  onFilterChange: (key: keyof NotificationFilters, value: any) => void;
+  onClear: () => void;
+  onRefresh: () => void;
 }
 
-export const FilterBar: React.FC<FilterBarProps> = ({
+export const NotificationFilterBar: React.FC<NotificationFilterBarProps> = ({
   filters,
   onFilterChange,
-  onReload,
+  onClear,
+  onRefresh,
 }) => {
+  const hasActiveFilters = filters.status || filters.startDate || filters.endDate || filters.keyword;
+
   return (
     <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-4">
@@ -22,65 +26,59 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
           <input
             type="text"
-            placeholder="Search by meat name, SKU, batch code..."
-            value={filters.search}
-            onChange={(e) => onFilterChange("search", e.target.value)}
+            placeholder="Search by recipient, subject, payload..."
+            value={filters.keyword || ""}
+            onChange={(e) => onFilterChange("keyword", e.target.value || undefined)}
             className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
           />
         </div>
 
-        {/* Movement Type */}
+        {/* Status */}
         <select
-          value={filters.movementType}
-          onChange={(e) => onFilterChange("movementType", e.target.value)}
+          value={filters.status || ""}
+          onChange={(e) => onFilterChange("status", e.target.value || undefined)}
           className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
         >
-          <option value="all">All Types</option>
-          <option value="sale">Sale</option>
-          <option value="refund">Return</option>
-          <option value="adjustment">Adjustment</option>
-          <option value="purchase">Purchase</option>
-          <option value="expiry_write_off">Expiry Write-off</option>
-        </select>
-
-        {/* Direction */}
-        <select
-          value={filters.direction}
-          onChange={(e) => onFilterChange("direction", e.target.value)}
-          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
-        >
-          <option value="all">All Directions</option>
-          <option value="positive">Increase Only</option>
-          <option value="negative">Decrease Only</option>
+          <option value="">All Statuses</option>
+          <option value="queued">Queued</option>
+          <option value="sent">Sent</option>
+          <option value="failed">Failed</option>
+          <option value="resend">Resend</option>
         </select>
 
         {/* Date Range */}
         <input
           type="date"
           value={filters.startDate || ""}
-          onChange={(e) =>
-            onFilterChange("startDate", e.target.value || undefined)
-          }
+          onChange={(e) => onFilterChange("startDate", e.target.value || undefined)}
           className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
         />
         <span className="text-[var(--text-tertiary)]">to</span>
         <input
           type="date"
           value={filters.endDate || ""}
-          onChange={(e) =>
-            onFilterChange("endDate", e.target.value || undefined)
-          }
+          onChange={(e) => onFilterChange("endDate", e.target.value || undefined)}
           className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
         />
 
-        {/* Reload */}
+        {/* Actions */}
         <button
-          onClick={onReload}
+          onClick={onRefresh}
           className="p-2 bg-[var(--card-hover-bg)] rounded-lg hover:bg-[var(--border-color)] transition-colors"
           title="Refresh"
         >
           <RefreshCw className="w-4 h-4 text-[var(--text-secondary)]" />
         </button>
+
+        {hasActiveFilters && (
+          <button
+            onClick={onClear}
+            className="p-2 bg-[var(--accent-red-light)] rounded-lg hover:bg-[var(--accent-red)]/20 transition-colors"
+            title="Clear Filters"
+          >
+            <X className="w-4 h-4 text-[var(--accent-red)]" />
+          </button>
+        )}
       </div>
     </div>
   );

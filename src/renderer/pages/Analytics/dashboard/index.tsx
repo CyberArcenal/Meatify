@@ -29,7 +29,7 @@ const DashboardPage: React.FC = () => {
   const today = format(new Date(), 'EEEE, MMMM d, yyyy');
 
   return (
-    <div className="p-6 space-y-8 bg-[var(--background-color)] min-h-screen">
+    <div className="p-6 space-y-8 bg-[var(--card-bg)] min-h-screen">
       {/* Header with greeting */}
       <div className="flex items-center justify-between">
         <div>

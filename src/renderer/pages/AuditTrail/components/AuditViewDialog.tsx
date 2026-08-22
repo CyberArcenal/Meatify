@@ -1,3 +1,4 @@
+// src/renderer/pages/AuditTrail/components/AuditViewDialog.tsx
 import React from "react";
 import { X, Calendar, User, Tag, FileText, Database, Code } from "lucide-react";
 import { getActionColor } from "../hooks/useAuditLogs";
@@ -16,27 +17,26 @@ export const AuditViewDialog: React.FC<AuditViewDialogProps> = ({
 }) => {
   if (!isOpen || !log) return null;
 
-  // Helper to parse JSON safely
   const parseJson = (data: string | null) => {
     if (!data) return null;
     try {
       return JSON.parse(data);
     } catch {
-      return data; // return as string if not JSON
+      return data;
     }
   };
 
-  const oldData = parseJson(log.oldData);
-  const newData = parseJson(log.newData);
+  const oldData = parseJson(log.oldData as string | null);
+  const newData = parseJson(log.newData as string | null);
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
         <div
-          className="fixed inset-0 bg-black/50 transition-opacity"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={onClose}
         />
-        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl">
+        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-xl border border-[var(--border-color)]">
           <div className="flex items-center justify-between p-6 border-b border-[var(--border-color)]">
             <h2 className="text-xl font-bold text-[var(--text-primary)]">
               Audit Log Details #{log.id}
@@ -70,8 +70,7 @@ export const AuditViewDialog: React.FC<AuditViewDialogProps> = ({
                       <User className="w-3 h-3" /> User
                     </p>
                     <p className="text-[var(--text-primary)]">
-                      {log.user ||
-                        (log.userId ? `User #${log.userId}` : "System")}
+                      {log.user || (log.userId ? `User #${log.userId}` : "System")}
                       {log.userType && ` (${log.userType})`}
                     </p>
                   </div>
@@ -105,8 +104,7 @@ export const AuditViewDialog: React.FC<AuditViewDialogProps> = ({
               {log.changes && (
                 <div className="bg-[var(--card-secondary-bg)] rounded-lg p-4 border border-[var(--border-color)]">
                   <h3 className="text-md font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
-                    <FileText className="w-4 h-4" />
-                    Description
+                    <FileText className="w-4 h-4" /> Description
                   </h3>
                   <p className="text-sm text-[var(--text-secondary)] whitespace-pre-wrap">
                     {log.changes}
@@ -118,8 +116,7 @@ export const AuditViewDialog: React.FC<AuditViewDialogProps> = ({
               {oldData && (
                 <div className="bg-[var(--card-secondary-bg)] rounded-lg p-4 border border-[var(--border-color)]">
                   <h3 className="text-md font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
-                    <Code className="w-4 h-4" />
-                    Old Data
+                    <Code className="w-4 h-4" /> Old Data
                   </h3>
                   <pre className="text-xs text-[var(--text-secondary)] bg-[var(--background-color)] p-2 rounded overflow-auto max-h-60">
                     {typeof oldData === "string"
@@ -133,8 +130,7 @@ export const AuditViewDialog: React.FC<AuditViewDialogProps> = ({
               {newData && (
                 <div className="bg-[var(--card-secondary-bg)] rounded-lg p-4 border border-[var(--border-color)]">
                   <h3 className="text-md font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
-                    <Code className="w-4 h-4" />
-                    New Data
+                    <Code className="w-4 h-4" /> New Data
                   </h3>
                   <pre className="text-xs text-[var(--text-secondary)] bg-[var(--background-color)] p-2 rounded overflow-auto max-h-60">
                     {typeof newData === "string"
@@ -153,22 +149,14 @@ export const AuditViewDialog: React.FC<AuditViewDialogProps> = ({
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     {log.ipAddress && (
                       <>
-                        <p className="text-[var(--text-tertiary)]">
-                          IP Address
-                        </p>
-                        <p className="text-[var(--text-primary)]">
-                          {log.ipAddress}
-                        </p>
+                        <p className="text-[var(--text-tertiary)]">IP Address</p>
+                        <p className="text-[var(--text-primary)]">{log.ipAddress}</p>
                       </>
                     )}
                     {log.userAgent && (
                       <>
-                        <p className="text-[var(--text-tertiary)]">
-                          User Agent
-                        </p>
-                        <p className="text-[var(--text-primary)]">
-                          {log.userAgent}
-                        </p>
+                        <p className="text-[var(--text-tertiary)]">User Agent</p>
+                        <p className="text-[var(--text-primary)]">{log.userAgent}</p>
                       </>
                     )}
                   </div>
@@ -180,7 +168,7 @@ export const AuditViewDialog: React.FC<AuditViewDialogProps> = ({
           <div className="flex justify-end p-6 border-t border-[var(--border-color)]">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)]"
+              className="px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors"
             >
               Close
             </button>

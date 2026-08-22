@@ -1,3 +1,4 @@
+// src/renderer/pages/customer/components/CustomerViewDialog.tsx
 import React from "react";
 import {
   X,
@@ -11,7 +12,7 @@ import {
 } from "lucide-react";
 import { type Customer } from "../../../api/core/customer";
 import { type Sale } from "../../../api/core/sale";
-import { type LoyaltyTransaction } from "../../../api/core/loyalty";
+import { type LoyaltyTransaction } from "../../../api/core/loyaltyTransaction";
 import Decimal from "decimal.js";
 
 interface CustomerViewDialogProps {
@@ -24,7 +25,7 @@ interface CustomerViewDialogProps {
 }
 
 const getCustomerStatus = (
-  customer: Customer,
+  customer: Customer
 ): { label: string; color: string } => {
   switch (customer.status) {
     case "vip":
@@ -50,14 +51,20 @@ export const CustomerViewDialog: React.FC<CustomerViewDialogProps> = ({
 
   const status = customer ? getCustomerStatus(customer) : null;
 
+  // Compute total spent from sales
+  const totalSpent = sales.reduce((sum, s) => {
+    const amount = typeof s.totalAmount === "string" ? parseFloat(s.totalAmount) : s.totalAmount;
+    return sum + (amount || 0);
+  }, 0);
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
         <div
-          className="fixed inset-0 bg-black/50 transition-opacity"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={onClose}
         />
-        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-xl">
+        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-xl border border-[var(--border-color)]">
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-[var(--border-color)]">
             <h2 className="text-xl font-bold text-[var(--text-primary)]">
@@ -75,7 +82,7 @@ export const CustomerViewDialog: React.FC<CustomerViewDialogProps> = ({
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
             {loading ? (
               <div className="flex justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-blue)]" />
+                <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
               </div>
             ) : customer ? (
               <div className="space-y-6">
@@ -133,18 +140,8 @@ export const CustomerViewDialog: React.FC<CustomerViewDialogProps> = ({
                       <p className="text-sm text-[var(--text-tertiary)]">
                         Total Spent
                       </p>
-                      <p className="text-2xl font-bold text-[var(--accent-green)]">
-                        ₱
-                        {sales
-                          .reduce(
-                            (sum, s) =>
-                              sum +
-                              (typeof s.totalAmount === "string"
-                                ? parseFloat(s.totalAmount)
-                                : s.totalAmount),
-                            0,
-                          )
-                          .toFixed(2)}
+                      <p className="text-2xl font-bold text-[var(--accent-gold)]">
+                        ₱{totalSpent.toFixed(2)}
                       </p>
                     </div>
                     <div>
@@ -185,7 +182,7 @@ export const CustomerViewDialog: React.FC<CustomerViewDialogProps> = ({
                               <td className="px-4 py-2">
                                 {new Date(sale.timestamp).toLocaleDateString()}
                               </td>
-                              <td className="px-4 py-2 text-right font-medium text-[var(--accent-green)]">
+                              <td className="px-4 py-2 text-right font-medium text-[var(--accent-gold)]">
                                 ₱{new Decimal(sale.totalAmount).toFixed(2)}
                               </td>
                               <td className="px-4 py-2 text-center">
@@ -194,10 +191,10 @@ export const CustomerViewDialog: React.FC<CustomerViewDialogProps> = ({
                                     sale.status === "paid"
                                       ? "bg-[var(--status-completed-bg)] text-[var(--status-completed)]"
                                       : sale.status === "initiated"
-                                        ? "bg-[var(--status-pending-bg)] text-[var(--status-pending)]"
-                                        : sale.status === "refunded"
-                                          ? "bg-[var(--status-cancelled-bg)] text-[var(--status-cancelled)]"
-                                          : "bg-[var(--status-processing-bg)] text-[var(--status-processing)]"
+                                      ? "bg-[var(--status-pending-bg)] text-[var(--status-pending)]"
+                                      : sale.status === "refunded"
+                                      ? "bg-[var(--status-cancelled-bg)] text-[var(--status-cancelled)]"
+                                      : "bg-[var(--status-processing-bg)] text-[var(--status-processing)]"
                                   }`}
                                 >
                                   {sale.status}
@@ -259,17 +256,6 @@ export const CustomerViewDialog: React.FC<CustomerViewDialogProps> = ({
                       </table>
                     </div>
                   )}
-                </div>
-
-                {/* Audit Trail (placeholder) */}
-                <div>
-                  <h4 className="text-md font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5" />
-                    Audit Trail
-                  </h4>
-                  <p className="text-sm text-[var(--text-tertiary)]">
-                    Audit logs coming soon.
-                  </p>
                 </div>
               </div>
             ) : (

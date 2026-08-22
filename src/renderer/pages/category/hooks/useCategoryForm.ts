@@ -8,9 +8,7 @@ export function useCategoryForm() {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<FormMode>("add");
   const [categoryId, setCategoryId] = useState<number | undefined>();
-  const [initialData, setInitialData] = useState<
-    Partial<Category> | undefined
-  >();
+  const [initialData, setInitialData] = useState<Partial<Category> | undefined>();
 
   const openAdd = () => {
     setMode("add");

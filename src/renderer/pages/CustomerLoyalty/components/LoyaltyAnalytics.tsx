@@ -1,3 +1,4 @@
+// src/renderer/pages/Loyalty/components/LoyaltyAnalytics.tsx
 import React from "react";
 import {
   Chart as ChartJS,
@@ -57,16 +58,14 @@ export const LoyaltyAnalytics: React.FC<LoyaltyAnalyticsProps> = ({
   monthlyTrends,
   topCustomers,
 }) => {
-  // Bright, vibrant colors
   const pieColors = [
-    "#22c55e", // green
-    "#3b82f6", // blue
-    "#f97316", // orange
-    "#a855f7", // purple
-    "#ef4444", // red
+    "#22c55e",
+    "#3b82f6",
+    "#f97316",
+    "#a855f7",
+    "#ef4444",
   ];
 
-  // Pie chart: points distribution
   const pieData = {
     labels: pointsDistribution.map((d) => d.range),
     datasets: [
@@ -100,7 +99,6 @@ export const LoyaltyAnalytics: React.FC<LoyaltyAnalyticsProps> = ({
     },
   };
 
-  // Line chart: monthly trends (earned vs redeemed)
   const lineData = {
     labels: monthlyTrends.map((t) => t.month),
     datasets: [
@@ -161,14 +159,13 @@ export const LoyaltyAnalytics: React.FC<LoyaltyAnalyticsProps> = ({
     },
   };
 
-  // Bar chart: top customers by net points
   const barData = {
     labels: topCustomers.slice(0, 5).map((c) => c.name),
     datasets: [
       {
         label: "Net Points",
         data: topCustomers.slice(0, 5).map((c) => c.netPoints),
-        backgroundColor: "#3b82f6",
+        backgroundColor: "var(--accent-gold)",
         borderRadius: 4,
         barPercentage: 0.6,
       },
@@ -202,9 +199,10 @@ export const LoyaltyAnalytics: React.FC<LoyaltyAnalyticsProps> = ({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Points Distribution */}
       <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Points Distribution</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+          Points Distribution
+        </h3>
         <div className="flex justify-center items-center h-64">
           <div className="w-full max-w-xs">
             <Pie data={pieData} options={pieOptions} />
@@ -212,17 +210,19 @@ export const LoyaltyAnalytics: React.FC<LoyaltyAnalyticsProps> = ({
         </div>
       </div>
 
-      {/* Monthly Trends */}
       <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Monthly Trends</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+          Monthly Trends
+        </h3>
         <div className="h-64">
           <Line data={lineData} options={lineOptions} />
         </div>
       </div>
 
-      {/* Top Customers */}
       <div className="lg:col-span-2 bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Top Customers by Net Points</h3>
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+          Top Customers by Net Points
+        </h3>
         <div className="h-64">
           <Bar data={barData} options={barOptions} />
         </div>

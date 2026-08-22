@@ -1,10 +1,10 @@
+// src/renderer/pages/customer/components/CustomerTable.tsx
 import React from "react";
 import { Eye, Edit, Trash2, Users, Mail, Phone } from "lucide-react";
 import { type Customer } from "../../../api/core/customer";
 
-// Helper to determine status badge – now uses the actual status field
 const getCustomerStatus = (
-  customer: Customer,
+  customer: Customer
 ): { label: string; color: string } => {
   switch (customer.status) {
     case "vip":
@@ -23,7 +23,6 @@ interface CustomerTableProps {
   onView: (customer: Customer) => void;
   onEdit: (customer: Customer) => void;
   onDelete: (customer: Customer) => void;
-  getTotalSpent: (customerId: number) => number;
 }
 
 export const CustomerTable: React.FC<CustomerTableProps> = ({
@@ -31,7 +30,6 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
   onView,
   onEdit,
   onDelete,
-  getTotalSpent,
 }) => {
   if (customers.length === 0) {
     return (
@@ -49,44 +47,33 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
 
   return (
     <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg overflow-hidden flex flex-col">
-      {/* Fixed Header */}
-      <table className="w-full table-fixed">
-        <thead className="bg-[var(--table-header-bg)]">
-          <tr>
-            <th className="w-16 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              ID
-            </th>
-            <th className="w-1/4 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Name
-            </th>
-            <th className="w-1/4 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Contact
-            </th>
-            <th className="w-24 px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Points
-            </th>
-            <th className="w-24 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Status
-            </th>
-            <th className="w-32 px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Total Spent
-            </th>
-            <th className="w-28 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
-      </table>
-
-      {/* Scrollable Body */}
-      <div className="flex-1 overflow-auto min-h-0">
-        <table className="w-full table-fixed">
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-[var(--table-header-bg)]">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[10%]">
+                ID
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[25%]">
+                Name
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[30%]">
+                Contact
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[15%]">
+                Points
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[10%]">
+                Status
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[10%]">
+                Actions
+              </th>
+            </tr>
+          </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
             {customers.map((customer) => {
               const status = getCustomerStatus(customer);
-              const totalSpent = getTotalSpent(customer.id);
-
-              // Determine which contact to show: email > phone > none
               const contactIcon = customer.email ? (
                 <Mail className="w-3 h-3" />
               ) : customer.phone ? (
@@ -100,13 +87,13 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                   onClick={() => onView(customer)}
                   className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
                 >
-                  <td className="w-16 px-4 py-3 text-sm font-mono text-[var(--text-primary)]">
+                  <td className="px-4 py-3 text-sm font-mono text-[var(--text-primary)]">
                     #{customer.id}
                   </td>
-                  <td className="w-1/4 px-4 py-3 text-sm text-[var(--text-secondary)] font-medium">
+                  <td className="px-4 py-3 text-sm text-[var(--text-secondary)] font-medium">
                     {customer.name}
                   </td>
-                  <td className="w-1/4 px-4 py-3 text-sm text-[var(--text-secondary)]">
+                  <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
                     {contactText ? (
                       <div className="flex items-center gap-1">
                         {contactIcon}
@@ -116,10 +103,10 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                       <span className="text-[var(--text-tertiary)]">—</span>
                     )}
                   </td>
-                  <td className="w-24 px-4 py-3 text-right text-sm font-semibold text-[var(--accent-purple)]">
+                  <td className="px-4 py-3 text-right text-sm font-semibold text-[var(--accent-purple)]">
                     {customer.loyaltyPointsBalance}
                   </td>
-                  <td className="w-24 px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center">
                     <span
                       className="inline-flex px-2 py-1 rounded-full text-xs font-medium"
                       style={{
@@ -130,17 +117,14 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                       {status.label}
                     </span>
                   </td>
-                  <td className="w-32 px-4 py-3 text-right text-sm font-semibold text-[var(--accent-green)]">
-                    ₱{totalSpent.toFixed(2)}
-                  </td>
-                  <td className="w-28 px-4 py-3">
+                  <td className="px-4 py-3">
                     <div className="flex items-center justify-center gap-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onView(customer);
                         }}
-                        className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-blue)]"
+                        className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-gold)]"
                         title="View Details"
                       >
                         <Eye className="w-4 h-4" />
@@ -150,7 +134,7 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                           e.stopPropagation();
                           onEdit(customer);
                         }}
-                        className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-purple)]"
+                        className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-gold)]"
                         title="Edit"
                       >
                         <Edit className="w-4 h-4" />

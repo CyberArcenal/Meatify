@@ -1,3 +1,4 @@
+// src/renderer/pages/customer/components/FilterBar.tsx
 import React from "react";
 import { Search, RefreshCw } from "lucide-react";
 import type { CustomerFilters } from "../hooks/useCustomers";
@@ -14,7 +15,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   onReload,
 }) => {
   return (
-    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4 mb-4">
+    <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-4">
         {/* Search */}
         <div className="flex-1 min-w-[200px] relative">
@@ -24,15 +25,17 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             placeholder="Search by name, contact, ID..."
             value={filters.search}
             onChange={(e) => onFilterChange("search", e.target.value)}
-            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
+            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
           />
         </div>
 
-        {/* Status Filter – now uses actual status values */}
+        {/* Status */}
         <select
           value={filters.status}
-          onChange={(e) => onFilterChange("status", e.target.value as CustomerFilters["status"])}
-          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+          onChange={(e) =>
+            onFilterChange("status", e.target.value as CustomerFilters["status"])
+          }
+          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
         >
           <option value="all">All Status</option>
           <option value="vip">VIP</option>
@@ -43,8 +46,10 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         {/* Sort By */}
         <select
           value={filters.sortBy}
-          onChange={(e) => onFilterChange("sortBy", e.target.value as CustomerFilters["sortBy"])}
-          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+          onChange={(e) =>
+            onFilterChange("sortBy", e.target.value as CustomerFilters["sortBy"])
+          }
+          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
         >
           <option value="name">Sort by Name</option>
           <option value="points">Sort by Points</option>
@@ -54,33 +59,39 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         {/* Sort Order */}
         <select
           value={filters.sortOrder}
-          onChange={(e) => onFilterChange("sortOrder", e.target.value as "ASC" | "DESC")}
-          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+          onChange={(e) =>
+            onFilterChange("sortOrder", e.target.value as "ASC" | "DESC")
+          }
+          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
         >
           <option value="ASC">Ascending</option>
           <option value="DESC">Descending</option>
         </select>
 
-        {/* Points Range (optional) */}
+        {/* Points Range */}
         <div className="flex items-center gap-2">
           <input
             type="number"
             placeholder="Min points"
             value={filters.minPoints || ""}
-            onChange={(e) => onFilterChange("minPoints", e.target.value ? Number(e.target.value) : undefined)}
-            className="w-24 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
+            onChange={(e) =>
+              onFilterChange("minPoints", e.target.value ? Number(e.target.value) : undefined)
+            }
+            className="w-24 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
           />
           <span className="text-[var(--text-tertiary)]">-</span>
           <input
             type="number"
             placeholder="Max points"
             value={filters.maxPoints || ""}
-            onChange={(e) => onFilterChange("maxPoints", e.target.value ? Number(e.target.value) : undefined)}
-            className="w-24 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
+            onChange={(e) =>
+              onFilterChange("maxPoints", e.target.value ? Number(e.target.value) : undefined)
+            }
+            className="w-24 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
           />
         </div>
 
-        {/* Reload button */}
+        {/* Reload */}
         <button
           onClick={onReload}
           className="p-2 bg-[var(--card-hover-bg)] rounded-lg hover:bg-[var(--border-color)] transition-colors"

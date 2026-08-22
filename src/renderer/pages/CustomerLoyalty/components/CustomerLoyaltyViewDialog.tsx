@@ -1,7 +1,8 @@
+// src/renderer/pages/Loyalty/components/CustomerLoyaltyViewDialog.tsx
 import React from "react";
 import { X, Loader2, Award, TrendingDown, Calendar } from "lucide-react";
 import { type Customer } from "../../../api/core/customer";
-import { type LoyaltyTransaction } from "../../../api/core/loyalty";
+import { type LoyaltyTransaction } from "../../../api/core/loyaltyTransaction";
 
 interface CustomerLoyaltyViewDialogProps {
   isOpen: boolean;
@@ -20,10 +21,10 @@ export const CustomerLoyaltyViewDialog: React.FC<
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
         <div
-          className="fixed inset-0 bg-black/50 transition-opacity"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={onClose}
         />
-        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-xl">
+        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden shadow-xl border border-[var(--border-color)]">
           <div className="flex items-center justify-between p-6 border-b border-[var(--border-color)]">
             <h2 className="text-xl font-bold text-[var(--text-primary)]">
               Customer Loyalty Details
@@ -39,7 +40,7 @@ export const CustomerLoyaltyViewDialog: React.FC<
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
             {loading ? (
               <div className="flex justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-blue)]" />
+                <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
               </div>
             ) : customer ? (
               <div className="space-y-6">
@@ -49,7 +50,7 @@ export const CustomerLoyaltyViewDialog: React.FC<
                     {customer.name}
                   </h3>
                   <div className="flex items-center gap-4 mt-2 text-sm text-[var(--text-secondary)]">
-                    <span>{customer.contactInfo || "No contact info"}</span>
+                    <span>{customer.email || customer.phone || "No contact"}</span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3 h-3" />
                       Joined {new Date(customer.createdAt).toLocaleDateString()}
@@ -59,7 +60,7 @@ export const CustomerLoyaltyViewDialog: React.FC<
                     <p className="text-sm text-[var(--text-tertiary)]">
                       Current Points Balance
                     </p>
-                    <p className="text-3xl font-bold text-[var(--accent-purple)]">
+                    <p className="text-3xl font-bold text-[var(--accent-gold)]">
                       {customer.loyaltyPointsBalance}
                     </p>
                   </div>

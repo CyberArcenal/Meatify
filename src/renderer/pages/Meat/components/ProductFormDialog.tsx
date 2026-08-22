@@ -1,104 +1,80 @@
+// src/renderer/pages/inventory/meat/components/MeatFormDialog.tsx
 import React, { useState, useEffect } from "react";
-import { X, Loader2, Save, Barcode, Upload, X as XIcon, Image as ImageIcon } from "lucide-react";
-import productAPI from "../../../api/core/product";
-import supplierAPI from "../../../api/core/supplier";
+import { X, Loader2, Save, Barcode, Upload, Image as ImageIcon } from "lucide-react";
+import meatAPI from "../../../api/core/meat";
+import categoryAPI, { type Category } from "../../../api/core/category";
+import supplierAPI, { type Supplier } from "../../../api/core/supplier";
 import { dialogs } from "../../../utils/dialogs";
-import { type ProductFormData } from "../hooks/useProductForm";
-import CategorySelect from "../../../components/Selects/Category";
-import type { Category } from "../../../api/core/category";
-import type { Supplier } from "../../../api/core/supplier";
+import type { MeatFormData } from "../hooks/useProductForm";
 
-interface ProductFormDialogProps {
+interface MeatFormDialogProps {
   isOpen: boolean;
   mode: "add" | "edit";
-  productId?: number;
-  initialData: ProductFormData;
+  meatId?: number;
+  initialData: MeatFormData;
   onClose: () => void;
   onSuccess: () => void;
 }
 
-export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
+export const MeatFormDialog: React.FC<MeatFormDialogProps> = ({
   isOpen,
   mode,
-  productId,
+  meatId,
   initialData,
   onClose,
   onSuccess,
 }) => {
-  const [formData, setFormData] = useState<ProductFormData>({
-    ...initialData,
-    barcode: initialData.barcode || "",
-  });
-  const [errors, setErrors] = useState<Partial<Record<keyof ProductFormData, string>>>({});
+  const [formData, setFormData] = useState<MeatFormData>({ ...initialData });
+  const [errors, setErrors] = useState<Partial<Record<keyof MeatFormData, string>>>({});
   const [saving, setSaving] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
-
-  // Image state
+  const [loadingOptions, setLoadingOptions] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [removeImage, setRemoveImage] = useState(false);
   const [imageError, setImageError] = useState(false);
-  // Load suppliers for dropdown
+
+  // Load options
   useEffect(() => {
     if (!isOpen) return;
-    const loadSuppliers = async () => {
-      setLoadingSuppliers(true);
+    const loadOptions = async () => {
+      setLoadingOptions(true);
       try {
-        const response = await supplierAPI.getAll({ isActive: true });
-        if (response.status && response.data) {
-          setSuppliers(response.data);
-        }
+        const [catRes, supRes] = await Promise.all([
+          categoryAPI.getActive(),
+          supplierAPI.getActive(),
+        ]);
+        if (catRes.status) setCategories(catRes.data.items || []);
+        if (supRes.status) setSuppliers(supRes.data.items || []);
       } catch (error) {
-        console.error("Failed to load suppliers:", error);
+        console.error("Failed to load options:", error);
       } finally {
-        setLoadingSuppliers(false);
+        setLoadingOptions(false);
       }
     };
-    loadSuppliers();
+    loadOptions();
   }, [isOpen]);
 
-  // Reset form when dialog opens or initialData changes
+  // Reset form
   useEffect(() => {
-    setFormData({
-      ...initialData,
-      barcode: initialData.barcode || "",
-    });
-    // Reset image states
+    setFormData({ ...initialData });
     setImageFile(null);
     setRemoveImage(false);
     setImageError(false);
     if (mode === "edit" && initialData.image) {
-      const url = productAPI.getImageUrl?.(initialData.image);
-      if (url) {
-        setImagePreview(url);
-      } else {
-        setImagePreview(null);
-        setImageError(true);
-      }
+      setImagePreview(initialData.image);
     } else {
       setImagePreview(null);
     }
   }, [initialData, mode]);
 
-  // Barcode scanner
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleBarcodeScanned = (barcode: string) => {
-      setFormData((prev) => ({ ...prev, barcode }));
-    };
-    if (window.backendAPI?.onBarcodeScanned) {
-      window.backendAPI.onBarcodeScanned(handleBarcodeScanned);
-    }
-    return () => {
-      // Cleanup would require an off method
-    };
-  }, [isOpen]);
-
   const validate = (): boolean => {
     const newErrors: typeof errors = {};
-    if (!formData.name?.trim()) newErrors.name = "Product name is required";
-    if (!formData.price || formData.price <= 0) newErrors.price = "Price must be greater than 0";
+    if (!formData.name?.trim()) newErrors.name = "Name is required";
+    if (!formData.pricePerKg || formData.pricePerKg <= 0) {
+      newErrors.pricePerKg = "Price must be greater than 0";
+    }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -109,44 +85,40 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
 
     setSaving(true);
     try {
-      const user = "system";
-      const basePayload: any = {
-        sku: formData.sku || undefined,
+      const payload: any = {
         name: formData.name,
+        sku: formData.sku || undefined,
         barcode: formData.barcode || undefined,
         description: formData.description || undefined,
-        price: formData.price,
+        pricePerKg: formData.pricePerKg,
         isActive: formData.isActive,
-        categoryId: formData.categoryId || undefined,
-        supplierId: formData.supplierId || undefined,
+        categoryId: formData.categoryId,
+        supplierId: formData.supplierId,
       };
 
+      // Handle image
+      if (imageFile) {
+        // Convert to base64
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(imageFile);
+        });
+        payload.image = base64;
+      } else if (removeImage) {
+        payload.image = null;
+      }
+
       if (mode === "add") {
-        if (imageFile) {
-          const rawBase64 = imagePreview!.split(',')[1].replace(/\s/g, '');
-          basePayload.image = {
-            buffer: rawBase64,
-            originalName: imageFile.name,
-          };
-        }
-        await productAPI.create(basePayload, user);
+        await meatAPI.create(payload);
       } else {
-        if (imageFile) {
-          const rawBase64 = imagePreview!.split(',')[1].replace(/\s/g, '');
-          basePayload.image = {
-            buffer: rawBase64,
-            originalName: imageFile.name,
-          };
-        } else if (removeImage) {
-          basePayload.image = null;
-        }
-        if (!productId) throw new Error("Product ID missing");
-        await productAPI.update(productId, basePayload, user);
+        if (!meatId) throw new Error("Meat ID missing");
+        await meatAPI.update(meatId, payload);
       }
 
       dialogs.alert({
         title: "Success",
-        message: `Product ${mode === "add" ? "created" : "updated"} successfully.`,
+        message: `Meat ${mode === "add" ? "created" : "updated"} successfully.`,
       });
       onSuccess();
     } catch (err: any) {
@@ -187,14 +159,10 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
     setImageFile(null);
     setImagePreview(null);
     setImageError(false);
-    if (mode === "edit") {
-      setRemoveImage(true);
-    }
+    if (mode === "edit") setRemoveImage(true);
     const fileInput = document.getElementById("image-upload") as HTMLInputElement;
     if (fileInput) fileInput.value = "";
   };
-
-  
 
   if (!isOpen) return null;
 
@@ -202,11 +170,11 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4 py-8">
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto transition-all duration-200">
+        <div className="relative bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto transition-all duration-200">
           {/* Header */}
           <div className="sticky top-0 z-10 flex items-center justify-between p-6 bg-[var(--card-bg)] border-b border-[var(--border-color)]">
             <h2 className="text-xl font-bold text-[var(--text-primary)]">
-              {mode === "add" ? "Add New Product" : "Edit Product"}
+              {mode === "add" ? "Add New Meat" : "Edit Meat"}
             </h2>
             <button
               onClick={onClose}
@@ -229,7 +197,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                   value={formData.sku || ""}
                   onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
                   placeholder="Auto-generated if empty"
-                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] focus:border-transparent transition"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent transition"
                 />
                 <p className="mt-1 text-xs text-[var(--text-tertiary)]">
                   Leave empty to auto‑generate
@@ -247,19 +215,16 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                     value={formData.barcode || ""}
                     onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
                     placeholder="Scan or enter barcode"
-                    className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 pl-10 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]"
+                    className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 pl-10 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
                   />
                   <Barcode className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
                 </div>
-                <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-                  Scanner is active while this dialog is open.
-                </p>
               </div>
 
-              {/* Product Name */}
+              {/* Name */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-[var(--text-primary)] mb-1">
-                  Product Name <span className="text-[var(--accent-red)]">*</span>
+                  Meat Name <span className="text-[var(--accent-red)]">*</span>
                 </label>
                 <input
                   type="text"
@@ -267,7 +232,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className={`w-full bg-[var(--input-bg)] border ${
                     errors.name ? "border-[var(--accent-red)]" : "border-[var(--input-border)]"
-                  } rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]`}
+                  } rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]`}
                 />
                 {errors.name && (
                   <p className="mt-1 text-xs text-[var(--accent-red)]">{errors.name}</p>
@@ -279,13 +244,21 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                 <label className="block text-sm font-semibold text-[var(--text-primary)] mb-1">
                   Category
                 </label>
-                <CategorySelect
-                  value={formData.categoryId as number}
-                  activeOnly
-                  onChange={(categoryId: number | null) => {
-                    setFormData({ ...formData, categoryId: categoryId || undefined });
-                  }}
-                />
+                <select
+                  value={formData.categoryId || ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, categoryId: e.target.value ? Number(e.target.value) : undefined })
+                  }
+                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                  disabled={loadingOptions}
+                >
+                  <option value="">-- Select Category --</option>
+                  {categories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Supplier */}
@@ -298,57 +271,38 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                   onChange={(e) =>
                     setFormData({ ...formData, supplierId: e.target.value ? Number(e.target.value) : undefined })
                   }
-                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]"
-                  disabled={loadingSuppliers}
+                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
+                  disabled={loadingOptions}
                 >
                   <option value="">-- Select Supplier --</option>
-                  {suppliers.map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>
-                      {supplier.name}
+                  {suppliers.map((sup) => (
+                    <option key={sup.id} value={sup.id}>
+                      {sup.name}
                     </option>
                   ))}
                 </select>
-                {loadingSuppliers && (
-                  <p className="mt-1 text-xs text-[var(--text-tertiary)]">Loading suppliers...</p>
-                )}
               </div>
 
-              {/* Price */}
+              {/* Price per kg */}
               <div>
                 <label className="block text-sm font-semibold text-[var(--text-primary)] mb-1">
-                  Price (₱) <span className="text-[var(--accent-red)]">*</span>
+                  Price per kg (₱) <span className="text-[var(--accent-red)]">*</span>
                 </label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
-                  value={formData.price}
+                  value={formData.pricePerKg}
                   onChange={(e) =>
-                    setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })
+                    setFormData({ ...formData, pricePerKg: parseFloat(e.target.value) || 0 })
                   }
                   className={`w-full bg-[var(--input-bg)] border ${
-                    errors.price ? "border-[var(--accent-red)]" : "border-[var(--input-border)]"
-                  } rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]`}
+                    errors.pricePerKg ? "border-[var(--accent-red)]" : "border-[var(--input-border)]"
+                  } rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]`}
                 />
-                {errors.price && (
-                  <p className="mt-1 text-xs text-[var(--accent-red)]">{errors.price}</p>
+                {errors.pricePerKg && (
+                  <p className="mt-1 text-xs text-[var(--accent-red)]">{errors.pricePerKg}</p>
                 )}
-              </div>
-
-              {/* Stock Quantity (optional) */}
-              <div>
-                <label className="block text-sm font-semibold text-[var(--text-primary)] mb-1">
-                  Initial Stock
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  value={formData.stockQty || 0}
-                  onChange={(e) =>
-                    setFormData({ ...formData, stockQty: parseInt(e.target.value) || 0 })
-                  }
-                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)]"
-                />
               </div>
 
               {/* Description - full width */}
@@ -360,17 +314,16 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                   value={formData.description || ""}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={3}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-blue)] resize-none"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] resize-none"
                 />
               </div>
 
-              {/* Image Upload - full width */}
+              {/* Image Upload */}
               <div className="md:col-span-2">
                 <label className="block text-sm font-semibold text-[var(--text-primary)] mb-2">
                   Product Image
                 </label>
                 <div className="flex flex-col sm:flex-row items-start gap-6 bg-[var(--card-secondary-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-                  {/* Image Preview Area */}
                   <div className="w-36 h-36 flex-shrink-0 bg-[var(--input-bg)] rounded-lg overflow-hidden border border-[var(--border-color)] flex items-center justify-center">
                     {imagePreview && !imageError ? (
                       <img
@@ -387,7 +340,6 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                     )}
                   </div>
 
-                  {/* Controls */}
                   <div className="flex-1 space-y-3">
                     <input
                       type="file"
@@ -400,7 +352,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                       <button
                         type="button"
                         onClick={() => document.getElementById("image-upload")?.click()}
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] transition"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition"
                       >
                         <Upload className="w-4 h-4" />
                         Choose Image
@@ -411,7 +363,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                           onClick={handleClearImage}
                           className="inline-flex items-center gap-2 px-4 py-2 border border-[var(--accent-red)] text-[var(--accent-red)] rounded-lg hover:bg-[var(--accent-red-light)] transition"
                         >
-                          <XIcon className="w-4 h-4" />
+                          <X className="w-4 h-4" />
                           {mode === "edit" && initialData.image && !imageFile ? "Remove Image" : "Clear"}
                         </button>
                       )}
@@ -419,28 +371,23 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                     <p className="text-xs text-[var(--text-tertiary)]">
                       Recommended: 500x500px, max 2MB. Supported: JPG, PNG, GIF, WEBP.
                     </p>
-                    {mode === "edit" && initialData.image && !removeImage && !imageFile && (
-                      <p className="text-xs text-[var(--accent-blue)]">
-                        ✓ Current image: {initialData.image.split('/').pop()}
-                      </p>
-                    )}
                     {imageError && (
                       <p className="text-xs text-[var(--accent-red)]">
-                        ⚠️ Could not load image preview. The file may be missing or corrupted.
+                        ⚠️ Could not load image preview.
                       </p>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Active Checkbox */}
+              {/* Active */}
               <div className="md:col-span-2 flex items-center gap-3 pt-2">
                 <input
                   type="checkbox"
                   id="isActive"
                   checked={formData.isActive}
                   onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                  className="w-4 h-4 rounded border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--accent-blue)] focus:ring-[var(--accent-blue)]"
+                  className="w-4 h-4 rounded border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--accent-gold)] focus:ring-[var(--accent-gold)]"
                 />
                 <label htmlFor="isActive" className="text-sm text-[var(--text-primary)]">
                   Active (available for sale)
@@ -448,7 +395,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
               </div>
             </div>
 
-            {/* Form Actions */}
+            {/* Actions */}
             <div className="flex justify-end gap-3 pt-6 border-t border-[var(--border-color)]">
               <button
                 type="button"
@@ -460,7 +407,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
               <button
                 type="submit"
                 disabled={saving}
-                className="px-6 py-2.5 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold shadow-sm"
+                className="px-6 py-2.5 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold shadow-sm"
               >
                 {saving ? (
                   <>
@@ -470,7 +417,7 @@ export const ProductFormDialog: React.FC<ProductFormDialogProps> = ({
                 ) : (
                   <>
                     <Save className="w-4 h-4" />
-                    {mode === "add" ? "Create Product" : "Update Product"}
+                    {mode === "add" ? "Create Meat" : "Update Meat"}
                   </>
                 )}
               </button>

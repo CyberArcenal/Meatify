@@ -1,6 +1,6 @@
+// src/renderer/pages/inventory/movements/hooks/useMovementView.ts
 import { useState, useCallback } from "react";
-import { type InventoryMovement } from "../../../api/core/inventory";
-import inventoryAPI from "../../../api/core/inventory";
+import type { InventoryMovement } from "../../../api/core/inventoryMovement";
 
 export const useMovementView = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -11,8 +11,6 @@ export const useMovementView = () => {
     setIsOpen(true);
     setLoading(true);
     try {
-      // If needed, fetch more details (e.g., product, sale)
-      // For now, use the provided movement (which may already have product)
       setMovement(movement);
     } catch (error) {
       console.error("Failed to load movement details", error);

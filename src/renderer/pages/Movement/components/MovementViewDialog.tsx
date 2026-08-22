@@ -1,19 +1,20 @@
+// src/renderer/pages/inventory/movements/components/MovementViewDialog.tsx
 import React from "react";
 import {
   X,
   Package,
   Calendar,
-  User,
   Hash,
-  MapPin,
   FileText,
   ExternalLink,
+  Boxes,
 } from "lucide-react";
-import { type InventoryMovement } from "../../../api/core/inventory";
+
 import {
   formatMovementType,
   getMovementTypeColor,
 } from "../hooks/useMovements";
+import type { InventoryMovement } from "../../../api/core/inventoryMovement";
 
 interface MovementViewDialogProps {
   isOpen: boolean;
@@ -32,10 +33,10 @@ export const MovementViewDialog: React.FC<MovementViewDialogProps> = ({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
         <div
-          className="fixed inset-0 bg-black/50 transition-opacity"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={onClose}
         />
-        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-2xl p-6 shadow-xl">
+        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-2xl p-6 shadow-xl border border-[var(--border-color)]">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-[var(--text-primary)]">
               Movement Details #{movement.id}
@@ -49,38 +50,41 @@ export const MovementViewDialog: React.FC<MovementViewDialogProps> = ({
           </div>
 
           <div className="space-y-4">
-            {/* Product Info */}
+            {/* Meat & Batch Info */}
             <div className="bg-[var(--card-secondary-bg)] rounded-lg p-4 border border-[var(--border-color)]">
               <h3 className="text-md font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
                 <Package className="w-4 h-4" />
-                Product
+                Meat & Batch
               </h3>
-              {movement.product ? (
+              {movement.meat ? (
                 <div className="grid grid-cols-2 gap-2 text-sm">
                   <div>
                     <p className="text-[var(--text-tertiary)]">SKU</p>
                     <p className="font-mono text-[var(--text-primary)]">
-                      {movement.product.sku}
+                      {movement.meat.sku}
                     </p>
                   </div>
                   <div>
                     <p className="text-[var(--text-tertiary)]">Name</p>
                     <p className="text-[var(--text-primary)]">
-                      {movement.product.name}
+                      {movement.meat.name}
                     </p>
                   </div>
-                  {movement.product.description && (
+                  {movement.batch && (
                     <div className="col-span-2">
-                      <p className="text-[var(--text-tertiary)]">Description</p>
-                      <p className="text-[var(--text-secondary)]">
-                        {movement.product.description}
+                      <p className="text-[var(--text-tertiary)] flex items-center gap-1">
+                        <Boxes className="w-3 h-3" /> Batch Code
+                      </p>
+                      <p className="text-[var(--text-primary)]">
+                        {movement.batch.batchCode}
                       </p>
                     </div>
                   )}
                 </div>
               ) : (
                 <p className="text-[var(--text-secondary)]">
-                  Product ID: {movement.productId}
+                  Meat ID: {movement.meatId}
+                  {movement.batchId && `, Batch ID: ${movement.batchId}`}
                 </p>
               )}
             </div>
@@ -112,7 +116,7 @@ export const MovementViewDialog: React.FC<MovementViewDialogProps> = ({
                   </p>
                 </div>
                 <div>
-                  <p className="text-[var(--text-tertiary)]">Quantity</p>
+                  <p className="text-[var(--text-tertiary)]">Quantity Change</p>
                   <p
                     className={`font-semibold ${
                       movement.qtyChange > 0
@@ -122,35 +126,6 @@ export const MovementViewDialog: React.FC<MovementViewDialogProps> = ({
                   >
                     {movement.qtyChange > 0 ? "+" : ""}
                     {movement.qtyChange}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[var(--text-tertiary)] flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> Source
-                  </p>
-                  <p className="text-[var(--text-primary)]">
-                    {movement.notes?.includes("source:")
-                      ? movement.notes.split("source:")[1]
-                      : "System"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[var(--text-tertiary)] flex items-center gap-1">
-                    <MapPin className="w-3 h-3" /> Destination
-                  </p>
-                  <p className="text-[var(--text-primary)]">
-                    {movement.notes?.includes("dest:")
-                      ? movement.notes.split("dest:")[1]
-                      : "System"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[var(--text-tertiary)] flex items-center gap-1">
-                    <User className="w-3 h-3" /> User
-                  </p>
-                  <p className="text-[var(--text-primary)]">
-                    {/* Could be extracted from notes or API later */}
-                    System
                   </p>
                 </div>
                 {movement.saleId && (
@@ -184,14 +159,14 @@ export const MovementViewDialog: React.FC<MovementViewDialogProps> = ({
               </div>
             )}
 
-            {/* Audit Info (placeholder) */}
+            {/* Audit Info */}
             <div className="bg-[var(--card-secondary-bg)] rounded-lg p-4 border border-[var(--border-color)]">
               <h3 className="text-md font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
                 <Hash className="w-4 h-4" />
                 Audit Trail
               </h3>
               <p className="text-xs text-[var(--text-tertiary)]">
-                Created: {new Date(movement.timestamp).toLocaleString()}
+                Created: {new Date(movement.createdAt).toLocaleString()}
                 <br />
                 Last Updated:{" "}
                 {movement.updatedAt
@@ -204,7 +179,7 @@ export const MovementViewDialog: React.FC<MovementViewDialogProps> = ({
           <div className="flex justify-end mt-6">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)]"
+              className="px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors"
             >
               Close
             </button>

@@ -1,38 +1,35 @@
+// src/renderer/pages/inventory/movements/hooks/useMovements.ts
 import { useState, useEffect, useCallback } from "react";
-import inventoryAPI, {
-  type InventoryMovement,
-} from "../../../api/core/inventory";
+import type { InventoryMovement, PaginatedMovements } from "../../../api/core/inventoryMovement";
+import inventoryMovementAPI from "../../../api/core/inventoryMovement";
+
 
 export interface MovementFilters {
-  movementType: "all" | "sale" | "refund" | "adjustment";
+  movementType: "all" | "sale" | "refund" | "adjustment" | "purchase" | "expiry_write_off";
   startDate?: string;
   endDate?: string;
   search: string;
-  direction: "all" | "increase" | "decrease";
+  direction: "all" | "positive" | "negative";
 }
 
 interface Summary {
   totalToday: number;
   byType: Record<string, number>;
-  mostMovedProduct: { name: string; count: number } | null;
-  // Add more as needed
+  mostMovedMeat: { name: string; count: number } | null;
 }
 
-// Helper to format movement type for display
+// Helper functions
 export const formatMovementType = (type: string): string => {
-  switch (type) {
-    case "sale":
-      return "Sale";
-    case "refund":
-      return "Return";
-    case "adjustment":
-      return "Adjustment";
-    default:
-      return type;
-  }
+  const map: Record<string, string> = {
+    sale: "Sale",
+    refund: "Refund",
+    adjustment: "Adjustment",
+    purchase: "Purchase",
+    expiry_write_off: "Expiry Write-off",
+  };
+  return map[type] || type;
 };
 
-// Helper to get color for movement type
 export const getMovementTypeColor = (type: string): string => {
   switch (type) {
     case "sale":
@@ -41,6 +38,10 @@ export const getMovementTypeColor = (type: string): string => {
       return "var(--accent-red)";
     case "adjustment":
       return "var(--accent-amber)";
+    case "purchase":
+      return "var(--accent-green)";
+    case "expiry_write_off":
+      return "var(--accent-purple)";
     default:
       return "var(--text-tertiary)";
   }
@@ -51,76 +52,92 @@ export const useMovements = (initialFilters: MovementFilters) => {
   const [filters, setFilters] = useState<MovementFilters>(initialFilters);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [totalItems, setTotalItems] = useState(0);
   const [summary, setSummary] = useState<Summary>({
     totalToday: 0,
     byType: {},
-    mostMovedProduct: null,
+    mostMovedMeat: null,
   });
 
-  const fetchMovements = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Build API params from filters
-      const params: any = {
-        movementType:
-          filters.movementType === "all" ? undefined : filters.movementType,
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        search: filters.search || undefined,
-        direction: filters.direction === "all" ? undefined : filters.direction,
-        // You may also include pagination later
-      };
-      const response = await inventoryAPI.getAll(params);
-      if (!response.status) throw new Error(response.message);
-      setMovements(response.data);
+  const fetchMovements = useCallback(
+    async (options?: { page?: number; limit?: number }) => {
+      const page = options?.page || 1;
+      const limit = options?.limit || 10;
 
-      // Compute summary from data
-      const today = new Date().toISOString().split("T")[0];
-      const todayMovements = response.data.filter(
-        (m) => new Date(m.timestamp).toISOString().split("T")[0] === today,
-      );
-      const byType: Record<string, number> = {};
-      todayMovements.forEach((m) => {
-        byType[m.movementType] = (byType[m.movementType] || 0) + 1;
-      });
+      setLoading(true);
+      setError(null);
+      try {
+        const params: any = {
+          page,
+          limit,
+          movementType:
+            filters.movementType === "all" ? undefined : filters.movementType,
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          search: filters.search || undefined,
+          direction: filters.direction === "all" ? undefined : filters.direction,
+        };
+        const response = await inventoryMovementAPI.getAll(params);
+        if (!response.status) throw new Error(response.message);
+        const paginated: PaginatedMovements = response.data;
+        setMovements(paginated.items || []);
+        setTotalItems(paginated.total || 0);
 
-      // Find most moved product (by absolute quantity change)
-      const productMovements: Record<number, { name: string; total: number }> =
-        {};
-      response.data.forEach((m) => {
-        if (m.product && m.product.id) {
-          const id = m.product.id;
-          if (!productMovements[id]) {
-            productMovements[id] = { name: m.product.name, total: 0 };
+        // Compute summary from items
+        const today = new Date().toISOString().split("T")[0];
+        const todayMovements = paginated.items.filter(
+          (m) => new Date(m.timestamp).toISOString().split("T")[0] === today
+        );
+        const byType: Record<string, number> = {};
+        todayMovements.forEach((m) => {
+          byType[m.movementType] = (byType[m.movementType] || 0) + 1;
+        });
+
+        // Most moved meat (by absolute quantity)
+        const meatMovements: Record<number, { name: string; total: number }> = {};
+        paginated.items.forEach((m) => {
+          if (m.meat && m.meat.id) {
+            const id = m.meat.id;
+            if (!meatMovements[id]) {
+              meatMovements[id] = { name: m.meat.name, total: 0 };
+            }
+            meatMovements[id].total += Math.abs(m.qtyChange);
           }
-          productMovements[id].total += Math.abs(m.qtyChange);
-        }
-      });
-      let mostMovedProduct = null;
-      let maxTotal = 0;
-      Object.values(productMovements).forEach((p) => {
-        if (p.total > maxTotal) {
-          maxTotal = p.total;
-          mostMovedProduct = p;
-        }
-      });
+        });
+        let mostMovedMeat = null;
+        let maxTotal = 0;
+        Object.values(meatMovements).forEach((p) => {
+          if (p.total > maxTotal) {
+            maxTotal = p.total;
+            mostMovedMeat = p;
+          }
+        });
 
-      setSummary({
-        totalToday: todayMovements.length,
-        byType,
-        mostMovedProduct,
-      });
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+        setSummary({
+          totalToday: todayMovements.length,
+          byType,
+          mostMovedMeat,
+        });
+      } catch (err: any) {
+        setError(err.message);
+        setTotalItems(0);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [filters]
+  );
 
   useEffect(() => {
-    fetchMovements();
+    fetchMovements({ page: 1, limit: 10 });
   }, [fetchMovements]);
+
+  const reload = useCallback(
+    (options?: { page?: number; limit?: number }) => {
+      fetchMovements(options);
+    },
+    [fetchMovements]
+  );
 
   return {
     movements,
@@ -128,7 +145,8 @@ export const useMovements = (initialFilters: MovementFilters) => {
     setFilters,
     loading,
     error,
-    reload: fetchMovements,
+    totalItems,
+    reload,
     summary,
   };
 };

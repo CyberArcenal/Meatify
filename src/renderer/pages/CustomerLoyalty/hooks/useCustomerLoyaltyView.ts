@@ -1,7 +1,8 @@
+// src/renderer/pages/Loyalty/hooks/useCustomerLoyaltyView.ts
 import { useState, useCallback } from "react";
 import loyaltyAPI, {
   type LoyaltyTransaction,
-} from "../../../api/core/loyalty";
+} from "../../../api/core/loyaltyTransaction";
 import customerAPI, { type Customer } from "../../../api/core/customer";
 
 export const useCustomerLoyaltyView = () => {
@@ -22,12 +23,11 @@ export const useCustomerLoyaltyView = () => {
       }
 
       // Fetch loyalty transactions for this customer
-      const txResponse = await loyaltyAPI.getByCustomer({
-        customerId,
+      const txResponse = await loyaltyAPI.getByCustomer(customerId, {
         limit: 100,
       });
       if (txResponse.status) {
-        setTransactions(txResponse.data);
+        setTransactions(txResponse.data.items || []);
       }
     } catch (error) {
       console.error("Failed to load customer loyalty details", error);

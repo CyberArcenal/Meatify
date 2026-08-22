@@ -29,6 +29,7 @@ import {
   Building2,
   ComputerIcon,
   Calculator,
+  Beef,
 } from 'lucide-react';
 import type { MenuItem } from '../types';
 
@@ -44,7 +45,7 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { path: '/pos/cashier', name: 'Cashier', icon: Calculator },
       { path: '/pos/transactions', name: 'Transactions', icon: Receipt },
-      { path: '/pos/products', name: 'Products', icon: Package },
+      { path: '/inventory/products', name: 'Meat Products', icon: Beef },
     ],
   },
 

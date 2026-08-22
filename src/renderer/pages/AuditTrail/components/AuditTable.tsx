@@ -1,3 +1,4 @@
+// src/renderer/pages/AuditTrail/components/AuditTable.tsx
 import React from "react";
 import { Eye, FileText } from "lucide-react";
 import { getActionColor } from "../hooks/useAuditLogs";
@@ -26,43 +27,36 @@ export const AuditTable: React.FC<AuditTableProps> = ({ logs, onView }) => {
   return (
     <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg overflow-hidden flex flex-col">
       {/* Fixed Header */}
-      <table className="w-full table-fixed">
-        <thead className="bg-[var(--table-header-bg)]">
-          <tr>
-            <th className="w-16 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              ID
-            </th>
-            <th className="w-36 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Date & Time
-            </th>
-            <th className="w-24 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              User
-            </th>
-            <th className="w-24 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Action
-            </th>
-            <th className="w-32 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Entity
-            </th>
-            <th className="w-20 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
-      </table>
-
-      {/* Scrollable Body */}
-      <div className="flex-1 overflow-auto min-h-0">
-        <table className="w-full table-fixed">
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-[var(--table-header-bg)]">
+            <tr>
+              <th className="w-16 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                ID
+              </th>
+              <th className="w-36 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Date & Time
+              </th>
+              <th className="w-24 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                User
+              </th>
+              <th className="w-24 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Action
+              </th>
+              <th className="w-32 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Entity
+              </th>
+              <th className="w-20 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
             {logs.map((log) => (
               <tr
                 key={log.id}
-                className="hover:bg-[var(--table-row-hover)] transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onView(log);
-                }}
+                className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
+                onClick={() => onView(log)}
               >
                 <td className="w-16 px-4 py-3 text-sm font-mono text-[var(--text-primary)]">
                   #{log.id}
@@ -94,7 +88,7 @@ export const AuditTable: React.FC<AuditTableProps> = ({ logs, onView }) => {
                       e.stopPropagation();
                       onView(log);
                     }}
-                    className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-blue)]"
+                    className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-gold)]"
                     title="View Details"
                   >
                     <Eye className="w-4 h-4" />

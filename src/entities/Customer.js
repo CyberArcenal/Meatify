@@ -13,6 +13,7 @@ const Customer = new EntitySchema({
     loyaltyPointsBalance: { type: Number, default: 0 },
     lifetimePointsEarned: { type: Number, default: 0 }, // cumulative points
     status: { type: String, default: "regular", enum: ["regular", "vip", "elite"] }, // regular, vip, elite
+    isActive: { type: Boolean, default: true },
     createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },
     updatedAt: { type: Date, nullable: true },
   },

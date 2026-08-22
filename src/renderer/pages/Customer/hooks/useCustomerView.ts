@@ -1,9 +1,10 @@
+// src/renderer/pages/customer/hooks/useCustomerView.ts
 import { useState, useCallback } from "react";
 import customerAPI, { type Customer } from "../../../api/core/customer";
 import saleAPI, { type Sale } from "../../../api/core/sale";
 import loyaltyAPI, {
   type LoyaltyTransaction,
-} from "../../../api/core/loyalty";
+} from "../../../api/core/loyaltyTransaction";
 
 export const useCustomerView = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -20,22 +21,23 @@ export const useCustomerView = () => {
     setLoading(true);
 
     try {
-      // Fetch customer's sales
-      const salesResponse = await saleAPI.getByCustomer({
-        customerId: customer.id,
+      // ✅ Fetch customer's sales – correct: customerId first, then params object
+      const salesResponse = await saleAPI.getByCustomer(customer.id, {
         limit: 50,
+        status: "paid", // optional: only show paid sales
       });
       if (salesResponse.status) {
-        setSales(salesResponse.data);
+        // salesResponse.data is PaginatedSales with items array
+        setSales(salesResponse.data.items || []);
       }
 
-      // Fetch loyalty transactions
-      const loyaltyResponse = await loyaltyAPI.getByCustomer({
-        customerId: customer.id,
+      // ✅ Fetch loyalty transactions – correct: customerId first, then params object
+      const loyaltyResponse = await loyaltyAPI.getByCustomer(customer.id, {
         limit: 50,
       });
       if (loyaltyResponse.status) {
-        setLoyaltyTransactions(loyaltyResponse.data);
+        // loyaltyResponse.data is PaginatedTransactions with items array
+        setLoyaltyTransactions(loyaltyResponse.data.items || []);
       }
     } catch (error) {
       console.error("Failed to load customer details", error);

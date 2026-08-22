@@ -1,3 +1,4 @@
+// src/renderer/pages/system/notification-logs/components/NotificationTable.tsx
 import React from "react";
 import {
   Eye,
@@ -12,11 +13,11 @@ import {
   Loader2,
 } from "lucide-react";
 import { formatDate } from "../../../utils/formatters";
-import type { NotificationLogEntry } from "../../../api/core/notification_log";
+import type { NotificationLog } from "../../../api/core/notificationLog"; // ✅ import the correct type
 
 interface NotificationTableProps {
-  logs: NotificationLogEntry[];
-  onView: (log: NotificationLogEntry) => void;
+  logs: NotificationLog[]; // ✅ corrected type
+  onView: (log: NotificationLog) => void;
   onRetry: (id: number) => void;
   onResend: (id: number) => void;
   onDelete: (id: number) => void;

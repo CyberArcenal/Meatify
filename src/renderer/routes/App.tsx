@@ -4,6 +4,13 @@ import Layout from "../layouts/Layout";
 import { Help } from "../pages/help";
 import { useEffect, useState } from "react";
 import DashboardPage from "../pages/Analytics/dashboard";
+import AuditTrailPage from "../pages/AuditTrail";
+import CategoryPage from "../pages/category";
+import CustomerPage from "../pages/Customer";
+import CustomerLoyaltyPage from "../pages/CustomerLoyalty";
+import MovementPage from "../pages/Movement";
+import NotificationLogPage from "../pages/NotificationLog";
+import MeatPage from "../pages/Meat";
 
 
 const PageNotFound = () => <div> Page Not Found</div>;
@@ -46,11 +53,11 @@ function App() {
         <Route path="dashboard" element={<DashboardPage />} />
         {/* <Route path="pos/cashier" element={<Cashier />} /> */}
         {/* <Route path="pos/transactions" element={<Transactions />} /> */}
-        {/* <Route path="pos/products" element={<ProductPage />} /> */}
+      <Route path="inventory/products" element={<MeatPage />} />
 
         {/* Customers */}
-        {/* <Route path="customers/list" element={<CustomerPage />} /> */}
-        {/* <Route path="customers/loyalty" element={<CustomerLoyaltyPage />} /> */}
+        <Route path="customers/list" element={<CustomerPage />} />
+        <Route path="customers/loyalty" element={<CustomerLoyaltyPage />} />
 
         {/* Sales */}
         {/* <Route path="sales/daily" element={<DailySalesPage />} /> */}
@@ -59,11 +66,11 @@ function App() {
 
         {/* Inventory */}
         {/* <Route path="inventory/stock" element={<StockLevelsPage />} /> */}
-        {/* <Route path="inventory/movements" element={<MovementPage />} /> */}
+        <Route path="inventory/movements" element={<MovementPage />} />
         {/* <Route path="inventory/reorder" element={<ReorderPage />} /> */}
         {/* <Route path="inventory/purchases" element={<PurchasePage />} /> */}
         {/* <Route path="inventory/suppliers" element={<SupplierPage />} /> */}
-        {/* <Route path="inventory/categories" element={<CategoryPage />} /> */}
+        <Route path="inventory/categories" element={<CategoryPage />} />
 
         {/* Reports */}
         {/* <Route path="reports/financial" element={<FinancialReportsPage />} /> */}
@@ -71,8 +78,8 @@ function App() {
         {/* <Route path="reports/customer" element={<CustomerInsights />} /> */}
 
         {/* System */}
-        {/* <Route path="system/audit" element={<AuditTrailPage />} /> */}
-        {/* <Route path="notification-logs" element={<NotificationLogPage />} /> */}
+        <Route path="system/audit" element={<AuditTrailPage />} />
+        <Route path="notification-logs" element={<NotificationLogPage />} />
         {/* <Route path="system/settings" element={<SettingsPage />} /> */}
         {/* <Route path="/devices" element={<DeviceManagerPage />} /> */}
 

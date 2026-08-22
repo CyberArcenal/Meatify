@@ -1,3 +1,4 @@
+// src/renderer/pages/Loyalty/hooks/useLoyaltyAdjustment.ts
 import { useState } from "react";
 
 export const useLoyaltyAdjustment = () => {

@@ -1,29 +1,28 @@
-import React, { useState } from "react";
+// src/renderer/pages/customer/index.tsx
+import React, { useEffect } from "react";
 import { Plus, Loader2, AlertCircle } from "lucide-react";
-
-// Hooks
+import { dialogs } from "../../utils/dialogs";
+import customerAPI, { type Customer } from "../../api/core/customer";
 import { useCustomers, type CustomerFilters } from "./hooks/useCustomers";
 import { useCustomerForm } from "./hooks/useCustomerForm";
 import { useCustomerView } from "./hooks/useCustomerView";
-import type { Customer } from "../../api/core/customer";
-import { dialogs } from "../../utils/dialogs";
-import customerAPI from "../../api/core/customer";
 import { FilterBar } from "./components/FilterBar";
 import { CustomerTable } from "./components/CustomerTable";
 import { CustomerFormDialog } from "./components/CustomerFormDialog";
 import { CustomerViewDialog } from "./components/CustomerViewDialog";
-import Pagination from "../../components/Shared/Pagination";
+import { usePagination } from "../../contexts/PaginationContext";
 
 const CustomerPage: React.FC = () => {
+  const { pagination, setPagination, clearPagination } = usePagination();
   const {
     customers,
     filters,
     setFilters,
     loading,
     error,
-    reload,
+    totalItems,
     metrics,
-    totalsMap,
+    reload,
   } = useCustomers({
     search: "",
     status: "all",
@@ -36,14 +35,28 @@ const CustomerPage: React.FC = () => {
   const formDialog = useCustomerForm();
   const viewDialog = useCustomerView();
 
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const pageSizeOptions = [10, 20, 50, 100];
+  // Sync with global pagination
+  useEffect(() => {
+    setPagination({
+      currentPage: pagination.currentPage,
+      totalItems: totalItems,
+      pageSize: pagination.pageSize,
+      onPageChange: (page) => {
+        reload({ page, limit: pagination.pageSize });
+      },
+      onPageSizeChange: (size) => {
+        reload({ page: 1, limit: size });
+      },
+      pageSizeOptions: [10, 20, 50, 100],
+      showPageSize: true,
+    });
+
+    return () => clearPagination();
+  }, [totalItems, pagination.currentPage, pagination.pageSize]);
 
   const handleFilterChange = (key: keyof CustomerFilters, value: any) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-    setCurrentPage(1);
+    reload({ page: 1, limit: pagination.pageSize });
   };
 
   const handleDelete = async (customer: Customer) => {
@@ -54,73 +67,56 @@ const CustomerPage: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      await customerAPI.delete(customer.id, "system");
+      await customerAPI.delete(customer.id);
       dialogs.alert({
         title: "Success",
         message: "Customer deleted successfully.",
       });
-      reload();
+      reload({ page: pagination.currentPage, limit: pagination.pageSize });
     } catch (err: any) {
       dialogs.alert({ title: "Error", message: err.message });
     }
   };
 
-  // Pagination calculations
-  const paginatedCustomers = customers.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize,
-  );
-
-  const totalItems = customers.length;
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-
-  const handlePageSizeChange = (newSize: number) => {
-    setPageSize(newSize);
-    setCurrentPage(1);
-  };
-
   return (
-    <div className="h-full flex flex-col bg-[var(--background-color)] p-6">
+    <div className="h-full flex flex-col bg-[var(--card-bg)] p-6 rounded-lg">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">
+        <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--accent-gold)] to-[var(--accent-gold-hover)] bg-clip-text text-transparent">
           Customer Directory
         </h1>
         <button
           onClick={formDialog.openAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors shadow-md"
         >
           <Plus className="w-4 h-4" />
           Add Customer
         </button>
       </div>
 
-      {/* Summary Metrics – updated to use eliteCount */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4">
+      {/* Summary Metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4">
           <p className="text-sm text-[var(--text-tertiary)]">Total Customers</p>
           <p className="text-2xl font-bold text-[var(--text-primary)]">
             {metrics.total}
           </p>
         </div>
-        <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4">
+        <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4">
           <p className="text-sm text-[var(--text-tertiary)]">VIP</p>
           <p className="text-2xl font-bold text-[var(--customer-vip)]">
             {metrics.vipCount}
           </p>
         </div>
-        <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4">
+        <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4">
           <p className="text-sm text-[var(--text-tertiary)]">Elite</p>
           <p className="text-2xl font-bold text-[var(--customer-loyal)]">
             {metrics.eliteCount}
           </p>
         </div>
-        <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4">
+        <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4">
           <p className="text-sm text-[var(--text-tertiary)]">
-            New (this month)
+            New This Month
           </p>
           <p className="text-2xl font-bold text-[var(--customer-new)]">
             {metrics.newThisMonth}
@@ -132,13 +128,13 @@ const CustomerPage: React.FC = () => {
       <FilterBar
         filters={filters}
         onFilterChange={handleFilterChange}
-        onReload={reload}
+        onReload={() => reload({ page: pagination.currentPage, limit: pagination.pageSize })}
       />
 
       {/* Customer Table */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
-          <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-blue)]" />
+          <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
         </div>
       ) : error ? (
         <div className="flex-1 flex items-center justify-center">
@@ -149,36 +145,22 @@ const CustomerPage: React.FC = () => {
             </p>
             <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
             <button
-              onClick={reload}
-              className="mt-4 px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg"
+              onClick={() => reload({ page: 1, limit: pagination.pageSize })}
+              className="mt-4 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors"
             >
               Try Again
             </button>
           </div>
         </div>
       ) : (
-        <>
-          <div className="flex-1">
-            <CustomerTable
-              customers={paginatedCustomers}
-              onView={viewDialog.open}
-              onEdit={formDialog.openEdit}
-              onDelete={handleDelete}
-              getTotalSpent={(customerId: number) => totalsMap[customerId] || 0}
-            />
-          </div>
-
-          {/* Pagination */}
-          <Pagination
-            currentPage={currentPage}
-            totalItems={totalItems}
-            pageSize={pageSize}
-            onPageChange={handlePageChange}
-            onPageSizeChange={handlePageSizeChange}
-            pageSizeOptions={pageSizeOptions}
-            showPageSize={true}
+        <div className="flex-1">
+          <CustomerTable
+            customers={customers}
+            onView={viewDialog.open}
+            onEdit={formDialog.openEdit}
+            onDelete={handleDelete}
           />
-        </>
+        </div>
       )}
 
       {/* Dialogs */}
@@ -186,21 +168,11 @@ const CustomerPage: React.FC = () => {
         isOpen={formDialog.isOpen}
         mode={formDialog.mode}
         customerId={formDialog.customerId}
-        initialData={
-          formDialog.initialData
-            ? {
-                name: formDialog.initialData.name,
-                email: formDialog.initialData.email || undefined,
-                phone: formDialog.initialData.phone || undefined,
-                loyaltyPointsBalance:
-                  formDialog.initialData.loyaltyPointsBalance,
-              }
-            : undefined
-        }
+        initialData={formDialog.initialData}
         onClose={formDialog.close}
         onSuccess={() => {
           formDialog.close();
-          reload();
+          reload({ page: pagination.currentPage, limit: pagination.pageSize });
         }}
       />
 

@@ -1,9 +1,6 @@
 // src/renderer/pages/category/hooks/useCategories.ts
 import { useState, useEffect, useCallback } from "react";
-import categoryAPI, {
-  type Category,
-  type CategoryWithProductCount,
-} from "../../../api/core/category";
+import categoryAPI, { type Category } from "../../../api/core/category";
 
 export interface CategoryFilters {
   search: string;
@@ -15,11 +12,11 @@ export interface CategoryFilters {
 export function useCategories(initialFilters?: Partial<CategoryFilters>) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [productCounts, setProductCounts] = useState<Map<number, number>>(
-    new Map(),
+    new Map()
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
   const [filters, setFilters] = useState<CategoryFilters>({
     search: "",
     status: "all",
@@ -28,73 +25,83 @@ export function useCategories(initialFilters?: Partial<CategoryFilters>) {
     ...initialFilters,
   });
 
-  const fetchCategories = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const isActive =
-        filters.status === "all" ? undefined : filters.status === "active";
+  const fetchCategories = useCallback(
+    async (options?: { page?: number; limit?: number }) => {
+      const page = options?.page || 1;
+      const limit = options?.limit || 10;
 
-      const response = await categoryAPI.getAll({
-        search: filters.search || undefined,
-        isActive,
-        sortBy: filters.sortBy,
-        sortOrder: filters.sortOrder,
-      });
+      setLoading(true);
+      setError(null);
+      try {
+        const isActive =
+          filters.status === "all" ? undefined : filters.status === "active";
 
-      if (response.status) {
-        // Response.data can be PaginatedCategories or Category[] depending on backend
-        // Assuming getAll returns { items, total } or array. We'll handle both.
-        const data = response.data;
-        let items: Category[] = [];
-        let totalCount = 0;
+        // ✅ Get paginated categories
+        const response = await categoryAPI.getAll({
+          page,
+          limit,
+          search: filters.search || undefined,
+          isActive,
+          sortBy: filters.sortBy,
+          sortOrder: filters.sortOrder,
+        });
 
-        if (Array.isArray(data)) {
-          items = data;
-          totalCount = data.length;
-        } else if (data && "items" in data && "total" in data) {
-          items = data.items;
-          totalCount = data.total;
+        if (response.status) {
+          const data = response.data;
+          const items = data?.items || [];
+          const total = data?.total || 0;
+
+          setCategories(items);
+          setTotalItems(total);
+        } else {
+          throw new Error(response.message || "Failed to fetch categories");
         }
 
-        setCategories(items);
-        setTotal(totalCount);
-      } else {
-        throw new Error(response.message || "Failed to fetch categories");
+        // ✅ Get product counts from statistics
+        const statsResponse = await categoryAPI.getStatistics();
+        if (statsResponse.status) {
+          const countsMap = new Map<number, number>();
+          const stats = statsResponse.data;
+          
+          // ✅ Use correct field name: categoriesWithMeats
+          if (stats && stats.categoriesWithMeats) {
+            stats.categoriesWithMeats.forEach((item) => {
+              // ✅ Use correct property: meatCount
+              countsMap.set(item.id, item.meatCount);
+            });
+          }
+          setProductCounts(countsMap);
+        }
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to fetch categories";
+        setError(message);
+        setCategories([]);
+        setTotalItems(0);
+      } finally {
+        setLoading(false);
       }
-
-      // Fetch product counts (active categories only)
-      const countsResponse = await categoryAPI.getWithProductCount(true);
-      if (countsResponse.status) {
-        const countsMap = new Map<number, number>();
-        countsResponse.data.forEach((item: CategoryWithProductCount) => {
-          countsMap.set(item.id, item.productCount);
-        });
-        setProductCounts(countsMap);
-      }
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch categories";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+    },
+    [filters]
+  );
 
   useEffect(() => {
-    fetchCategories();
+    fetchCategories({ page: 1, limit: 10 });
   }, [fetchCategories]);
 
-  const reload = useCallback(() => {
-    fetchCategories();
-  }, [fetchCategories]);
+  const reload = useCallback(
+    (options?: { page?: number; limit?: number }) => {
+      fetchCategories(options);
+    },
+    [fetchCategories]
+  );
 
   return {
     categories,
     productCounts,
     loading,
     error,
-    total,
+    totalItems,
     filters,
     setFilters,
     reload,

@@ -21,6 +21,8 @@ export interface NotificationLog {
 }
 
 export interface PaginatedLogs {
+  pagination: any;
+  data: NotificationLog[];
   items: NotificationLog[];
   total: number;
   page: number;
@@ -29,6 +31,7 @@ export interface PaginatedLogs {
 }
 
 export interface LogStatistics {
+  data: LogStatistics;
   total: number;
   byStatus: Record<string, number>;
   avgRetryFailed: number;

@@ -1,10 +1,11 @@
+// src/renderer/pages/system/notification-logs/Dialogs/NotificationViewDialog.tsx
 import React from "react";
-import { X, Mail, AlertCircle, User, Hash, FileText } from "lucide-react";
+import { X, Mail, AlertCircle, FileText } from "lucide-react";
 import { formatDate } from "../../../utils/formatters";
-import type { NotificationLogEntry } from "../../../api/core/notification_log";
+import type { NotificationLog } from "../../../api/core/notificationLog"; // ✅ correct type
 
 interface NotificationViewDialogProps {
-  log: NotificationLogEntry;
+  log: NotificationLog; // ✅ correct type
   isOpen: boolean;
   onClose: () => void;
 }
@@ -16,7 +17,7 @@ export const NotificationViewDialog: React.FC<NotificationViewDialogProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  const statusColors = {
+  const statusColors: Record<NotificationLog["status"], string> = {
     queued: "text-yellow-400",
     sent: "text-green-400",
     failed: "text-red-400",

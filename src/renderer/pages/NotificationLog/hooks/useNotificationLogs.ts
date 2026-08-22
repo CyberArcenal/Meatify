@@ -1,14 +1,12 @@
+// src/renderer/pages/system/notification-logs/hooks/useNotificationLogs.ts
 import { useState, useEffect, useCallback } from "react";
+import notificationLogAPI from "../../../api/core/notificationLog";
 import type {
-  NotificationLogEntry,
-  NotificationStats,
-  PaginatedNotifications,
-} from "../../../api/core/notification_log";
-import notificationLogAPI from "../../../api/core/notification_log";
+  NotificationLog,
+  LogStatistics,
+} from "../../../api/core/notificationLog";
 
-interface UseNotificationLogsParams {
-  page?: number;
-  limit?: number;
+export interface NotificationFilters {
   status?: string;
   startDate?: string;
   endDate?: string;
@@ -17,126 +15,101 @@ interface UseNotificationLogsParams {
   sortOrder?: "ASC" | "DESC";
 }
 
-export const useNotificationLogs = (
-  initialParams?: UseNotificationLogsParams,
-) => {
-  const [logs, setLogs] = useState<NotificationLogEntry[]>([]);
-  const [pagination, setPagination] = useState<
-    Omit<PaginatedNotifications, "items">
-  >({
-    total: 0,
-    page: 1,
-    limit: 10,
-    totalPages: 0,
-  });
-  const [stats, setStats] = useState<NotificationStats | null>(null);
+export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters>) => {
+  const [logs, setLogs] = useState<NotificationLog[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<UseNotificationLogsParams>({
-    page: 1,
-    limit: 10,
+  const [totalItems, setTotalItems] = useState(0);
+  const [stats, setStats] = useState<LogStatistics | null>(null);
+  const [filters, setFilters] = useState<NotificationFilters>({
     sortBy: "created_at",
     sortOrder: "DESC",
-    ...initialParams,
+    ...initialFilters,
   });
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      let response;
-      if (filters.keyword) {
-        response = await notificationLogAPI.search({
-          keyword: filters.keyword,
-          page: filters.page,
-          limit: filters.limit,
-        });
-      } else {
-        response = await notificationLogAPI.getAll({
-          page: filters.page,
-          limit: filters.limit,
-          status: filters.status,
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-          sortBy: filters.sortBy,
-          sortOrder: filters.sortOrder,
-        });
-      }
+  const fetchLogs = useCallback(
+    async (options?: { page?: number; limit?: number }) => {
+      const page = options?.page || 1;
+      const limit = options?.limit || 10;
 
-      if (response.status) {
-        setLogs(response.data.items);
-        setPagination({
-          total: response.data.total,
-          page: response.data.page,
-          limit: response.data.limit,
-          totalPages: response.data.totalPages,
-        });
-      } else {
-        throw new Error(response.message);
+      setLoading(true);
+      setError(null);
+
+      try {
+        let response;
+        if (filters.keyword) {
+          response = await notificationLogAPI.search({
+            keyword: filters.keyword,
+            page,
+            limit,
+          });
+        } else {
+          response = await notificationLogAPI.getAll({
+            page,
+            limit,
+            status: filters.status,
+            startDate: filters.startDate,
+            endDate: filters.endDate,
+            sortBy: filters.sortBy || "created_at",
+            sortOrder: filters.sortOrder || "DESC",
+          });
+        }
+
+        console.log("API Response:", response);
+
+        if (response.status) {
+          // ✅ Extract items from nested structure
+          const items = response.data?.data || [];
+          const total = response.data?.pagination?.total || 0;
+          
+          setLogs(items);
+          setTotalItems(total);
+        } else {
+          throw new Error(response.message);
+        }
+      } catch (err: any) {
+        setError(err.message || "Failed to fetch notification logs");
+        setTotalItems(0);
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to fetch notification logs");
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+    },
+    [filters]
+  );
 
   const fetchStats = useCallback(async () => {
     try {
-      const response = await notificationLogAPI.getStats();
+      const response = await notificationLogAPI.getStatistics();
       if (response.status) {
-        setStats(response.data);
+        // ✅ Check if stats are nested similarly
+        const statsData = response.data?.data || response.data;
+        setStats(statsData);
       }
     } catch (err) {
       console.error("Failed to fetch stats", err);
     }
   }, []);
 
-  const refetch = useCallback(() => {
-    fetchLogs();
-    fetchStats();
-  }, [fetchLogs, fetchStats]);
-
-  const updateFilters = useCallback(
-    (newFilters: Partial<UseNotificationLogsParams>) => {
-      setFilters((prev) => ({ ...prev, ...newFilters, page: 1 })); // reset to first page
-    },
-    [],
-  );
-
-  const clearFilters = useCallback(() => {
-    setFilters({
-      page: 1,
-      limit: 10,
-      sortBy: "created_at",
-      sortOrder: "DESC",
-    });
-  }, []);
-
-  const setPage = useCallback((page: number) => {
-    setFilters((prev) => ({ ...prev, page }));
-  }, []);
-
-  const setPageSize = useCallback((limit: number) => {
-    setFilters((prev) => ({ ...prev, limit, page: 1 }));
-  }, []);
-
   useEffect(() => {
-    fetchLogs();
+    fetchLogs({ page: 1, limit: 10 });
     fetchStats();
   }, [fetchLogs, fetchStats]);
+
+  const reload = useCallback(
+    (options?: { page?: number; limit?: number }) => {
+      fetchLogs(options);
+    },
+    [fetchLogs]
+  );
 
   return {
     logs,
-    pagination,
-    stats,
+    filters,
+    setFilters,
     loading,
     error,
-    filters,
-    updateFilters,
-    clearFilters,
-    setPage,
-    setPageSize,
-    refetch,
+    totalItems,
+    stats,
+    reload,
   };
 };

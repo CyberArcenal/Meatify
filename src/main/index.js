@@ -873,9 +873,9 @@ function registerIpcHandlers() {
       "./ipc/analytics/dailySales/index.ipc.js",
       "./ipc/analytics/financialReports/index.ipc.js",
       "./ipc/analytics/inventoryReports/index.ipc.js",
-      "./ipc/analytics/returnRefund/index.ipc.js",
-      "./ipc/analytics/sales/index.ipc.js",
-      "./ipc/dashboard/index.ipc.js",
+      "./ipc/analytics/returnRefundReports/index.ipc.js",
+      "./ipc/analytics/dailySales/index.ipc.js",
+      "./ipc/analytics/dashboard/index.ipc.js",
       
       "./ipc/utils/system_config/index.ipc.js",
       "./ipc/utils/windows_control.ipc.js",

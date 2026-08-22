@@ -1,5 +1,6 @@
+// src/renderer/pages/AuditTrail/components/SummaryCards.tsx
 import React from "react";
-import { Users, Database, Calendar } from "lucide-react";
+import { Users, Database, Calendar, BarChart } from "lucide-react";
 
 interface SummaryCardsProps {
   summary: {
@@ -11,7 +12,6 @@ interface SummaryCardsProps {
 }
 
 export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
-  // Get top 3 actions by count
   const topActions = Object.entries(summary.byAction)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 3);
@@ -21,8 +21,8 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
       title: "Actions Today",
       value: summary.totalToday,
       icon: Calendar,
-      color: "var(--accent-blue)",
-      bgColor: "var(--accent-blue-light)",
+      color: "var(--accent-gold)",
+      bgColor: "var(--accent-gold-light)",
     },
     {
       title: "Most Active User",
@@ -30,8 +30,8 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
         ? `${summary.mostActiveUser.user} (${summary.mostActiveUser.count})`
         : "N/A",
       icon: Users,
-      color: "var(--accent-green)",
-      bgColor: "var(--accent-green-light)",
+      color: "var(--accent-blue)",
+      bgColor: "var(--accent-blue-light)",
     },
     {
       title: "Top Affected Entity",
@@ -45,16 +45,16 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
   ];
 
   return (
-    <div className="grid grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       {cards.map((card, idx) => {
         const Icon = card.icon;
         return (
           <div
             key={idx}
-            className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4 flex items-center gap-4"
+            className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4 flex items-center gap-4 hover:shadow-md transition-shadow"
           >
             <div
-              className="w-12 h-12 rounded-full flex items-center justify-center"
+              className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0"
               style={{ backgroundColor: card.bgColor }}
             >
               <Icon className="w-6 h-6" style={{ color: card.color }} />
@@ -79,6 +79,9 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
               <span className="font-medium text-[var(--text-primary)]">{count}</span>
             </div>
           ))}
+          {topActions.length === 0 && (
+            <p className="text-sm text-[var(--text-tertiary)]">No data</p>
+          )}
         </div>
       </div>
     </div>

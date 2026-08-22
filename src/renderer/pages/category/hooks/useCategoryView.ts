@@ -1,12 +1,12 @@
 // src/renderer/pages/category/hooks/useCategoryView.ts
 import { useState } from "react";
 import type { Category } from "../../../api/core/category";
-import productAPI, { type Product } from "../../../api/core/product";
+import meatAPI, { type Meat } from "../../../api/core/meat";
 
 export function useCategoryView() {
   const [isOpen, setIsOpen] = useState(false);
   const [category, setCategory] = useState<Category | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<Meat[]>([]);
   const [loading, setLoading] = useState(false);
 
   const open = async (category: Category) => {
@@ -15,12 +15,17 @@ export function useCategoryView() {
     setLoading(true);
 
     try {
-      // Fetch products by category (active products)
-      const response = await productAPI.getByCategory(category.id, {
+      // ✅ Fetch meats by category using meatAPI
+      const response = await meatAPI.getAll({
+        categoryId: category.id,
         isActive: true,
+        limit: 100,
       });
       if (response.status) {
-        setProducts(response.data);
+        // response.data is PaginatedMeats { items, total, page, limit, totalPages }
+        const data = response.data;
+        const items = data?.items || [];
+        setProducts(items);
       }
     } catch (error) {
       console.error("Error loading category products:", error);

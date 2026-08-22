@@ -1,6 +1,7 @@
+// src/renderer/pages/Loyalty/components/LoyaltyAdjustmentDialog.tsx
 import React, { useState } from "react";
 import { X, Loader2, Search } from "lucide-react";
-import loyaltyAPI from "../../../api/core/loyalty";
+import loyaltyAPI from "../../../api/core/loyaltyTransaction";
 import customerAPI, { type Customer } from "../../../api/core/customer";
 import { dialogs } from "../../../utils/dialogs";
 
@@ -17,7 +18,7 @@ export const LoyaltyAdjustmentDialog: React.FC<
   const [searchTerm, setSearchTerm] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
-    null,
+    null
   );
   const [points, setPoints] = useState<number>(0);
   const [type, setType] = useState<"earn" | "redeem">("earn");
@@ -29,9 +30,12 @@ export const LoyaltyAdjustmentDialog: React.FC<
     if (!searchTerm.trim()) return;
     setSearchLoading(true);
     try {
-      const response = await customerAPI.search(searchTerm, 10);
+      const response = await customerAPI.search({
+        searchTerm,
+        limit: 10,
+      });
       if (response.status) {
-        setCustomers(response.data);
+        setCustomers(response.data.items || []);
       } else {
         dialogs.alert({ title: "Error", message: response.message });
       }
@@ -69,8 +73,8 @@ export const LoyaltyAdjustmentDialog: React.FC<
       const response = await loyaltyAPI.create({
         customerId: selectedCustomer.id,
         pointsChange,
+        transactionType: "adjustment",
         notes: reason,
-        user: "system",
       });
       if (response.status) {
         dialogs.alert({
@@ -106,10 +110,10 @@ export const LoyaltyAdjustmentDialog: React.FC<
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
         <div
-          className="fixed inset-0 bg-black/50 transition-opacity"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={reset}
         />
-        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-md p-6 shadow-xl">
+        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-md p-6 shadow-xl border border-[var(--border-color)]">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-[var(--text-primary)]">
               {step === "select" ? "Select Customer" : "Adjust Points"}
@@ -131,12 +135,12 @@ export const LoyaltyAdjustmentDialog: React.FC<
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="flex-1 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
+                  className="flex-1 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
                 />
                 <button
                   onClick={handleSearch}
                   disabled={searchLoading}
-                  className="p-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] disabled:opacity-50"
+                  className="p-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] disabled:opacity-50"
                 >
                   {searchLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -158,9 +162,9 @@ export const LoyaltyAdjustmentDialog: React.FC<
                         {c.name}
                       </p>
                       <p className="text-sm text-[var(--text-tertiary)]">
-                        {c.contactInfo || "No contact"}
+                        {c.email || c.phone || "No contact"}
                       </p>
-                      <p className="text-xs text-[var(--accent-purple)]">
+                      <p className="text-xs text-[var(--accent-gold)]">
                         Points: {c.loyaltyPointsBalance}
                       </p>
                     </li>
@@ -177,7 +181,7 @@ export const LoyaltyAdjustmentDialog: React.FC<
                 <p className="font-medium text-[var(--text-primary)]">
                   {selectedCustomer?.name}
                 </p>
-                <p className="text-xs text-[var(--accent-purple)]">
+                <p className="text-xs text-[var(--accent-gold)]">
                   Current Points: {selectedCustomer?.loyaltyPointsBalance}
                 </p>
               </div>
@@ -223,7 +227,7 @@ export const LoyaltyAdjustmentDialog: React.FC<
                   min="1"
                   value={points}
                   onChange={(e) => setPoints(parseInt(e.target.value) || 0)}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
                 />
               </div>
 
@@ -236,11 +240,11 @@ export const LoyaltyAdjustmentDialog: React.FC<
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   placeholder="e.g., Manual adjustment, Promo, Correction"
-                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
                 />
               </div>
 
-              <div className="flex justify-end gap-3 pt-4">
+              <div className="flex justify-end gap-3 pt-4 border-t border-[var(--border-color)]">
                 <button
                   type="button"
                   onClick={() => setStep("select")}
@@ -251,7 +255,7 @@ export const LoyaltyAdjustmentDialog: React.FC<
                 <button
                   onClick={handleSubmit}
                   disabled={loading}
-                  className="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] disabled:opacity-50 flex items-center gap-2"
+                  className="px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] disabled:opacity-50 flex items-center gap-2"
                 >
                   {loading && <Loader2 className="w-4 h-4 animate-spin" />}
                   Submit

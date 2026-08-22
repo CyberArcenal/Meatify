@@ -90,8 +90,8 @@ export const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-md p-6 shadow-xl">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-md p-6 shadow-xl border border-[var(--border-color)]">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-[var(--text-primary)]">
               {mode === "add" ? "Add Category" : "Edit Category"}
@@ -111,7 +111,7 @@ export const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
               </label>
               <input
                 {...register("name", { required: "Name is required" })}
-                className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)]"
+                className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
               />
               {errors.name && (
                 <p className="mt-1 text-xs text-[var(--accent-red)]">
@@ -127,7 +127,7 @@ export const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
               <textarea
                 {...register("description")}
                 rows={3}
-                className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent-blue)] resize-none"
+                className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent resize-none"
               />
             </div>
 
@@ -136,7 +136,7 @@ export const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
                 type="checkbox"
                 {...register("isActive")}
                 id="isActive"
-                className="rounded border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--accent-blue)] focus:ring-[var(--accent-blue)]"
+                className="rounded border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--accent-gold)] focus:ring-[var(--accent-gold)]"
               />
               <label
                 htmlFor="isActive"
@@ -146,7 +146,7 @@ export const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
               </label>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex justify-end gap-3 pt-4 border-t border-[var(--border-color)]">
               <button
                 type="button"
                 onClick={onClose}
@@ -157,7 +157,7 @@ export const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg text-sm hover:bg-[var(--accent-blue-hover)] disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg text-sm hover:bg-[var(--accent-gold-hover)] disabled:opacity-50 flex items-center gap-2"
               >
                 {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
                 {mode === "add" ? "Create" : "Update"}

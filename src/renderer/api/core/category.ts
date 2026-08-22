@@ -19,6 +19,12 @@ export interface Category {
   }>;
 }
 
+export interface CategoryWithProductCount {
+  id: number;
+  name: string;
+  productCount: number;
+}
+
 export interface PaginatedCategories {
   items: Category[];
   total: number;
@@ -31,10 +37,10 @@ export interface CategoryStatistics {
   totalActive: number;
   totalInactive: number;
   totalMeats: number;
-  categoriesWithMeats: Array<{
+  categoriesWithMeats: Array<{   // ✅ This is the correct field name
     id: number;
     name: string;
-    meatCount: number;
+    meatCount: number;           // ✅ This is the correct property name
   }>;
 }
 

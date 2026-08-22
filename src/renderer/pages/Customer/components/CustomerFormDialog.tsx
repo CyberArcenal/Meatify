@@ -1,3 +1,4 @@
+// src/renderer/pages/customer/components/CustomerFormDialog.tsx
 import React, { useState, useEffect } from "react";
 import { X, Loader2 } from "lucide-react";
 import customerAPI from "../../../api/core/customer";
@@ -51,11 +52,9 @@ export const CustomerFormDialog: React.FC<CustomerFormDialogProps> = ({
   const validate = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.name.trim()) newErrors.name = "Name is required";
-    // Optional: email format validation
     if (formData.email && !/^\S+@\S+\.\S+$/.test(formData.email)) {
       newErrors.email = "Invalid email format";
     }
-    // Optional: phone validation (basic)
     if (formData.phone && !/^[\d\s\+\-\(\)]+$/.test(formData.phone)) {
       newErrors.phone = "Invalid phone number";
     }
@@ -73,31 +72,22 @@ export const CustomerFormDialog: React.FC<CustomerFormDialogProps> = ({
     setLoading(true);
     try {
       if (mode === "add") {
-        await customerAPI.create(
-          {
-            name: formData.name,
-            email: formData.email || undefined,
-            phone: formData.phone || undefined,
-            loyaltyPointsBalance: formData.loyaltyPointsBalance,
-          },
-          "system",
-        );
+        await customerAPI.create({
+          name: formData.name,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
+        });
         dialogs.alert({
           title: "Success",
           message: "Customer created successfully.",
         });
       } else {
         if (!customerId) throw new Error("Customer ID missing for edit");
-        await customerAPI.update(
-          customerId,
-          {
-            name: formData.name,
-            email: formData.email || undefined,
-            phone: formData.phone || undefined,
-            loyaltyPointsBalance: formData.loyaltyPointsBalance,
-          },
-          "system",
-        );
+        await customerAPI.update(customerId, {
+          name: formData.name,
+          email: formData.email || undefined,
+          phone: formData.phone || undefined,
+        });
         dialogs.alert({
           title: "Success",
           message: "Customer updated successfully.",
@@ -117,10 +107,10 @@ export const CustomerFormDialog: React.FC<CustomerFormDialogProps> = ({
     <div className="fixed inset-0 z-50 overflow-y-auto">
       <div className="flex items-center justify-center min-h-screen px-4">
         <div
-          className="fixed inset-0 bg-black/50 transition-opacity"
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity"
           onClick={onClose}
         />
-        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-md p-6 shadow-xl">
+        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-md p-6 shadow-xl border border-[var(--border-color)]">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-[var(--text-primary)]">
               {mode === "add" ? "Add Customer" : "Edit Customer"}
@@ -149,7 +139,7 @@ export const CustomerFormDialog: React.FC<CustomerFormDialogProps> = ({
                   errors.name
                     ? "border-[var(--accent-red)]"
                     : "border-[var(--input-border)]"
-                } rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]`}
+                } rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none`}
               />
               {errors.name && (
                 <p className="mt-1 text-xs text-[var(--accent-red)]">
@@ -173,7 +163,7 @@ export const CustomerFormDialog: React.FC<CustomerFormDialogProps> = ({
                   errors.email
                     ? "border-[var(--accent-red)]"
                     : "border-[var(--input-border)]"
-                } rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]`}
+                } rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none`}
                 placeholder="customer@example.com"
               />
               {errors.email && (
@@ -198,7 +188,7 @@ export const CustomerFormDialog: React.FC<CustomerFormDialogProps> = ({
                   errors.phone
                     ? "border-[var(--accent-red)]"
                     : "border-[var(--input-border)]"
-                } rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]`}
+                } rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none`}
                 placeholder="+1234567890"
               />
               {errors.phone && (
@@ -208,27 +198,29 @@ export const CustomerFormDialog: React.FC<CustomerFormDialogProps> = ({
               )}
             </div>
 
-            {/* Loyalty Points */}
-            <div>
-              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                Initial Loyalty Points
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={formData.loyaltyPointsBalance}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    loyaltyPointsBalance: Number(e.target.value),
-                  })
-                }
-                className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
-              />
-            </div>
+            {/* Loyalty Points – Only for Add mode, but can also be set for Edit if needed */}
+            {mode === "add" && (
+              <div>
+                <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
+                  Initial Loyalty Points
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={formData.loyaltyPointsBalance}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      loyaltyPointsBalance: Number(e.target.value),
+                    })
+                  }
+                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
+                />
+              </div>
+            )}
 
             {/* Buttons */}
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex justify-end gap-3 pt-4 border-t border-[var(--border-color)]">
               <button
                 type="button"
                 onClick={onClose}
@@ -239,7 +231,7 @@ export const CustomerFormDialog: React.FC<CustomerFormDialogProps> = ({
               <button
                 type="submit"
                 disabled={loading}
-                className="px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] disabled:opacity-50 flex items-center gap-2"
+                className="px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] disabled:opacity-50 flex items-center gap-2"
               >
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />}
                 {mode === "add" ? "Create" : "Save"}
