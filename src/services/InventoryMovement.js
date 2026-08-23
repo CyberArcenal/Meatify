@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -38,7 +38,7 @@ class InventoryMovementService {
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.batchRepository = AppDataSource.getRepository(Batch);
     this.saleRepository = AppDataSource.getRepository(Sale);
-    console.log("InventoryMovementService initialized");
+    logger.debug("InventoryMovementService initialized");
   }
 
   async getRepositories() {
@@ -63,7 +63,7 @@ class InventoryMovementService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[InventoryMovement._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -71,7 +71,7 @@ class InventoryMovementService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[InventoryMovement._getRepo] Using global repository (fallback)`);
+    logger.debug(`[InventoryMovement._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -143,7 +143,7 @@ class InventoryMovementService {
 
       const saved = await saveDb(movementRepo, movement, { queryRunner: qr });
       await auditLogger.logCreate("InventoryMovement", saved.id, saved, user);
-      console.log(`InventoryMovement created: #${saved.id} - ${saved.movementType} (${saved.qtyChange})`);
+      logger.debug(`InventoryMovement created: #${saved.id} - ${saved.movementType} (${saved.qtyChange})`);
       return saved;
     } catch (error) {
       console.error("Failed to create inventory movement:", error.message);
@@ -182,7 +182,7 @@ class InventoryMovementService {
 
       const saved = await updateDb(movementRepo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("InventoryMovement", id, oldData, saved, user);
-      console.log(`InventoryMovement updated: #${id}`);
+      logger.debug(`InventoryMovement updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update inventory movement:", error.message);
@@ -217,8 +217,8 @@ class InventoryMovementService {
     // Optionally check if movement is too old to delete? We'll just allow.
 
     await removeDb(movementRepo, movement, { queryRunner: qr });
-    await auditLogger.logDelete("InventoryMovement", id, movement, user);
-    console.log(`InventoryMovement #${id} permanently deleted`);
+    await auditLogger.debugDelete("InventoryMovement", id, movement, user);
+    logger.debug(`InventoryMovement #${id} permanently deleted`);
   }
 
   /**
@@ -241,7 +241,7 @@ class InventoryMovementService {
     if (!movement) {
       throw new Error(`InventoryMovement with ID ${id} not found`);
     }
-    await auditLogger.logView("InventoryMovement", id, "system");
+    await logger.debug("InventoryMovement", id, "system");
     return movement;
   }
 
@@ -309,7 +309,7 @@ class InventoryMovementService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("InventoryMovement", null, "system");
+    await logger.debug("InventoryMovement", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -419,8 +419,8 @@ class InventoryMovementService {
         };
       }
 
-      await auditLogger.logExport("InventoryMovement", format, filters, user);
-      console.log(`Exported ${movements.length} inventory movements in ${format} format`);
+      await auditLogger.debugExport("InventoryMovement", format, filters, user);
+      logger.debug(`Exported ${movements.length} inventory movements in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export inventory movements:", error);

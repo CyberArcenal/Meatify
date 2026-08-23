@@ -4,6 +4,7 @@ const fs = require("fs").promises;
 const path = require("path");
 const { app } = require("electron");
 const notificationService = require("../../services/Notification");
+const { logger } = require("../logger");
 
 
 class MigrationManager {
@@ -55,7 +56,7 @@ class MigrationManager {
       // Kopyahin ang database file
       await fs.copyFile(dbPath, backupPath);
 
-      console.log(`✅ Database backup created: ${backupPath}`);
+      logger.debug(`✅ Database backup created: ${backupPath}`);
       return { success: true, path: backupPath };
     } catch (error) {
       // @ts-ignore
@@ -102,7 +103,7 @@ class MigrationManager {
    */
   async runMigrations() {
     // 1. Backup bago mag-migrate
-    console.log("📦 Creating database backup before migration...");
+    logger.debug("📦 Creating database backup before migration...");
     const backupResult = await this.backupDatabase();
 
     // 2. Magpadala ng in-app notification tungkol sa backup result
@@ -130,12 +131,12 @@ class MigrationManager {
 
     // 3. Patakbuhin ang migrations (kahit mag-fail ang backup)
     try {
-      console.log("🚀 Running migrations...");
+      logger.debug("🚀 Running migrations...");
       const result = await this.dataSource.runMigrations({
         transaction: "all", // lahat sa isang transaction para safe
       });
 
-      console.log(`✅ Migration complete! Applied ${result.length} migration(s)`);
+      logger.debug(`✅ Migration complete! Applied ${result.length} migration(s)`);
       return {
         success: true,
         applied: result.length,
@@ -148,7 +149,7 @@ class MigrationManager {
       // === LIGHT REPAIR: "table already exists" case ===
       // @ts-ignore
       if (error.message.includes("already exists")) {
-        console.log("🔧 Detected 'already exists' error. Marking migration as done...");
+        logger.debug("🔧 Detected 'already exists' error. Marking migration as done...");
 
         try {
           // Kunin yung latest pending migration
@@ -164,7 +165,7 @@ class MigrationManager {
               VALUES (${Date.now()}, '${lastPending.name}')
             `);
 
-            console.log(`✅ Marked "${lastPending.name}" as executed.`);
+            logger.debug(`✅ Marked "${lastPending.name}" as executed.`);
           }
 
           return {

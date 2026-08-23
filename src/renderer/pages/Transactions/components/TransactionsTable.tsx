@@ -1,3 +1,4 @@
+// src/renderer/pages/sales/transactions/components/TransactionsTable.tsx
 import React from "react";
 import {
   Eye,
@@ -15,10 +16,7 @@ import Decimal from "decimal.js";
 import { format } from "date-fns";
 import type { Sale } from "../../../api/core/sale";
 import type { PaymentMethod, SaleStatus } from "../hooks/useTransactions";
-import { useSettings } from "../../../contexts/SettingsContext";
-import { useIsRefundable } from "../../../utils/posUtils";
 
-// Helper components (StatusBadge, PaymentMethodIcon) – can be moved to separate files if desired
 export const StatusBadge: React.FC<{ status: SaleStatus }> = ({ status }) => {
   const config = {
     initiated: {
@@ -85,8 +83,6 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   onPrint,
   onRefund,
 }) => {
-  const { settings, getSetting, updateSetting } = useSettings();
-  const refundWindowDays = getSetting("sales", "refund_window_days", 7);
   if (transactions.length === 0) {
     return (
       <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-8 text-center">
@@ -134,11 +130,8 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
             {transactions.map((tx) => (
               <tr
                 key={tx.id}
-                className="hover:bg-[var(--table-row-hover)] transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onViewDetails(tx);
-                }}
+                className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
+                onClick={() => onViewDetails(tx)}
               >
                 <td className="px-4 py-3 text-sm font-mono text-[var(--text-primary)]">
                   #{tx.id}
@@ -162,7 +155,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                 <td className="px-4 py-3">
                   <StatusBadge status={tx.status as SaleStatus} />
                 </td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-[var(--accent-green)]">
+                <td className="px-4 py-3 text-right text-sm font-semibold text-[var(--accent-gold)]">
                   ₱{new Decimal(tx.totalAmount).toFixed(2)}
                 </td>
                 <td className="px-4 py-3">
@@ -172,7 +165,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                         e.stopPropagation();
                         onViewDetails(tx);
                       }}
-                      className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-blue)] hidden"
+                      className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-blue)]"
                       title="View Details"
                     >
                       <Eye className="w-4 h-4" />
@@ -193,10 +186,7 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
                           e.stopPropagation();
                           onRefund(tx);
                         }}
-                        disabled={!useIsRefundable(tx)}
-                        className={`p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-red)] ${
-                          !useIsRefundable(tx) ? "hidden" : ""
-                        }`}
+                        className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-red)]"
                         title="Refund"
                       >
                         <RotateCcw className="w-4 h-4" />

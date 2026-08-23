@@ -1,202 +1,147 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw } from 'lucide-react';
-import FilterBar from './components/FilterBar';
-import type { ReturnRefundEntry, ReturnRefundStats, ReturnRefundSummary } from '../../../api/analytics/return_refund_reports';
-import returnRefundAPI from '../../../api/analytics/return_refund_reports';
-import ExportButton from './components/ExportButton';
-import SummaryCards from './components/SummaryCards';
-import StatsCards from './components/StatsCards';
-import ReturnsTable from './components/ReturnsTable';
+// src/renderer/pages/analytics/returns/index.tsx
+import React, { useEffect, useState } from "react";
+import { RefreshCw, Loader2, AlertCircle } from "lucide-react";
+import { useReturnRefunds } from "./hooks/useReturnRefunds";
+import { usePagination } from "../../../contexts/PaginationContext";
+import { FilterBar } from "./components/FilterBar";
+import { SummaryCards } from "./components/SummaryCards";
+import { StatsCards } from "./components/StatsCards";
+import { ReturnsTable } from "./components/ReturnsTable";
+import type { ReturnRefund } from "../../../api/core/returnRefund";
+import { ReturnViewDialog } from "./components/ReturnViewDialog";
 
 const ReturnRefundReportsPage: React.FC = () => {
-  // Filters
-  const [customerId, setCustomerId] = useState<number | undefined>();
-  const [status, setStatus] = useState('');
-  const [refundMethod, setRefundMethod] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [minAmount, setMinAmount] = useState<number | undefined>();
-  const [maxAmount, setMaxAmount] = useState<number | undefined>();
+  const { pagination, setPagination, clearPagination } = usePagination();
 
-  // Data states
-  const [summary, setSummary] = useState<ReturnRefundSummary | null>(null);
-  const [stats, setStats] = useState<ReturnRefundStats | null>(null);
-  const [returns, setReturns] = useState<ReturnRefundEntry[]>([]);
-
-  // Pagination
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const limit = 10;
-
-  // Loading states
-  const [loading, setLoading] = useState({
-    summary: false,
-    stats: false,
-    returns: false,
+  const {
+    returns,
+    loading,
+    error,
+    totalItems,
+    filters,
+    setFilters,
+    reload,
+    summary,
+    stats,
+  } = useReturnRefunds({
+    search: "",
+    status: "",
+    refundMethod: "",
+    startDate: undefined,
+    endDate: undefined,
+    customerId: undefined,
+    sortBy: "createdAt",
+    sortOrder: "DESC",
   });
-  const [error, setError] = useState<string | null>(null);
 
-  // Fetch functions
-  const fetchSummary = useCallback(async () => {
-    setLoading(prev => ({ ...prev, summary: true }));
-    try {
-      const res = await returnRefundAPI.getSummary({
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-      if (res.status) setSummary(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, summary: false }));
-    }
-  }, [startDate, endDate]);
+  const [selectedReturn, setSelectedReturn] = useState<ReturnRefund | null>(null);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
 
-  const fetchStats = useCallback(async () => {
-    setLoading(prev => ({ ...prev, stats: true }));
-    try {
-      const res = await returnRefundAPI.getStats({
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-      if (res.status) setStats(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, stats: false }));
-    }
-  }, [startDate, endDate]);
-
-  const fetchReturns = useCallback(async () => {
-    setLoading(prev => ({ ...prev, returns: true }));
-    try {
-      const res = await returnRefundAPI.getAll({
-        customerId,
-        status: status || undefined,
-        refundMethod: refundMethod || undefined,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        minAmount,
-        maxAmount,
-        searchTerm: searchTerm || undefined,
-        page,
-        limit,
-      });
-      if (res.status) {
-        setReturns(res.data);
-        setTotal(res.total);
-        setTotalPages(Math.ceil(res.total / limit));
-      } else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, returns: false }));
-    }
-  }, [
-    customerId,
-    status,
-    refundMethod,
-    startDate,
-    endDate,
-    minAmount,
-    maxAmount,
-    searchTerm,
-    page,
-    limit,
-  ]);
-
-  // Initial load and filter changes
+  // Sync with global pagination
   useEffect(() => {
-    fetchSummary();
-    fetchStats();
-    fetchReturns();
-  }, [
-    fetchSummary,
-    fetchStats,
-    fetchReturns,
-    // Dependencies are already in the fetch functions
-  ]);
+    setPagination({
+      currentPage: pagination.currentPage,
+      totalItems: totalItems,
+      pageSize: pagination.pageSize,
+      onPageChange: (page) => {
+        reload({ page, limit: pagination.pageSize });
+      },
+      onPageSizeChange: (size) => {
+        reload({ page: 1, limit: size });
+      },
+      pageSizeOptions: [10, 20, 50, 100],
+      showPageSize: true,
+    });
 
-  const handleFilterChange = (filters: any) => {
-    setCustomerId(filters.customerId ? Number(filters.customerId) : undefined);
-    setStatus(filters.status);
-    setRefundMethod(filters.refundMethod);
-    setStartDate(filters.startDate);
-    setEndDate(filters.endDate);
-    setSearchTerm(filters.searchTerm);
-    setMinAmount(filters.minAmount ? Number(filters.minAmount) : undefined);
-    setMaxAmount(filters.maxAmount ? Number(filters.maxAmount) : undefined);
-    setPage(1);
+    return () => clearPagination();
+  }, [totalItems, pagination.currentPage, pagination.pageSize]);
+
+  const handleFilterChange = (key: keyof typeof filters, value: any) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+    reload({ page: 1, limit: pagination.pageSize });
   };
 
   const handleRefresh = () => {
-    setError(null);
-    fetchSummary();
-    fetchStats();
-    fetchReturns();
+    reload({ page: pagination.currentPage, limit: pagination.pageSize });
   };
 
-  const anyLoading = Object.values(loading).some(v => v);
+  const handleView = (returnRefund: ReturnRefund) => {
+    setSelectedReturn(returnRefund);
+    setViewDialogOpen(true);
+  };
+
+  const handleCloseView = () => {
+    setViewDialogOpen(false);
+    setSelectedReturn(null);
+  };
 
   return (
-    <div className="p-6 space-y-6 bg-[var(--background-color)] min-h-screen">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Returns & Refunds Report</h1>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={anyLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--card-secondary-bg)] text-[var(--text-secondary)] rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${anyLoading ? 'animate-spin' : ''}`} />
-            Refresh
-          </button>
-          <ExportButton
-            customerId={customerId}
-            status={status}
-            refundMethod={refundMethod}
-            startDate={startDate}
-            endDate={endDate}
-            minAmount={minAmount}
-            maxAmount={maxAmount}
-            searchTerm={searchTerm}
-          />
+    <div className="h-full flex flex-col bg-[var(--card-bg)] p-6 rounded-lg">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--accent-gold)] to-[var(--accent-gold-hover)] bg-clip-text text-transparent">
+            Returns & Refunds Report
+          </h1>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">
+            {totalItems} total return transactions
+          </p>
         </div>
+        <button
+          onClick={handleRefresh}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 bg-[var(--card-secondary-bg)] rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors text-[var(--text-primary)] border border-[var(--border-color)] disabled:opacity-50"
+        >
+          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          Refresh
+        </button>
       </div>
 
+      {/* Summary Cards */}
+      {!loading && !error && <SummaryCards summary={summary} />}
+
+      {/* Stats Cards */}
+      {!loading && !error && <StatsCards stats={stats} />}
+
+      {/* Filter Bar */}
       <FilterBar
-        customerId={customerId}
-        status={status}
-        refundMethod={refundMethod}
-        startDate={startDate}
-        endDate={endDate}
-        searchTerm={searchTerm}
-        minAmount={minAmount}
-        maxAmount={maxAmount}
+        filters={filters}
         onFilterChange={handleFilterChange}
+        onRefresh={handleRefresh}
       />
 
+      {/* Error Display */}
       {error && (
-        <div className="bg-[var(--danger-bg)] text-[var(--danger-color)] p-4 rounded-lg border border-[var(--danger-border)]">
-          Error: {error}
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mt-4 text-red-400">
+          {error}
+          <button
+            onClick={() => reload({ page: 1, limit: pagination.pageSize })}
+            className="ml-3 underline"
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      <SummaryCards summary={summary} loading={loading.summary} />
+      {/* Table */}
+      {loading ? (
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
+        </div>
+      ) : (
+        <div className="flex-1 mt-4">
+          <ReturnsTable
+            returns={returns}
+            onView={handleView}
+          />
+        </div>
+      )}
 
-      <StatsCards stats={stats} loading={loading.stats} />
-
-      <ReturnsTable
-        data={returns}
-        loading={loading.returns}
-        page={page}
-        totalPages={totalPages}
-        total={total}
-        onPageChange={setPage}
+      {/* View Dialog */}
+      <ReturnViewDialog
+        isOpen={viewDialogOpen}
+        returnRefund={selectedReturn}
+        onClose={handleCloseView}
       />
     </div>
   );

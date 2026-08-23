@@ -1,17 +1,17 @@
+// src/renderer/pages/sales/transactions/components/TransactionDetailsDrawer.tsx
 import React from "react";
 import {
   X,
   Printer,
   RotateCcw,
-  Ticket, // optional icon for voucher
+  Ticket,
+  Beef,
 } from "lucide-react";
 import Decimal from "decimal.js";
 import { format } from "date-fns";
 import type { Sale } from "../../../api/core/sale";
 import type { PaymentMethod, SaleStatus } from "../hooks/useTransactions";
 import { StatusBadge, PaymentMethodIcon } from "./TransactionsTable";
-import { useSettings } from "../../../contexts/SettingsContext";
-import { useIsRefundable } from "../../../utils/posUtils";
 
 interface TransactionDetailsDrawerProps {
   transaction: Sale | null;
@@ -27,12 +27,12 @@ export const TransactionDetailsDrawer: React.FC<
   if (!isOpen || !transaction) return null;
 
   const subtotal = transaction.saleItems.reduce(
-    (sum, item) => sum.plus(new Decimal(item.unitPrice).times(item.quantity)),
-    new Decimal(0),
+    (sum, item) => sum.plus(new Decimal(item.unitPrice).times(item.weightKg)),
+    new Decimal(0)
   );
   const totalTax = transaction.saleItems.reduce(
     (sum, item) => sum.plus(new Decimal(item.tax || 0)),
-    new Decimal(0),
+    new Decimal(0)
   );
 
   return (
@@ -75,7 +75,7 @@ export const TransactionDetailsDrawer: React.FC<
                 <span className="text-sm text-[var(--text-primary)]">
                   {format(
                     new Date(transaction.timestamp),
-                    "MMM dd, yyyy HH:mm:ss",
+                    "MMM dd, yyyy HH:mm:ss"
                   )}
                 </span>
               </div>
@@ -139,16 +139,16 @@ export const TransactionDetailsDrawer: React.FC<
                   >
                     <div>
                       <p className="text-sm font-medium text-[var(--text-primary)]">
-                        {item.product.name}
+                        {item.meat?.name || `Meat #${item.meatId}`}
                       </p>
                       <p className="text-xs text-[var(--text-tertiary)]">
-                        {item.quantity} x ₱
+                        {item.weightKg} kg × ₱
                         {new Decimal(item.unitPrice).toFixed(2)}
                         {item.discount > 0 && ` - ₱${item.discount}`}
                         {item.tax > 0 && ` + ₱${item.tax}`}
                       </p>
                     </div>
-                    <span className="text-sm font-semibold text-[var(--accent-green)]">
+                    <span className="text-sm font-semibold text-[var(--accent-gold)]">
                       ₱{new Decimal(item.lineTotal).toFixed(2)}
                     </span>
                   </div>
@@ -182,7 +182,7 @@ export const TransactionDetailsDrawer: React.FC<
               )}
               <div className="flex justify-between text-base font-bold pt-2 border-t border-[var(--border-color)]">
                 <span className="text-[var(--text-primary)]">Total</span>
-                <span className="text-[var(--accent-green)]">
+                <span className="text-[var(--accent-gold)]">
                   ₱{new Decimal(transaction.totalAmount).toFixed(2)}
                 </span>
               </div>
@@ -230,7 +230,7 @@ export const TransactionDetailsDrawer: React.FC<
           <div className="p-4 border-t border-[var(--border-color)] flex gap-2">
             <button
               onClick={() => onPrint?.(transaction)}
-              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)]"
+              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)]"
             >
               <Printer className="w-4 h-4" />
               Print Receipt
@@ -238,13 +238,7 @@ export const TransactionDetailsDrawer: React.FC<
             {transaction.status === "paid" && (
               <button
                 onClick={() => onRefund?.(transaction)}
-                disabled={!useIsRefundable(transaction)}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg 
-      ${
-        useIsRefundable(transaction)
-          ? "bg-[var(--accent-red)] text-white hover:bg-[var(--accent-red-hover)]"
-          : "bg-gray-500 text-gray-300 cursor-not-allowed"
-      }`}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-[var(--accent-red)] text-white rounded-lg hover:bg-[var(--accent-red-hover)]"
               >
                 <RotateCcw className="w-4 h-4" />
                 Refund

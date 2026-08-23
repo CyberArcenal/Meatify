@@ -4,7 +4,7 @@ const { logger } = require("../utils/logger");
 const { BatchStateService } = require("../stateServices/Batch");
 const { AppDataSource } = require("../main/db/data-source");
 
-console.log("[Subscriber] Loading BatchSubscriber");
+logger.debug("[Subscriber] Loading BatchSubscriber");
 
 class BatchSubscriber {
   constructor() {

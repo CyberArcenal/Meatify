@@ -1,11 +1,7 @@
-// src/renderer/pages/supplier/components/SupplierTable.tsx
+// src/renderer/pages/inventory/suppliers/components/SupplierTable.tsx
 import React from "react";
-import { Eye, Edit, Trash2, Package, Check, X } from "lucide-react";
+import { Eye, Edit, Trash2, Beef, Check, X } from "lucide-react";
 import type { Supplier } from "../../../api/core/supplier";
-
-// ----------------------------------------------------------------------
-// Helper Components
-// ----------------------------------------------------------------------
 
 const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => {
   return active ? (
@@ -21,13 +17,9 @@ const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => {
   );
 };
 
-// ----------------------------------------------------------------------
-// Main Component
-// ----------------------------------------------------------------------
-
 interface SupplierTableProps {
   suppliers: Supplier[];
-  productCounts: Map<number, number>;
+  meatCounts: Map<number, number>;
   onView: (supplier: Supplier) => void;
   onEdit: (supplier: Supplier) => void;
   onDelete: (supplier: Supplier) => void;
@@ -35,7 +27,7 @@ interface SupplierTableProps {
 
 export const SupplierTable: React.FC<SupplierTableProps> = ({
   suppliers,
-  productCounts,
+  meatCounts,
   onView,
   onEdit,
   onDelete,
@@ -43,7 +35,7 @@ export const SupplierTable: React.FC<SupplierTableProps> = ({
   if (suppliers.length === 0) {
     return (
       <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-8 text-center">
-        <Package className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
+        <Beef className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
         <p className="text-[var(--text-primary)] font-medium">
           No suppliers found
         </p>
@@ -56,21 +48,20 @@ export const SupplierTable: React.FC<SupplierTableProps> = ({
 
   return (
     <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg overflow-hidden flex flex-col">
-      {/* Fixed Header Table */}
       <table className="w-full table-fixed">
         <thead className="bg-[var(--table-header-bg)]">
           <tr>
-            <th className="w-1/6 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+            <th className="w-1/5 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
               Name
             </th>
-            <th className="w-1/6 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Contact Info
+            <th className="w-1/5 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+              Contact
             </th>
-            <th className="w-1/6 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+            <th className="w-1/5 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
               Address
             </th>
             <th className="w-1/6 px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Products
+              Meats
             </th>
             <th className="w-1/6 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
               Status
@@ -82,7 +73,6 @@ export const SupplierTable: React.FC<SupplierTableProps> = ({
         </thead>
       </table>
 
-      {/* Scrollable Body Table */}
       <div className="flex-1 overflow-auto min-h-0">
         <table className="w-full table-fixed">
           <tbody className="divide-y divide-[var(--border-color)]">
@@ -92,17 +82,17 @@ export const SupplierTable: React.FC<SupplierTableProps> = ({
                 onClick={() => onView(supplier)}
                 className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
               >
-                <td className="w-1/6 px-4 py-3 text-sm font-medium text-[var(--text-primary)]">
+                <td className="w-1/5 px-4 py-3 text-sm font-medium text-[var(--text-primary)]">
                   {supplier.name}
                 </td>
-                <td className="w-1/6 px-4 py-3 text-sm text-[var(--text-secondary)] truncate">
+                <td className="w-1/5 px-4 py-3 text-sm text-[var(--text-secondary)] truncate">
                   {supplier.phone || supplier.email || "-"}
                 </td>
-                <td className="w-1/6 px-4 py-3 text-sm text-[var(--text-secondary)] truncate">
+                <td className="w-1/5 px-4 py-3 text-sm text-[var(--text-secondary)] truncate">
                   {supplier.address || "—"}
                 </td>
                 <td className="w-1/6 px-4 py-3 text-right text-sm font-mono text-[var(--text-primary)]">
-                  {productCounts.get(supplier.id) ?? 0}
+                  {meatCounts.get(supplier.id) ?? 0}
                 </td>
                 <td className="w-1/6 px-4 py-3 text-center">
                   <StatusBadge active={supplier.isActive} />
@@ -135,7 +125,7 @@ export const SupplierTable: React.FC<SupplierTableProps> = ({
                         onDelete(supplier);
                       }}
                       className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-red)]"
-                      title="Delete (Deactivate)"
+                      title="Deactivate"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

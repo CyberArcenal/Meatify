@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 const LOG_STATUS = {
   QUEUED: "queued",
   SENT: "sent",
@@ -39,7 +39,7 @@ class NotificationLogService {
       await AppDataSource.initialize();
     }
     this.logRepository = AppDataSource.getRepository(NotificationLog);
-    console.log("NotificationLogService initialized");
+    logger.debug("NotificationLogService initialized");
   }
 
   async getRepository() {
@@ -91,7 +91,7 @@ class NotificationLogService {
 
     const saved = await saveDb(repo, log, { queryRunner: qr });
     await auditLogger.logCreate("NotificationLog", saved.id, saved, user);
-    console.log(`NotificationLog created: #${saved.id} - ${saved.subject}`);
+    logger.debug(`NotificationLog created: #${saved.id} - ${saved.subject}`);
     return saved;
   }
 
@@ -126,7 +126,7 @@ class NotificationLogService {
 
     const saved = await updateDb(repo, existing, { queryRunner: qr });
     await auditLogger.logUpdate("NotificationLog", id, oldData, saved, user);
-    console.log(`NotificationLog updated: #${id}`);
+    logger.debug(`NotificationLog updated: #${id}`);
     return saved;
   }
 
@@ -144,8 +144,8 @@ class NotificationLogService {
     }
 
     await removeDb(repo, log, { queryRunner: qr });
-    await auditLogger.logDelete("NotificationLog", id, log, user);
-    console.log(`NotificationLog #${id} permanently deleted`);
+    await auditLogger.debugDelete("NotificationLog", id, log, user);
+    logger.debug(`NotificationLog #${id} permanently deleted`);
   }
 
   /**
@@ -159,7 +159,7 @@ class NotificationLogService {
     if (!log) {
       throw new Error(`NotificationLog with ID ${id} not found`);
     }
-    await auditLogger.logView("NotificationLog", id, "system");
+    await logger.debug("NotificationLog", id, "system");
     return log;
   }
 
@@ -209,7 +209,7 @@ class NotificationLogService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("NotificationLog", null, "system");
+    await logger.debug("NotificationLog", null, "system");
     return result;
   }
 
@@ -307,8 +307,8 @@ class NotificationLogService {
         };
       }
 
-      await auditLogger.logExport("NotificationLog", format, filters, user);
-      console.log(`Exported ${logs.length} notification logs in ${format} format`);
+      await auditLogger.debugExport("NotificationLog", format, filters, user);
+      logger.debug(`Exported ${logs.length} notification logs in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export notification logs:", error);

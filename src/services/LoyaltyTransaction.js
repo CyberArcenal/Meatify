@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -35,7 +35,7 @@ class LoyaltyTransactionService {
     this.loyaltyRepository = AppDataSource.getRepository(LoyaltyTransaction);
     this.customerRepository = AppDataSource.getRepository(Customer);
     this.saleRepository = AppDataSource.getRepository(Sale);
-    console.log("LoyaltyTransactionService initialized");
+    logger.debug("LoyaltyTransactionService initialized");
   }
 
   async getRepositories() {
@@ -59,7 +59,7 @@ class LoyaltyTransactionService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[LoyaltyTransaction._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -67,7 +67,7 @@ class LoyaltyTransactionService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[LoyaltyTransaction._getRepo] Using global repository (fallback)`);
+    logger.debug(`[LoyaltyTransaction._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -135,7 +135,7 @@ class LoyaltyTransactionService {
 
       const saved = await saveDb(loyaltyRepo, transaction, { queryRunner: qr });
       await auditLogger.logCreate("LoyaltyTransaction", saved.id, saved, user);
-      console.log(
+      logger.debug(
         `LoyaltyTransaction created: #${saved.id} - ${saved.transactionType} (${saved.pointsChange > 0 ? "+" : ""}${saved.pointsChange})`
       );
       return saved;
@@ -180,7 +180,7 @@ class LoyaltyTransactionService {
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("LoyaltyTransaction", id, oldData, saved, user);
-      console.log(`LoyaltyTransaction updated: #${id}`);
+      logger.debug(`LoyaltyTransaction updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update loyalty transaction:", error.message);
@@ -216,8 +216,8 @@ class LoyaltyTransactionService {
       transaction.updatedAt = new Date();
 
       const saved = await updateDb(repo, transaction, { queryRunner: qr });
-      await auditLogger.logDelete("LoyaltyTransaction", id, oldData, user);
-      console.log(`LoyaltyTransaction soft deleted: #${id}`);
+      await auditLogger.debugDelete("LoyaltyTransaction", id, oldData, user);
+      logger.debug(`LoyaltyTransaction soft deleted: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to delete loyalty transaction:", error.message);
@@ -252,7 +252,7 @@ class LoyaltyTransactionService {
 
       const saved = await updateDb(repo, transaction, { queryRunner: qr });
       await auditLogger.logUpdate("LoyaltyTransaction", id, oldData, saved, user);
-      console.log(`LoyaltyTransaction restored: #${id}`);
+      logger.debug(`LoyaltyTransaction restored: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to restore loyalty transaction:", error.message);
@@ -277,8 +277,8 @@ class LoyaltyTransactionService {
     }
 
     await removeDb(repo, transaction, { queryRunner: qr });
-    await auditLogger.logDelete("LoyaltyTransaction", id, transaction, user);
-    console.log(`LoyaltyTransaction #${id} permanently deleted`);
+    await auditLogger.debugDelete("LoyaltyTransaction", id, transaction, user);
+    logger.debug(`LoyaltyTransaction #${id} permanently deleted`);
   }
 
   /**
@@ -305,7 +305,7 @@ class LoyaltyTransactionService {
     if (!transaction) {
       throw new Error(`LoyaltyTransaction with ID ${id} not found`);
     }
-    await auditLogger.logView("LoyaltyTransaction", id, "system");
+    await logger.debug("LoyaltyTransaction", id, "system");
     return transaction;
   }
 
@@ -380,7 +380,7 @@ class LoyaltyTransactionService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("LoyaltyTransaction", null, "system");
+    await logger.debug("LoyaltyTransaction", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -506,8 +506,8 @@ class LoyaltyTransactionService {
         };
       }
 
-      await auditLogger.logExport("LoyaltyTransaction", format, filters, user);
-      console.log(`Exported ${transactions.length} loyalty transactions in ${format} format`);
+      await auditLogger.debugExport("LoyaltyTransaction", format, filters, user);
+      logger.debug(`Exported ${transactions.length} loyalty transactions in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export loyalty transactions:", error);

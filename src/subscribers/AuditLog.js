@@ -2,7 +2,7 @@
 const AuditLog = require("../entities/AuditLog");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading AuditLogSubscriber");
+logger.debug("[Subscriber] Loading AuditLogSubscriber");
 
 class AuditLogSubscriber {
   listenTo() {

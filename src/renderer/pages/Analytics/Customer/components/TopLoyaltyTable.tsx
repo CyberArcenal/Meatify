@@ -1,9 +1,12 @@
 import React from 'react';
 import { Award } from 'lucide-react';
-import type { TopCustomerLoyalty } from '../../../../api/analytics/customer_insight';
 
 interface Props {
-  data: TopCustomerLoyalty[];
+  data: Array<{
+    customerId: number;
+    customerName: string;
+    points: number;
+  }>;
 }
 
 const TopLoyaltyTable: React.FC<Props> = ({ data }) => {

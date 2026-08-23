@@ -2,7 +2,7 @@
 const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading LoyaltyTransactionSubscriber");
+logger.debug("[Subscriber] Loading LoyaltyTransactionSubscriber");
 
 class LoyaltyTransactionSubscriber {
   listenTo() {

@@ -3,7 +3,7 @@ const InventoryMovement = require("../entities/InventoryMovement");
 const { logger } = require("../utils/logger");
 const { InventoryMovementStateService } = require("../stateServices/InventoryMovement");
 
-console.log("[Subscriber] Loading InventoryMovementSubscriber");
+logger.debug("[Subscriber] Loading InventoryMovementSubscriber");
 
 class InventoryMovementSubscriber {
   constructor() {

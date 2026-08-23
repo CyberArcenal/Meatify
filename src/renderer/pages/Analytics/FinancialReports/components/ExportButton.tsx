@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Download } from 'lucide-react';
-import financialReportsAPI from '../../../../api/analytics/financial_reports';
+import financialReportsAPI from '../../../../api/analytics/financialReports';
 
 interface Props {
   startDate: string;
@@ -13,12 +13,11 @@ const ExportButton: React.FC<Props> = ({ startDate, endDate }) => {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await financialReportsAPI.exportReport({
+      const res = await financialReportsAPI.getData({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
       });
-      if (res.status && res.data) {
-        // Create a downloadable JSON file
+      if (res.status) {
         const jsonStr = JSON.stringify(res.data, null, 2);
         const blob = new Blob([jsonStr], { type: 'application/json' });
         const url = URL.createObjectURL(blob);

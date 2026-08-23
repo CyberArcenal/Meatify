@@ -1,9 +1,13 @@
 import React from 'react';
 import { Users, Award, TrendingUp, UserPlus } from 'lucide-react';
-import type { CustomerSummary } from '../../../../api/analytics/customer_insight';
 
 interface Props {
-  summary: CustomerSummary;
+  summary: {
+    totalCustomers: number;
+    activeCustomers: number;
+    averageLoyaltyPoints: number;
+    newCustomersThisMonth: number;
+  };
 }
 
 const SummaryCards: React.FC<Props> = ({ summary }) => {

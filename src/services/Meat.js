@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -37,7 +37,7 @@ class MeatService {
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.categoryRepository = AppDataSource.getRepository(Category);
     this.supplierRepository = AppDataSource.getRepository(Supplier);
-    console.log("MeatService initialized");
+    logger.debug("MeatService initialized");
   }
 
   async getRepositories() {
@@ -61,7 +61,7 @@ class MeatService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[Meat._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -69,7 +69,7 @@ class MeatService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[Meat._getRepo] Using global repository (fallback)`);
+    logger.debug(`[Meat._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -152,7 +152,7 @@ class MeatService {
 
       const saved = await saveDb(meatRepo, meat, { queryRunner: qr });
       await auditLogger.logCreate("Meat", saved.id, saved, user);
-      console.log(`Meat created: #${saved.id} - ${saved.name} (SKU: ${saved.sku})`);
+      logger.debug(`Meat created: #${saved.id} - ${saved.name} (SKU: ${saved.sku})`);
       return saved;
     } catch (error) {
       console.error("Failed to create meat:", error.message);
@@ -246,7 +246,7 @@ class MeatService {
 
       const saved = await updateDb(meatRepo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("Meat", id, oldData, saved, user);
-      console.log(`Meat updated: #${id}`);
+      logger.debug(`Meat updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update meat:", error.message);
@@ -280,8 +280,8 @@ class MeatService {
       meat.updatedAt = new Date();
 
       const saved = await updateDb(meatRepo, meat, { queryRunner: qr });
-      await auditLogger.logDelete("Meat", id, oldData, user);
-      console.log(`Meat deactivated: #${id}`);
+      await auditLogger.debugDelete("Meat", id, oldData, user);
+      logger.debug(`Meat deactivated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to delete meat:", error.message);
@@ -316,7 +316,7 @@ class MeatService {
 
       const saved = await updateDb(meatRepo, meat, { queryRunner: qr });
       await auditLogger.logUpdate("Meat", id, oldData, saved, user);
-      console.log(`Meat restored: #${id}`);
+      logger.debug(`Meat restored: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to restore meat:", error.message);
@@ -355,8 +355,8 @@ class MeatService {
     // Optionally delete image file if needed
 
     await removeDb(meatRepo, meat, { queryRunner: qr });
-    await auditLogger.logDelete("Meat", id, meat, user);
-    console.log(`Meat #${id} permanently deleted`);
+    await auditLogger.debugDelete("Meat", id, meat, user);
+    logger.debug(`Meat #${id} permanently deleted`);
   }
 
   /**
@@ -383,7 +383,7 @@ class MeatService {
     if (!meat) {
       throw new Error(`Meat with ID ${id} not found`);
     }
-    await auditLogger.logView("Meat", id, "system");
+    await logger.debug("Meat", id, "system");
     return meat;
   }
 
@@ -439,7 +439,7 @@ class MeatService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("Meat", null, "system");
+    await logger.debug("Meat", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -533,8 +533,8 @@ class MeatService {
         };
       }
 
-      await auditLogger.logExport("Meat", format, filters, user);
-      console.log(`Exported ${meats.length} meats in ${format} format`);
+      await auditLogger.debugExport("Meat", format, filters, user);
+      logger.debug(`Exported ${meats.length} meats in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export meats:", error);

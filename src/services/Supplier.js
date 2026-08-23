@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -40,7 +40,7 @@ class SupplierService {
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.purchaseRepository = AppDataSource.getRepository(Purchase);
     this.batchRepository = AppDataSource.getRepository(Batch);
-    console.log("SupplierService initialized");
+    logger.debug("SupplierService initialized");
   }
 
   async getRepositories() {
@@ -65,7 +65,7 @@ class SupplierService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[Supplier._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -73,7 +73,7 @@ class SupplierService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[Supplier._getRepo] Using global repository (fallback)`);
+    logger.debug(`[Supplier._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -128,7 +128,7 @@ class SupplierService {
 
       const saved = await saveDb(repo, supplier, { queryRunner: qr });
       await auditLogger.logCreate("Supplier", saved.id, saved, user);
-      console.log(`Supplier created: #${saved.id} - ${saved.name}`);
+      logger.debug(`Supplier created: #${saved.id} - ${saved.name}`);
       return saved;
     } catch (error) {
       console.error("Failed to create supplier:", error.message);
@@ -190,7 +190,7 @@ class SupplierService {
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("Supplier", id, oldData, saved, user);
-      console.log(`Supplier updated: #${id}`);
+      logger.debug(`Supplier updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update supplier:", error.message);
@@ -246,8 +246,8 @@ class SupplierService {
       supplier.updatedAt = new Date();
 
       const saved = await updateDb(repo, supplier, { queryRunner: qr });
-      await auditLogger.logDelete("Supplier", id, oldData, user);
-      console.log(`Supplier deactivated: #${id}`);
+      await auditLogger.debugDelete("Supplier", id, oldData, user);
+      logger.debug(`Supplier deactivated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to delete supplier:", error.message);
@@ -282,7 +282,7 @@ class SupplierService {
 
       const saved = await updateDb(repo, supplier, { queryRunner: qr });
       await auditLogger.logUpdate("Supplier", id, oldData, saved, user);
-      console.log(`Supplier restored: #${id}`);
+      logger.debug(`Supplier restored: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to restore supplier:", error.message);
@@ -344,8 +344,8 @@ class SupplierService {
     }
 
     await removeDb(supplierRepo, supplier, { queryRunner: qr });
-    await auditLogger.logDelete("Supplier", id, supplier, user);
-    console.log(`Supplier #${id} permanently deleted`);
+    await auditLogger.debugDelete("Supplier", id, supplier, user);
+    logger.debug(`Supplier #${id} permanently deleted`);
   }
 
   /**
@@ -370,7 +370,7 @@ class SupplierService {
     if (!supplier) {
       throw new Error(`Supplier with ID ${id} not found`);
     }
-    await auditLogger.logView("Supplier", id, "system");
+    await logger.debug("Supplier", id, "system");
     return supplier;
   }
 
@@ -411,7 +411,7 @@ class SupplierService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("Supplier", null, "system");
+    await logger.debug("Supplier", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -532,8 +532,8 @@ class SupplierService {
         };
       }
 
-      await auditLogger.logExport("Supplier", format, filters, user);
-      console.log(`Exported ${suppliers.length} suppliers in ${format} format`);
+      await auditLogger.debugExport("Supplier", format, filters, user);
+      logger.debug(`Exported ${suppliers.length} suppliers in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export suppliers:", error);

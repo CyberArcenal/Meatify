@@ -1,9 +1,20 @@
 import React from 'react';
 import { DollarSign, TrendingUp, TrendingDown, Percent } from 'lucide-react';
-import type { FinancialSummary } from '../../../../api/analytics/financial_reports';
+
+interface SummaryData {
+  totalRevenue: number;
+  totalRefunds: number;
+  netRevenue: number;
+  totalCost: number;
+  grossProfit: number;
+  profitMargin: number;
+  totalTransactions: number;
+  averageTransaction: number;
+  totalDiscounts: number;
+}
 
 interface Props {
-  summary: FinancialSummary | null;
+  summary: SummaryData | null;
   loading: boolean;
 }
 

@@ -1,97 +1,94 @@
-import React from 'react';
-import { BarChart2, Users, Calendar } from 'lucide-react';
-import type { ReturnRefundStats } from '../../../../api/analytics/return_refund_reports';
+// src/renderer/pages/analytics/returns/components/StatsCards.tsx
+import React from "react";
+import { BarChart2, Users, Calendar, PieChart } from "lucide-react";
+import Decimal from "decimal.js";
+import type { ReturnStatistics } from "../../../../api/core/returnRefund";
 
-interface Props {
-  stats: ReturnRefundStats | null;
-  loading: boolean;
+interface StatsCardsProps {
+  stats: ReturnStatistics | null;
+  loading?: boolean;
 }
 
-const StatsCards: React.FC<Props> = ({ stats, loading }) => {
-  const formatCurrency = (val: number) =>
-    new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val);
-
-  if (loading) {
+export const StatsCards: React.FC<StatsCardsProps> = ({ stats, loading }) => {
+  if (loading || !stats) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)] animate-pulse h-40" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        {[...Array(3)].map((_, i) => (
+          <div key={i} className="h-40 bg-[var(--card-secondary-bg)] rounded-lg animate-pulse" />
         ))}
       </div>
     );
   }
 
-  if (!stats) return null;
-
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-      {/* By Refund Method */}
-      <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-        <div className="flex items-center gap-2 mb-4">
-          <BarChart2 className="w-5 h-5 text-[var(--accent-blue)]" />
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">By Refund Method</h3>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      {/* By Status */}
+      <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <BarChart2 className="w-5 h-5 text-[var(--accent-amber)]" />
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">By Status</h3>
         </div>
-        {stats.byMethod.length === 0 ? (
-          <p className="text-[var(--text-secondary)]">No data</p>
+        {stats.statusCounts?.length === 0 ? (
+          <p className="text-sm text-[var(--text-tertiary)]">No data</p>
         ) : (
-          <ul className="space-y-2">
-            {stats.byMethod.map(item => (
-              <li key={item.method} className="flex justify-between text-sm">
-                <span className="text-[var(--text-primary)] capitalize">{item.method}</span>
-                <span className="text-[var(--accent-blue)] font-medium">
-                  {item.count} ({formatCurrency(item.amount)})
+          <div className="space-y-2">
+            {stats.statusCounts?.map((item) => (
+              <div key={item.status} className="flex justify-between text-sm">
+                <span className="text-[var(--text-secondary)] capitalize">{item.status}</span>
+                <span className="text-[var(--text-primary)] font-medium">
+                  {item.count} ({item.total ? `₱${new Decimal(item.total).toFixed(2)}` : "0"})
                 </span>
-              </li>
+              </div>
             ))}
-          </ul>
-        )}
-      </div>
-
-      {/* By Month */}
-      <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-        <div className="flex items-center gap-2 mb-4">
-          <Calendar className="w-5 h-5 text-[var(--accent-green)]" />
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Monthly Trend</h3>
-        </div>
-        {stats.byMonth.length === 0 ? (
-          <p className="text-[var(--text-secondary)]">No data</p>
-        ) : (
-          <ul className="space-y-2 max-h-40 overflow-y-auto">
-            {stats.byMonth.map(item => (
-              <li key={item.month} className="flex justify-between text-sm">
-                <span className="text-[var(--text-primary)]">{item.month}</span>
-                <span className="text-[var(--accent-green)] font-medium">
-                  {item.count} ({formatCurrency(item.amount)})
-                </span>
-              </li>
-            ))}
-          </ul>
+          </div>
         )}
       </div>
 
       {/* Top Customers */}
-      <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-        <div className="flex items-center gap-2 mb-4">
-          <Users className="w-5 h-5 text-[var(--accent-amber)]" />
-          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Top Customers</h3>
+      <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <Users className="w-5 h-5 text-[var(--accent-purple)]" />
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Top Returning Customers</h3>
         </div>
-        {stats.topCustomers.length === 0 ? (
-          <p className="text-[var(--text-secondary)]">No data</p>
+        {stats.topCustomers?.length === 0 ? (
+          <p className="text-sm text-[var(--text-tertiary)]">No data</p>
         ) : (
-          <ul className="space-y-2 max-h-40 overflow-y-auto">
-            {stats.topCustomers.map(item => (
-              <li key={item.customerId} className="flex justify-between text-sm">
-                <span className="text-[var(--text-primary)] truncate max-w-[120px]">{item.customerName}</span>
-                <span className="text-[var(--accent-amber)] font-medium">
-                  {item.returnCount} ({formatCurrency(item.totalReturned)})
+          <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+            {stats.topCustomers?.map((item) => (
+              <div key={item.customerId} className="flex justify-between text-sm">
+                <span className="text-[var(--text-secondary)] truncate max-w-[120px]">
+                  {item.customerName}
                 </span>
-              </li>
+                <span className="text-[var(--accent-gold)] font-medium">
+                  {item.returnCount} ({item.totalRefunded ? `₱${new Decimal(item.totalRefunded).toFixed(2)}` : "0"})
+                </span>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
+      </div>
+
+      {/* Summary Stats */}
+      <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-xl p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <PieChart className="w-5 h-5 text-[var(--accent-blue)]" />
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">Quick Stats</h3>
+        </div>
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-[var(--text-secondary)]">Total Processed Amount</span>
+            <span className="text-[var(--accent-green)] font-medium">
+              ₱{new Decimal(stats.totalProcessedAmount || 0).toFixed(2)}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-[var(--text-secondary)]">Average Processed</span>
+            <span className="text-[var(--accent-blue)] font-medium">
+              ₱{new Decimal(stats.averageProcessedAmount || 0).toFixed(2)}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );
 };
-
-export default StatsCards;

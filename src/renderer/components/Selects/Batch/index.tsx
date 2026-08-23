@@ -1,73 +1,83 @@
-// src/renderer/components/Selects/PrinterType/index.tsx
+// src/renderer/components/Selects/Batch/index.tsx
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Search, ChevronDown, Printer, X } from "lucide-react";
-import printerAPI from "../../../api/core/printers";
-import type { Printer as PrinterType } from "../../../api/core/printers";
+import { Search, ChevronDown, Package, X, Calendar } from "lucide-react";
+import type { Batch } from "../../../api/core/batch";
+import batchAPI from "../../../api/core/batch";
+import { format } from "date-fns";
 
-interface PrinterSelectProps {
+interface BatchSelectProps {
   value: number | null;
-  onChange: (printerId: number | null, printer?: PrinterType) => void;
+  onChange: (batchId: number | null, batch?: Batch) => void;
   disabled?: boolean;
   placeholder?: string;
+  meatId?: number;
+  statusFilter?: "active" | "depleted" | "expired" | "on_hold" | "all";
   className?: string;
 }
 
-const PrinterSelect: React.FC<PrinterSelectProps> = ({
+const BatchSelect: React.FC<BatchSelectProps> = ({
   value,
   onChange,
   disabled = false,
-  placeholder = "Select printer...",
+  placeholder = "Select batch...",
+  meatId,
+  statusFilter = "active",
   className = "w-full max-w-md",
 }) => {
-  const [printers, setPrinters] = useState<PrinterType[]>([]);
-  const [filteredPrinters, setFilteredPrinters] = useState<PrinterType[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [filteredBatches, setFilteredBatches] = useState<Batch[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState({
-    top: 0,
-    left: 0,
-    width: 0,
-  });
+  const [dropdownStyle, setDropdownStyle] = useState({ top: 0, left: 0, width: 0 });
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const loadPrinters = async () => {
+    const loadBatches = async () => {
       setLoading(true);
       try {
-        const response = await printerAPI.getAll(1, 100); // page, limit
+        const params: any = {
+          limit: 1000,
+          sortBy: "expiryDate",
+          sortOrder: "ASC",
+        };
+        if (meatId) params.meatId = meatId;
+        if (statusFilter !== "all") params.status = statusFilter;
+
+        const response = await batchAPI.getAll(params);
         if (response.status && response.data) {
-          const list = response.data.data || [];
-          setPrinters(list);
-          setFilteredPrinters(list);
+          const list = response.data.items || [];
+          setBatches(list);
+          setFilteredBatches(list);
         }
       } catch (error) {
-        console.error("Failed to load printers:", error);
+        console.error("Failed to load batches:", error);
       } finally {
         setLoading(false);
       }
     };
-    loadPrinters();
-  }, []);
+    loadBatches();
+  }, [meatId, statusFilter]);
 
   useEffect(() => {
     if (!searchTerm.trim()) {
-      setFilteredPrinters(printers);
+      setFilteredBatches(batches);
       return;
     }
     const lower = searchTerm.toLowerCase();
-    setFilteredPrinters(
-      printers.filter(
-        (p) =>
-          p.name.toLowerCase().includes(lower) ||
-          (p.description && p.description.toLowerCase().includes(lower)),
-      ),
+    setFilteredBatches(
+      batches.filter(
+        (b) =>
+          b.batchCode.toLowerCase().includes(lower) ||
+          (b.meat?.name && b.meat.name.toLowerCase().includes(lower)) ||
+          (b.meat?.sku && b.meat.sku.toLowerCase().includes(lower))
+      )
     );
-  }, [searchTerm, printers]);
+  }, [searchTerm, batches]);
 
   useEffect(() => {
     if (isOpen && searchInputRef.current) {
@@ -113,8 +123,8 @@ const PrinterSelect: React.FC<PrinterSelectProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const handleSelect = (printer: PrinterType) => {
-    onChange(printer.id, printer);
+  const handleSelect = (batch: Batch) => {
+    onChange(batch.id, batch);
     setIsOpen(false);
     setSearchTerm("");
   };
@@ -124,7 +134,37 @@ const PrinterSelect: React.FC<PrinterSelectProps> = ({
     onChange(null);
   };
 
-  const selectedPrinter = printers.find((p) => p.id === value);
+  const selectedBatch = batches.find((b) => b.id === value);
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "active":
+        return "var(--status-completed)";
+      case "depleted":
+        return "var(--stock-outstock)";
+      case "expired":
+        return "var(--status-cancelled)";
+      case "on_hold":
+        return "var(--status-pending)";
+      default:
+        return "var(--text-tertiary)";
+    }
+  };
+
+  const getStatusBg = (status: string) => {
+    switch (status) {
+      case "active":
+        return "var(--status-completed-bg)";
+      case "depleted":
+        return "var(--stock-outstock-bg)";
+      case "expired":
+        return "var(--status-cancelled-bg)";
+      case "on_hold":
+        return "var(--status-pending-bg)";
+      default:
+        return "var(--card-secondary-bg)";
+    }
+  };
 
   return (
     <div className={`relative ${className}`}>
@@ -141,33 +181,27 @@ const PrinterSelect: React.FC<PrinterSelectProps> = ({
           minHeight: "42px",
         }}
       >
-        <Printer
-          className="w-4 h-4 flex-shrink-0"
-          style={{ color: "var(--primary-color)" }}
-        />
+        <Package className="w-4 h-4 flex-shrink-0" style={{ color: "var(--accent-gold)" }} />
         <div className="flex-1 min-w-0 flex items-center gap-2">
-          {selectedPrinter ? (
+          {selectedBatch ? (
             <>
-              <span className="font-medium truncate">
-                {selectedPrinter.name}
-              </span>
-              <span
-                className="text-xs truncate"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                ({selectedPrinter.interface})
+              <span className="font-medium truncate">{selectedBatch.batchCode}</span>
+              {selectedBatch.meat && (
+                <span className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
+                  ({selectedBatch.meat.name})
+                </span>
+              )}
+              <span className="text-xs" style={{ color: getStatusColor(selectedBatch.status) }}>
+                {selectedBatch.remainingQuantity}kg
               </span>
             </>
           ) : (
-            <span
-              className="truncate"
-              style={{ color: "var(--text-secondary)" }}
-            >
+            <span className="truncate" style={{ color: "var(--text-secondary)" }}>
               {placeholder}
             </span>
           )}
         </div>
-        {selectedPrinter && !disabled && (
+        {selectedBatch && !disabled && (
           <button
             type="button"
             onClick={handleClear}
@@ -179,9 +213,7 @@ const PrinterSelect: React.FC<PrinterSelectProps> = ({
           </button>
         )}
         <ChevronDown
-          className={`w-4 h-4 transition-transform duration-200 flex-shrink-0 ${
-            isOpen ? "rotate-180" : ""
-          }`}
+          className={`w-4 h-4 transition-transform duration-200 flex-shrink-0 ${isOpen ? "rotate-180" : ""}`}
           style={{ color: "var(--text-secondary)" }}
         />
       </button>
@@ -200,10 +232,7 @@ const PrinterSelect: React.FC<PrinterSelectProps> = ({
               maxHeight: "350px",
             }}
           >
-            <div
-              className="p-2 border-b"
-              style={{ borderColor: "var(--border-color)" }}
-            >
+            <div className="p-2 border-b" style={{ borderColor: "var(--border-color)" }}>
               <div className="relative">
                 <Search
                   className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4"
@@ -212,7 +241,7 @@ const PrinterSelect: React.FC<PrinterSelectProps> = ({
                 <input
                   ref={searchInputRef}
                   type="text"
-                  placeholder="Search printers..."
+                  placeholder="Search by batch code or meat name..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-8 pr-3 py-1.5 rounded text-sm"
@@ -226,57 +255,53 @@ const PrinterSelect: React.FC<PrinterSelectProps> = ({
             </div>
 
             <div className="overflow-y-auto" style={{ maxHeight: "250px" }}>
-              {loading && printers.length === 0 ? (
-                <div
-                  className="p-3 text-center text-sm"
-                  style={{ color: "var(--text-secondary)" }}
-                >
+              {loading && batches.length === 0 ? (
+                <div className="p-3 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
                   Loading...
                 </div>
-              ) : filteredPrinters.length === 0 ? (
-                <div
-                  className="p-3 text-center text-sm"
-                  style={{ color: "var(--text-secondary)" }}
-                >
-                  No printers found
+              ) : filteredBatches.length === 0 ? (
+                <div className="p-3 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
+                  No batches found
                 </div>
               ) : (
-                filteredPrinters.map((printer) => (
+                filteredBatches.map((batch) => (
                   <button
-                    key={printer.id}
+                    key={batch.id}
                     type="button"
-                    onClick={() => handleSelect(printer)}
+                    onClick={() => handleSelect(batch)}
                     className={`w-full px-3 py-2 text-left flex items-center gap-2 transition-colors text-sm cursor-pointer hover:bg-[var(--card-hover-bg)] ${
-                      printer.id === value
-                        ? "bg-[var(--accent-blue-light)]"
-                        : ""
+                      batch.id === value ? "bg-[var(--accent-gold-light)]" : ""
                     }`}
                     style={{ borderBottom: "1px solid var(--border-color)" }}
                   >
-                    <Printer
-                      className="w-4 h-4 flex-shrink-0"
-                      style={{ color: "var(--primary-color)" }}
-                    />
+                    <Package className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--accent-gold)" }} />
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{printer.name}</div>
-                      <div className="text-xs truncate text-[var(--text-tertiary)]">
-                        {printer.interface} | {printer.connectionString}
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                          {batch.batchCode}
+                        </span>
+                        <span className="text-xs" style={{ color: getStatusColor(batch.status) }}>
+                          {batch.status}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                        {batch.meat && <span>{batch.meat.name}</span>}
+                        <span>{batch.remainingQuantity}kg</span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {format(new Date(batch.expiryDate), "MMM dd, yyyy")}
+                        </span>
                       </div>
                     </div>
-                    {printer.isDefault && (
-                      <span className="text-xs bg-yellow-100 text-yellow-800 px-1 py-0.5 rounded">
-                        Default
-                      </span>
-                    )}
                   </button>
                 ))
               )}
             </div>
           </div>,
-          document.body,
+          document.body
         )}
     </div>
   );
 };
 
-export default PrinterSelect;
+export default BatchSelect;

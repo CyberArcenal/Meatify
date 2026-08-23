@@ -1,5 +1,5 @@
 // src/services/CashDrawerService.js
-
+const { logger } = require("../utils/logger");
 const auditLogger = require("../utils/auditLogger");
 const {
   enableCashDrawer,
@@ -49,7 +49,7 @@ class CashDrawerService {
     const notificationService = require("./Notification");
     const drawerEnabled = await enableCashDrawer();
     if (!drawerEnabled) {
-      console.log("[CashDrawerService] Cash drawer is disabled in settings");
+      logger.debug("[CashDrawerService] Cash drawer is disabled in settings");
       throw new Error("Cash drawer is disabled in settings");
     }
 
@@ -79,7 +79,7 @@ class CashDrawerService {
         { action: "openDrawer", reason },
         "system",
       );
-      console.log(`[CashDrawerService] Drawer opened (${reason})`);
+      logger.debug(`[CashDrawerService] Drawer opened (${reason})`);
       return true;
     } catch (err) {
       // @ts-ignore

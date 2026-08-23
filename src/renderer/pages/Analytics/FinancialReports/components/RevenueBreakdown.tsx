@@ -1,12 +1,11 @@
 import React from 'react';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import type { RevenueBreakdownItem } from '../../../../api/analytics/financial_reports';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 interface Props {
-  data: RevenueBreakdownItem[];
+  data: Array<{ name: string; amount: number; count: number }>;
   groupBy: string;
   loading: boolean;
 }
@@ -31,16 +30,11 @@ const RevenueBreakdown: React.FC<Props> = ({ data, groupBy, loading }) => {
     );
   }
 
-  // Prepare pie chart data
   const chartData = {
-    labels: data.map(item => {
-      if (groupBy === 'paymentMethod') return item.method || 'Unknown';
-      if (groupBy === 'category') return item.category || 'Unknown';
-      return item.productName || `Product ${item.productId}`;
-    }),
+    labels: data.map(item => item.name),
     datasets: [
       {
-        data: data.map(item => Number(item.amount || 0)),
+        data: data.map(item => item.amount),
         backgroundColor: [
           '#22c55e', '#3b82f6', '#f97316', '#a855f7', '#ec4899', '#06b6d4', '#eab308',
         ],
@@ -76,11 +70,9 @@ const RevenueBreakdown: React.FC<Props> = ({ data, groupBy, loading }) => {
             <tbody>
               {data.map((item, idx) => (
                 <tr key={idx} className="border-b border-[var(--border-light)]">
-                  <td className="py-2 text-[var(--text-primary)]">
-                    {groupBy === 'paymentMethod' ? item.method : groupBy === 'category' ? item.category : item.productName}
-                  </td>
-                  <td className="py-2 text-right text-[var(--text-primary)]">{formatCurrency(item.amount || 0)}</td>
-                  <td className="py-2 text-right text-[var(--text-primary)]">{item.count || 0}</td>
+                  <td className="py-2 text-[var(--text-primary)]">{item.name}</td>
+                  <td className="py-2 text-right text-[var(--text-primary)]">{formatCurrency(item.amount)}</td>
+                  <td className="py-2 text-right text-[var(--text-primary)]">{item.count || '-'}</td>
                 </tr>
               ))}
             </tbody>

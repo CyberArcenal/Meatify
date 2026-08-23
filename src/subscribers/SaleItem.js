@@ -2,7 +2,7 @@
 const SaleItem = require("../entities/SaleItem");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading SaleItemSubscriber");
+logger.debug("[Subscriber] Loading SaleItemSubscriber");
 
 class SaleItemSubscriber {
   listenTo() {

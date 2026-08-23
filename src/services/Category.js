@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -31,7 +31,7 @@ class CategoryService {
     }
     this.categoryRepository = AppDataSource.getRepository(Category);
     this.meatRepository = AppDataSource.getRepository(Meat);
-    console.log("CategoryService initialized");
+    logger.debug("CategoryService initialized");
   }
 
   async getRepositories() {
@@ -54,7 +54,7 @@ class CategoryService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[Category._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -62,7 +62,7 @@ class CategoryService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[Category._getRepo] Using global repository (fallback)`);
+    logger.debug(`[Category._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -97,7 +97,7 @@ class CategoryService {
 
       const saved = await saveDb(repo, category, { queryRunner: qr });
       await auditLogger.logCreate("Category", saved.id, saved, user);
-      console.log(`Category created: #${saved.id} - ${saved.name}`);
+      logger.debug(`Category created: #${saved.id} - ${saved.name}`);
       return saved;
     } catch (error) {
       console.error("Failed to create category:", error.message);
@@ -143,7 +143,7 @@ class CategoryService {
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("Category", id, oldData, saved, user);
-      console.log(`Category updated: #${id}`);
+      logger.debug(`Category updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update category:", error.message);
@@ -188,8 +188,8 @@ class CategoryService {
       category.updatedAt = new Date();
 
       const saved = await updateDb(repo, category, { queryRunner: qr });
-      await auditLogger.logDelete("Category", id, oldData, user);
-      console.log(`Category deactivated: #${id}`);
+      await auditLogger.debugDelete("Category", id, oldData, user);
+      logger.debug(`Category deactivated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to delete category:", error.message);
@@ -224,7 +224,7 @@ class CategoryService {
 
       const saved = await updateDb(repo, category, { queryRunner: qr });
       await auditLogger.logUpdate("Category", id, oldData, saved, user);
-      console.log(`Category restored: #${id}`);
+      logger.debug(`Category restored: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to restore category:", error.message);
@@ -262,8 +262,8 @@ class CategoryService {
     }
 
     await removeDb(categoryRepo, category, { queryRunner: qr });
-    await auditLogger.logDelete("Category", id, category, user);
-    console.log(`Category #${id} permanently deleted`);
+    await auditLogger.debugDelete("Category", id, category, user);
+    logger.debug(`Category #${id} permanently deleted`);
   }
 
   /**
@@ -288,7 +288,7 @@ class CategoryService {
     if (!category) {
       throw new Error(`Category with ID ${id} not found`);
     }
-    await auditLogger.logView("Category", id, "system");
+    await logger.debug("Category", id, "system");
     return category;
   }
 
@@ -329,7 +329,7 @@ class CategoryService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("Category", null, "system");
+    await logger.debug("Category", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -415,8 +415,8 @@ class CategoryService {
         };
       }
 
-      await auditLogger.logExport("Category", format, filters, user);
-      console.log(`Exported ${categories.length} categories in ${format} format`);
+      await auditLogger.debugExport("Category", format, filters, user);
+      logger.debug(`Exported ${categories.length} categories in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export categories:", error);

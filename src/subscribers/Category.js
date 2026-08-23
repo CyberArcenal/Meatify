@@ -2,7 +2,7 @@
 const Category = require("../entities/Category");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading CategorySubscriber");
+logger.debug("[Subscriber] Loading CategorySubscriber");
 
 class CategorySubscriber {
   listenTo() {

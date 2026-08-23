@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -39,7 +39,7 @@ class SaleItemService {
     this.saleRepository = AppDataSource.getRepository(Sale);
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.batchRepository = AppDataSource.getRepository(Batch);
-    console.log("SaleItemService initialized");
+    logger.debug("SaleItemService initialized");
   }
 
   async getRepositories() {
@@ -64,7 +64,7 @@ class SaleItemService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[SaleItem._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -72,7 +72,7 @@ class SaleItemService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[SaleItem._getRepo] Using global repository (fallback)`);
+    logger.debug(`[SaleItem._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -150,7 +150,7 @@ class SaleItemService {
 
       const saved = await saveDb(saleItemRepo, saleItem, { queryRunner: qr });
       await auditLogger.logCreate("SaleItem", saved.id, saved, user);
-      console.log(`SaleItem created: #${saved.id} - Meat: ${meat.name}, Weight: ${saved.weightKg}kg`);
+      logger.debug(`SaleItem created: #${saved.id} - Meat: ${meat.name}, Weight: ${saved.weightKg}kg`);
       return saved;
     } catch (error) {
       console.error("Failed to create sale item:", error.message);
@@ -216,7 +216,7 @@ class SaleItemService {
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("SaleItem", id, oldData, saved, user);
-      console.log(`SaleItem updated: #${id}`);
+      logger.debug(`SaleItem updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update sale item:", error.message);
@@ -251,8 +251,8 @@ class SaleItemService {
     }
 
     await removeDb(repo, item, { queryRunner: qr });
-    await auditLogger.logDelete("SaleItem", id, item, user);
-    console.log(`SaleItem #${id} permanently deleted`);
+    await auditLogger.debugDelete("SaleItem", id, item, user);
+    logger.debug(`SaleItem #${id} permanently deleted`);
   }
 
   /**
@@ -275,7 +275,7 @@ class SaleItemService {
     if (!item) {
       throw new Error(`SaleItem with ID ${id} not found`);
     }
-    await auditLogger.logView("SaleItem", id, "system");
+    await logger.debug("SaleItem", id, "system");
     return item;
   }
 
@@ -346,7 +346,7 @@ class SaleItemService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("SaleItem", null, "system");
+    await logger.debug("SaleItem", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -451,8 +451,8 @@ class SaleItemService {
         };
       }
 
-      await auditLogger.logExport("SaleItem", format, filters, user);
-      console.log(`Exported ${items.length} sale items in ${format} format`);
+      await auditLogger.debugExport("SaleItem", format, filters, user);
+      logger.debug(`Exported ${items.length} sale items in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export sale items:", error);

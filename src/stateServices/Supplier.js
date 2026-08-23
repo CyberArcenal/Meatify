@@ -178,7 +178,7 @@ class SupplierStateService {
         }
 
         // Log the reassignment
-        await auditLogger.log(
+        await logger.debug(
           `Reassigned ${meats.length} meat(s) from supplier "${supplier.name}" to "${targetSupplier.name}"`
         );
       } else {
@@ -348,7 +348,7 @@ class SupplierStateService {
     await updateDb(supplierRepo, sourceSupplier, { queryRunner, skipSignal: false });
 
     // Audit logs
-    await auditLogger.log(
+    await logger.debug(
       `Merged supplier "${sourceSupplier.name}" into "${targetSupplier.name}". ` +
       `${meats.length} meat(s), ${purchases.length} purchase(s), and ${batches.length} batch(es) reassigned.`,
       user

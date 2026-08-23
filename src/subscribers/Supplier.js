@@ -2,7 +2,7 @@
 const Supplier = require("../entities/Supplier");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading SupplierSubscriber");
+logger.debug("[Subscriber] Loading SupplierSubscriber");
 
 class SupplierSubscriber {
   listenTo() {

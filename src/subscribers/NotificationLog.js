@@ -5,7 +5,7 @@ const { AppDataSource } = require("../main/db/data-source");
 const { NotificationLogStateService } = require("../stateServices/NotificationLog");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading NotificationLogSubscriber");
+logger.debug("[Subscriber] Loading NotificationLogSubscriber");
 
 class NotificationLogSubscriber {
   constructor() {
@@ -30,7 +30,7 @@ class NotificationLogSubscriber {
   async afterInsert(entity, { manager, queryRunner }) {
     if (!entity) return;
 
-    console.log("[NotificationLogSubscriber] afterInsert:", {
+    logger.debug("[NotificationLogSubscriber] afterInsert:", {
       id: entity.id,
       recipient: entity.recipient_email,
       status: entity.status,
@@ -56,7 +56,7 @@ class NotificationLogSubscriber {
     const { entity, databaseEntity } = event;
     if (!entity) return;
 
-    console.log("[NotificationLogSubscriber] afterUpdate:", {
+    logger.debug("[NotificationLogSubscriber] afterUpdate:", {
       id: entity.id,
       oldStatus: databaseEntity?.status,
       newStatus: entity.status,
@@ -84,7 +84,7 @@ class NotificationLogSubscriber {
    * @param {import("../entities/NotificationLog")} entity
    */
   beforeInsert(entity) {
-    console.log("[NotificationLogSubscriber] beforeInsert:", {
+    logger.debug("[NotificationLogSubscriber] beforeInsert:", {
       recipient: entity?.recipient_email,
       subject: entity?.subject,
       status: entity?.status,
@@ -95,7 +95,7 @@ class NotificationLogSubscriber {
    * @param {import("../entities/NotificationLog")} entity
    */
   beforeUpdate(entity) {
-    console.log("[NotificationLogSubscriber] beforeUpdate:", {
+    logger.debug("[NotificationLogSubscriber] beforeUpdate:", {
       id: entity?.id,
       status: entity?.status,
     });
@@ -105,7 +105,7 @@ class NotificationLogSubscriber {
    * @param {import("../entities/NotificationLog")} entity
    */
   beforeRemove(entity) {
-    console.log("[NotificationLogSubscriber] beforeRemove:", {
+    logger.debug("[NotificationLogSubscriber] beforeRemove:", {
       id: entity?.id,
     });
   }
@@ -114,7 +114,7 @@ class NotificationLogSubscriber {
    * @param {{ databaseEntity?: any; entityId: any }} event
    */
   afterRemove(event) {
-    console.log("[NotificationLogSubscriber] afterRemove:", {
+    logger.debug("[NotificationLogSubscriber] afterRemove:", {
       id: event.entityId,
     });
   }

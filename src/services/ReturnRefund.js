@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -45,7 +45,7 @@ class ReturnRefundService {
     this.customerRepository = AppDataSource.getRepository(Customer);
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.batchRepository = AppDataSource.getRepository(Batch);
-    console.log("ReturnRefundService initialized");
+    logger.debug("ReturnRefundService initialized");
   }
 
   async getRepositories() {
@@ -72,7 +72,7 @@ class ReturnRefundService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[ReturnRefund._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -80,7 +80,7 @@ class ReturnRefundService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[ReturnRefund._getRepo] Using global repository (fallback)`);
+    logger.debug(`[ReturnRefund._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -206,7 +206,7 @@ class ReturnRefundService {
       }
 
       await auditLogger.logCreate("ReturnRefund", savedReturn.id, savedReturn, user);
-      console.log(`ReturnRefund created: #${savedReturn.id} - ${savedReturn.referenceNo}`);
+      logger.debug(`ReturnRefund created: #${savedReturn.id} - ${savedReturn.referenceNo}`);
 
       // Reload with relations
       const fullReturn = await returnRepo.findOne({
@@ -353,7 +353,7 @@ class ReturnRefundService {
 
       const saved = await updateDb(returnRepo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("ReturnRefund", id, oldData, saved, user);
-      console.log(`ReturnRefund updated: #${id}`);
+      logger.debug(`ReturnRefund updated: #${id}`);
 
       // Reload with relations
       const fullReturn = await returnRepo.findOne({
@@ -395,8 +395,8 @@ class ReturnRefundService {
       returnRefund.updatedAt = new Date();
 
       const saved = await updateDb(returnRepo, returnRefund, { queryRunner: qr });
-      await auditLogger.logDelete("ReturnRefund", id, oldData, user);
-      console.log(`ReturnRefund cancelled: #${id}`);
+      await auditLogger.debugDelete("ReturnRefund", id, oldData, user);
+      logger.debug(`ReturnRefund cancelled: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to cancel return:", error.message);
@@ -437,8 +437,8 @@ class ReturnRefundService {
     }
 
     await removeDb(returnRepo, returnRefund, { queryRunner: qr });
-    await auditLogger.logDelete("ReturnRefund", id, returnRefund, user);
-    console.log(`ReturnRefund #${id} permanently deleted`);
+    await auditLogger.debugDelete("ReturnRefund", id, returnRefund, user);
+    logger.debug(`ReturnRefund #${id} permanently deleted`);
   }
 
   /**
@@ -463,7 +463,7 @@ class ReturnRefundService {
     if (!returnRefund) {
       throw new Error(`ReturnRefund with ID ${id} not found`);
     }
-    await auditLogger.logView("ReturnRefund", id, "system");
+    await logger.debug("ReturnRefund", id, "system");
     return returnRefund;
   }
 
@@ -527,7 +527,7 @@ class ReturnRefundService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("ReturnRefund", null, "system");
+    await logger.debug("ReturnRefund", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -643,8 +643,8 @@ class ReturnRefundService {
         };
       }
 
-      await auditLogger.logExport("ReturnRefund", format, filters, user);
-      console.log(`Exported ${returns.length} returns in ${format} format`);
+      await auditLogger.debugExport("ReturnRefund", format, filters, user);
+      logger.debug(`Exported ${returns.length} returns in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export returns:", error);

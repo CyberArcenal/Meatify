@@ -1,4 +1,4 @@
-// src/renderer/pages/purchase/hooks/usePurchases.ts
+// src/renderer/pages/inventory/purchases/hooks/usePurchases.ts
 import { useState, useEffect, useCallback } from "react";
 import purchaseAPI, { type Purchase } from "../../../api/core/purchase";
 import supplierAPI, { type Supplier } from "../../../api/core/supplier";
@@ -6,102 +6,102 @@ import supplierAPI, { type Supplier } from "../../../api/core/supplier";
 export interface PurchaseFilters {
   search: string;
   status: string;
-  supplierId: number | "";
-  startDate: string;
-  endDate: string;
-  page: number;
-  limit: number;
+  supplierId?: number;
+  startDate?: string;
+  endDate?: string;
   sortBy: string;
   sortOrder: "ASC" | "DESC";
 }
 
-export function usePurchases(initialFilters?: Partial<PurchaseFilters>) {
+export const usePurchases = (initialFilters?: Partial<PurchaseFilters>) => {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
   const [filters, setFilters] = useState<PurchaseFilters>({
     search: "",
     status: "",
-    supplierId: "",
-    startDate: "",
-    endDate: "",
-    page: 1,
-    limit: 10,
+    supplierId: undefined,
+    startDate: undefined,
+    endDate: undefined,
     sortBy: "orderDate",
     sortOrder: "DESC",
     ...initialFilters,
   });
 
-  // Fetch suppliers for filter dropdown
-  useEffect(() => {
-    const fetchSuppliers = async () => {
-      try {
-        const response = await supplierAPI.getActive();
-        if (response.status) {
-          const suppliersData = Array.isArray(response.data)
-            ? response.data
-            : (response.data as { items?: Supplier[] })?.items || [];
-          setSuppliers(suppliersData);
-        }
-      } catch (err) {
-        console.error("Failed to fetch suppliers", err);
-        setError("Failed to load suppliers.");
+  const fetchSuppliers = useCallback(async () => {
+    try {
+      const response = await supplierAPI.getActive();
+      if (response.status) {
+        setSuppliers(response.data.items || []);
       }
-    };
-    fetchSuppliers();
+    } catch (err) {
+      console.error("Failed to fetch suppliers", err);
+    }
   }, []);
 
-  const fetchPurchases = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params: Record<string, unknown> = {
-        sortBy: filters.sortBy,
-        sortOrder: filters.sortOrder,
-      };
-      if (filters.search) params.search = filters.search;
-      if (filters.status) params.status = filters.status;
-      if (filters.supplierId) params.supplierId = filters.supplierId;
-      if (filters.startDate) params.startDate = filters.startDate;
-      if (filters.endDate) params.endDate = filters.endDate;
+  const fetchPurchases = useCallback(
+    async (options?: { page?: number; limit?: number }) => {
+      const page = options?.page || 1;
+      const limit = options?.limit || 10;
 
-      const response = await purchaseAPI.getAll(params);
-      if (response.status) {
-        if (!Array.isArray(response.data)) {
-          throw new Error("Invalid data format");
+      setLoading(true);
+      setError(null);
+      try {
+        const params: any = {
+          page,
+          limit,
+          search: filters.search || undefined,
+          status: filters.status || undefined,
+          supplierId: filters.supplierId,
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          sortBy: filters.sortBy,
+          sortOrder: filters.sortOrder,
+        };
+
+        const response = await purchaseAPI.getAll(params);
+        if (response.status) {
+          const data = response.data;
+          setPurchases(data.items || []);
+          setTotalItems(data.total || 0);
+        } else {
+          throw new Error(response.message || "Failed to fetch purchases");
         }
-        setPurchases(response.data);
-        setTotal(response.data.length);
-      } else {
-        throw new Error(response.message || "Failed to fetch purchases");
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to fetch purchases";
+        setError(message);
+        setPurchases([]);
+        setTotalItems(0);
+      } finally {
+        setLoading(false);
       }
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch purchases";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+    },
+    [filters]
+  );
 
   useEffect(() => {
-    fetchPurchases();
-  }, [fetchPurchases]);
+    fetchPurchases({ page: 1, limit: 10 });
+    fetchSuppliers();
+  }, [fetchPurchases, fetchSuppliers]);
 
-  const reload = useCallback(() => {
-    fetchPurchases();
-  }, [fetchPurchases]);
+  const reload = useCallback(
+    (options?: { page?: number; limit?: number }) => {
+      fetchPurchases(options);
+    },
+    [fetchPurchases]
+  );
 
   return {
     purchases,
     suppliers,
     loading,
     error,
-    total,
+    totalItems,
     filters,
     setFilters,
     reload,
   };
-}
+};

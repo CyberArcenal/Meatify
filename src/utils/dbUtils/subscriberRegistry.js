@@ -32,8 +32,8 @@ function loadSubscribers() {
           // auditLogger hindi pa available, skip
         }
       }
-      if (auditLogger && auditLogger.log) {
-        auditLogger.log({
+      if (auditLogger && logger.debug) {
+        logger.debug({
           action: "SUBSCRIBER_LOAD_FAILED",
           entity: "System",
           description: `Failed to load subscriber from ${file}: ${err.message}`,

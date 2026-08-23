@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -30,7 +30,7 @@ class NotificationService {
       await AppDataSource.initialize();
     }
     this.notificationRepository = AppDataSource.getRepository(Notification);
-    console.log("NotificationService initialized");
+    logger.debug("NotificationService initialized");
   }
 
   async getRepository() {
@@ -50,7 +50,7 @@ class NotificationService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[Notification._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -58,7 +58,7 @@ class NotificationService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[Notification._getRepo] Using global repository (fallback)`);
+    logger.debug(`[Notification._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -92,7 +92,7 @@ class NotificationService {
 
       const saved = await saveDb(repo, notification, { queryRunner: qr });
       await auditLogger.logCreate("Notification", saved.id, saved, user);
-      console.log(`Notification created: #${saved.id} - ${saved.title}`);
+      logger.debug(`Notification created: #${saved.id} - ${saved.title}`);
       return saved;
     } catch (error) {
       console.error("Failed to create notification:", error.message);
@@ -135,7 +135,7 @@ class NotificationService {
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("Notification", id, oldData, saved, user);
-      console.log(`Notification updated: #${id}`);
+      logger.debug(`Notification updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update notification:", error.message);
@@ -169,8 +169,8 @@ class NotificationService {
       notification.updatedAt = new Date();
 
       const saved = await updateDb(repo, notification, { queryRunner: qr });
-      await auditLogger.logDelete("Notification", id, oldData, user);
-      console.log(`Notification soft deleted: #${id}`);
+      await auditLogger.debugDelete("Notification", id, oldData, user);
+      logger.debug(`Notification soft deleted: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to delete notification:", error.message);
@@ -205,7 +205,7 @@ class NotificationService {
 
       const saved = await updateDb(repo, notification, { queryRunner: qr });
       await auditLogger.logUpdate("Notification", id, oldData, saved, user);
-      console.log(`Notification restored: #${id}`);
+      logger.debug(`Notification restored: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to restore notification:", error.message);
@@ -230,8 +230,8 @@ class NotificationService {
     }
 
     await removeDb(repo, notification, { queryRunner: qr });
-    await auditLogger.logDelete("Notification", id, notification, user);
-    console.log(`Notification #${id} permanently deleted`);
+    await auditLogger.debugDelete("Notification", id, notification, user);
+    logger.debug(`Notification #${id} permanently deleted`);
   }
 
   /**
@@ -256,7 +256,7 @@ class NotificationService {
     if (!notification) {
       throw new Error(`Notification with ID ${id} not found`);
     }
-    await auditLogger.logView("Notification", id, "system");
+    await logger.debug("Notification", id, "system");
     return notification;
   }
 
@@ -317,7 +317,7 @@ class NotificationService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("Notification", null, "system");
+    await logger.debug("Notification", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -443,8 +443,8 @@ class NotificationService {
         };
       }
 
-      await auditLogger.logExport("Notification", format, filters, user);
-      console.log(`Exported ${notifications.length} notifications in ${format} format`);
+      await auditLogger.debugExport("Notification", format, filters, user);
+      logger.debug(`Exported ${notifications.length} notifications in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export notifications:", error);

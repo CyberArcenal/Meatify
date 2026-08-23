@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -38,7 +38,7 @@ class CustomerService {
     this.customerRepository = AppDataSource.getRepository(Customer);
     this.saleRepository = AppDataSource.getRepository(Sale);
     this.loyaltyRepository = AppDataSource.getRepository(LoyaltyTransaction);
-    console.log("CustomerService initialized");
+    logger.debug("CustomerService initialized");
   }
 
   async getRepositories() {
@@ -62,7 +62,7 @@ class CustomerService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[Customer._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -70,7 +70,7 @@ class CustomerService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[Customer._getRepo] Using global repository (fallback)`);
+    logger.debug(`[Customer._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -121,7 +121,7 @@ class CustomerService {
 
       const saved = await saveDb(repo, customer, { queryRunner: qr });
       await auditLogger.logCreate("Customer", saved.id, saved, user);
-      console.log(`Customer created: #${saved.id} - ${saved.name}`);
+      logger.debug(`Customer created: #${saved.id} - ${saved.name}`);
       return saved;
     } catch (error) {
       console.error("Failed to create customer:", error.message);
@@ -180,7 +180,7 @@ class CustomerService {
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("Customer", id, oldData, saved, user);
-      console.log(`Customer updated: #${id}`);
+      logger.debug(`Customer updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update customer:", error.message);
@@ -217,8 +217,8 @@ class CustomerService {
       customer.updatedAt = new Date();
 
       const saved = await updateDb(repo, customer, { queryRunner: qr });
-      await auditLogger.logDelete("Customer", id, oldData, user);
-      console.log(`Customer deactivated: #${id}`);
+      await auditLogger.debugDelete("Customer", id, oldData, user);
+      logger.debug(`Customer deactivated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to delete customer:", error.message);
@@ -253,7 +253,7 @@ class CustomerService {
 
       const saved = await updateDb(repo, customer, { queryRunner: qr });
       await auditLogger.logUpdate("Customer", id, oldData, saved, user);
-      console.log(`Customer restored: #${id}`);
+      logger.debug(`Customer restored: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to restore customer:", error.message);
@@ -301,8 +301,8 @@ class CustomerService {
     }
 
     await removeDb(customerRepo, customer, { queryRunner: qr });
-    await auditLogger.logDelete("Customer", id, customer, user);
-    console.log(`Customer #${id} permanently deleted`);
+    await auditLogger.debugDelete("Customer", id, customer, user);
+    logger.debug(`Customer #${id} permanently deleted`);
   }
 
   /**
@@ -327,7 +327,7 @@ class CustomerService {
     if (!customer) {
       throw new Error(`Customer with ID ${id} not found`);
     }
-    await auditLogger.logView("Customer", id, "system");
+    await logger.debug("Customer", id, "system");
     return customer;
   }
 
@@ -378,7 +378,7 @@ class CustomerService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("Customer", null, "system");
+    await logger.debug("Customer", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -496,8 +496,8 @@ class CustomerService {
         };
       }
 
-      await auditLogger.logExport("Customer", format, filters, user);
-      console.log(`Exported ${customers.length} customers in ${format} format`);
+      await auditLogger.debugExport("Customer", format, filters, user);
+      logger.debug(`Exported ${customers.length} customers in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export customers:", error);

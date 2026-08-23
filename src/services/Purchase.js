@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -39,7 +39,7 @@ class PurchaseService {
     this.purchaseItemRepository = AppDataSource.getRepository(PurchaseItem);
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.supplierRepository = AppDataSource.getRepository(Supplier);
-    console.log("PurchaseService initialized");
+    logger.debug("PurchaseService initialized");
   }
 
   async getRepositories() {
@@ -64,7 +64,7 @@ class PurchaseService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[Purchase._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -72,7 +72,7 @@ class PurchaseService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[Purchase._getRepo] Using global repository (fallback)`);
+    logger.debug(`[Purchase._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -181,7 +181,7 @@ class PurchaseService {
       }
 
       await auditLogger.logCreate("Purchase", savedPurchase.id, savedPurchase, user);
-      console.log(`Purchase created: #${savedPurchase.id} - ${savedPurchase.referenceNo}`);
+      logger.debug(`Purchase created: #${savedPurchase.id} - ${savedPurchase.referenceNo}`);
 
       // Reload with relations
       const fullPurchase = await purchaseRepo.findOne({
@@ -334,7 +334,7 @@ class PurchaseService {
 
       const saved = await updateDb(purchaseRepo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("Purchase", id, oldData, saved, user);
-      console.log(`Purchase updated: #${id}`);
+      logger.debug(`Purchase updated: #${id}`);
 
       // Reload with relations
       const fullPurchase = await purchaseRepo.findOne({
@@ -389,8 +389,8 @@ class PurchaseService {
     }
 
     await removeDb(purchaseRepo, purchase, { queryRunner: qr });
-    await auditLogger.logDelete("Purchase", id, purchase, user);
-    console.log(`Purchase #${id} permanently deleted`);
+    await auditLogger.debugDelete("Purchase", id, purchase, user);
+    logger.debug(`Purchase #${id} permanently deleted`);
   }
 
   /**
@@ -413,7 +413,7 @@ class PurchaseService {
     if (!purchase) {
       throw new Error(`Purchase with ID ${id} not found`);
     }
-    await auditLogger.logView("Purchase", id, "system");
+    await logger.debug("Purchase", id, "system");
     return purchase;
   }
 
@@ -481,7 +481,7 @@ class PurchaseService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("Purchase", null, "system");
+    await logger.debug("Purchase", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -591,8 +591,8 @@ class PurchaseService {
         };
       }
 
-      await auditLogger.logExport("Purchase", format, filters, user);
-      console.log(`Exported ${purchases.length} purchases in ${format} format`);
+      await auditLogger.debugExport("Purchase", format, filters, user);
+      logger.debug(`Exported ${purchases.length} purchases in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export purchases:", error);

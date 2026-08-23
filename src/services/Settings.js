@@ -3,7 +3,7 @@
 const { app } = require("electron");
 const auditLogger = require("../utils/auditLogger");
 const { saveDb, updateDb, removeDb } = require("../utils/dbUtils/dbActions");
-
+const { logger } = require("../utils/logger");
 class SystemSettingService {
   constructor() {
     this.settingRepository = null;
@@ -14,7 +14,7 @@ class SystemSettingService {
     const { SystemSetting } = require("../entities/systemSettings");
     if (!AppDataSource.isInitialized) await AppDataSource.initialize();
     this.settingRepository = AppDataSource.getRepository(SystemSetting);
-    console.log("SystemSettingService initialized");
+    logger.debug("SystemSettingService initialized");
   }
 
   async getRepositories() {
@@ -32,7 +32,7 @@ class SystemSettingService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[SystemSetting._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -40,7 +40,7 @@ class SystemSettingService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[SystemSetting._getRepo] Using global repository (fallback)`);
+    logger.debug(`[SystemSetting._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -216,7 +216,7 @@ class SystemSettingService {
     setting.is_deleted = true;
     setting.updated_at = new Date();
     const saved = await updateDb(repo, setting, { queryRunner: qr });
-    await auditLogger.logDelete("SystemSetting", id, setting, user);
+    await auditLogger.debugDelete("SystemSetting", id, setting, user);
     return saved;
   }
 

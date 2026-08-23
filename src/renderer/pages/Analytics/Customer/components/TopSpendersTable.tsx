@@ -1,14 +1,18 @@
 import React from 'react';
 import { TrendingUp } from 'lucide-react';
-import type { TopCustomerSpending } from '../../../../api/analytics/customer_insight';
 
 interface Props {
-  data: TopCustomerSpending[];
+  data: Array<{
+    customerId: number;
+    customerName: string;
+    purchaseCount: number;
+    totalSpent: number;
+  }>;
 }
 
 const TopSpendersTable: React.FC<Props> = ({ data }) => {
-  const formatCurrency = (val: number | string) =>
-    new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(val));
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val);
 
   if (!data.length) {
     return (

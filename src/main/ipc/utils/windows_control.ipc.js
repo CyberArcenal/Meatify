@@ -1,10 +1,11 @@
 // src/main/ipcHandlers/windowControlHandlers.js
-
+//@ts-check
 const { ipcMain, BrowserWindow } = require("electron");
+const { logger } = require("../../../utils/logger");
 
 class WindowControlHandlers {
   constructor() {
-    console.log("✅ Window Control IPC Handlers Initialized");
+    logger.debug("✅ Window Control IPC Handlers Initialized");
   }
 
   /**
@@ -14,7 +15,7 @@ class WindowControlHandlers {
   // @ts-ignore
   async handleRequest(event, { method, params = {} }) {
     try {
-      console.log(`[WindowControlIPC] ${method}`, params);
+      logger.debug(`[WindowControlIPC] ${method}`, params);
 
       const window =
         BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
@@ -851,7 +852,7 @@ if (ipcMain) {
 }
 
 function registerWindowControlHandlers() {
-  console.log("✅ Window Control IPC handlers registered");
+  logger.debug("✅ Window Control IPC handlers registered");
 }
 
 module.exports = {

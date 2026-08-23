@@ -1,5 +1,6 @@
 //@ts-check
 const { AuditLog } = require("../entities/AuditLog");
+const { logger } = require("./logger");
 const { logEvents } = require("./system");
 
 // const { auditTrailEnabled } = require('./system');
@@ -16,7 +17,7 @@ class AuditLogger {
       await AppDataSource.initialize();
     }
     this.repository = AppDataSource.getRepository(AuditLog);
-    console.log("AuditLogger initialized");
+    logger.debug("AuditLogger initialized");
     await this.loadAllowedActions(); // load initial filter
   }
 
@@ -111,7 +112,7 @@ class AuditLogger {
       // @ts-ignore
       await this.repository?.save(auditLog);
 
-      // console.log(`[AUDIT] ${action} on ${entity}${entityId ? ` #${entityId}` : ''} by ${user}`);
+      // logger.debug(`[AUDIT] ${action} on ${entity}${entityId ? ` #${entityId}` : ''} by ${user}`);
 
       return auditLog;
     } catch (error) {
@@ -283,7 +284,7 @@ class AuditLogger {
         .where("timestamp < :cutoffDate", { cutoffDate })
         .execute();
 
-      console.log(
+      logger.debug(
         `Cleared ${result.affected} audit logs older than ${daysToKeep} days`,
       );
       return result.affected;

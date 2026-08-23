@@ -2,7 +2,7 @@
 const Customer = require("../entities/Customer");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading CustomerSubscriber");
+logger.debug("[Subscriber] Loading CustomerSubscriber");
 
 class CustomerSubscriber {
   listenTo() {

@@ -1,4 +1,4 @@
-// src/renderer/pages/Transactions/hooks/useTransactions.ts
+// src/renderer/pages/sales/transactions/hooks/useTransactions.ts
 import { useState, useEffect, useCallback } from "react";
 import saleAPI, { type Sale } from "../../../api/core/sale";
 import { dialogs } from "../../../utils/dialogs";
@@ -14,45 +14,52 @@ export interface TransactionFilters {
   status: SaleStatus | "";
 }
 
-export function useTransactions(initialFilters: TransactionFilters) {
-  // All transactions fetched from API (only filtered by date range)
+export const useTransactions = (initialFilters: TransactionFilters) => {
   const [allTransactions, setAllTransactions] = useState<Sale[]>([]);
-  // Filtered version for the table (applies search, paymentMethod, status)
   const [filteredTransactions, setFilteredTransactions] = useState<Sale[]>([]);
   const [filters, setFilters] = useState<TransactionFilters>(initialFilters);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [totalItems, setTotalItems] = useState(0);
 
-  // Fetch data when date range changes (or on manual reload)
-  const loadTransactions = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await saleAPI.getAll({
-        startDate: filters.startDate || undefined,
-        endDate: filters.endDate || undefined,
-        // Do NOT send search, paymentMethod, status – we filter locally
-        sortBy: "timestamp",
-        sortOrder: "DESC",
-      });
-      if (response.status) {
-        setAllTransactions(response.data);
-      } else {
-        throw new Error(response.message);
+  const loadTransactions = useCallback(
+    async (options?: { page?: number; limit?: number }) => {
+      const page = options?.page || 1;
+      const limit = options?.limit || 10;
+
+      setLoading(true);
+      setError(null);
+      try {
+        const response = await saleAPI.getAll({
+          page,
+          limit,
+          startDate: filters.startDate || undefined,
+          endDate: filters.endDate || undefined,
+          sortBy: "timestamp",
+          sortOrder: "DESC",
+        });
+
+        if (response.status) {
+          const data = response.data;
+          setAllTransactions(data.items || []);
+          setTotalItems(data.total || 0);
+        } else {
+          throw new Error(response.message);
+        }
+      } catch (err: any) {
+        setError(err.message || "Failed to load transactions");
+        await dialogs.alert({ title: "Error", message: err.message });
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load transactions");
-      await dialogs.alert({ title: "Error", message: err.message });
-    } finally {
-      setLoading(false);
-    }
-  }, [filters.startDate, filters.endDate]);
+    },
+    [filters.startDate, filters.endDate]
+  );
 
-  // Apply local filters (search, paymentMethod, status) whenever allTransactions or filters change
+  // Apply local filters (search, paymentMethod, status)
   useEffect(() => {
     let filtered = [...allTransactions];
 
-    // Search by transaction ID, customer name, or product SKU/name
     if (filters.search) {
       const searchLower = filters.search.toLowerCase();
       filtered = filtered.filter((tx) => {
@@ -60,23 +67,21 @@ export function useTransactions(initialFilters: TransactionFilters) {
         if (tx.id.toString().includes(searchLower)) return true;
         // match by customer name
         if (tx.customer?.name?.toLowerCase().includes(searchLower)) return true;
-        // match by any product SKU or name in sale items
+        // match by any meat SKU or name in sale items
         return tx.saleItems.some(
           (item) =>
-            item.product.sku.toLowerCase().includes(searchLower) ||
-            item.product.name.toLowerCase().includes(searchLower)
+            item.meat?.sku?.toLowerCase().includes(searchLower) ||
+            item.meat?.name?.toLowerCase().includes(searchLower)
         );
       });
     }
 
-    // Payment method filter
     if (filters.paymentMethod) {
       filtered = filtered.filter(
         (tx) => tx.paymentMethod === filters.paymentMethod
       );
     }
 
-    // Status filter
     if (filters.status) {
       filtered = filtered.filter((tx) => tx.status === filters.status);
     }
@@ -84,18 +89,26 @@ export function useTransactions(initialFilters: TransactionFilters) {
     setFilteredTransactions(filtered);
   }, [allTransactions, filters.search, filters.paymentMethod, filters.status]);
 
-  // Reload when date range changes
+  // Initial load with default pagination
   useEffect(() => {
-    loadTransactions();
+    loadTransactions({ page: 1, limit: 10 });
   }, [loadTransactions]);
 
+  const reload = useCallback(
+    (options?: { page?: number; limit?: number }) => {
+      loadTransactions(options);
+    },
+    [loadTransactions]
+  );
+
   return {
-    transactions: filteredTransactions,   // for the table
-    allTransactions,                      // for stats (unfiltered)
+    transactions: filteredTransactions, // for table (filtered)
+    allTransactions, // for stats (unfiltered)
     filters,
     setFilters,
     loading,
     error,
-    reload: loadTransactions,
+    totalItems: allTransactions.length, // for pagination (use total from API?)
+    reload,
   };
-}
+};

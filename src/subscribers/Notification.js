@@ -2,7 +2,7 @@
 const Notification = require("../entities/Notification");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading NotificationSubscriber");
+logger.debug("[Subscriber] Loading NotificationSubscriber");
 
 class NotificationSubscriber {
   listenTo() {

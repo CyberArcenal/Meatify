@@ -1,53 +1,51 @@
-// src/renderer/pages/stock/components/StockSummaryCards.tsx
+// src/renderer/pages/inventory/stock/components/StockSummaryCards.tsx
 import React from "react";
-import { Package, DollarSign, AlertTriangle, XCircle } from "lucide-react";
-import type { Product } from "../../../api/core/product";
+import { Beef, DollarSign, AlertTriangle, XCircle } from "lucide-react";
+import type { StockMeat } from "../hooks/useStockLevels";
 import Decimal from "decimal.js";
 
 interface StockSummaryCardsProps {
-  products: Product[];
+  meats: StockMeat[];
 }
 
-export const StockSummaryCards: React.FC<StockSummaryCardsProps> = ({
-  products,
-}) => {
-  const totalProducts = products.length;
-  const totalStockValue = products.reduce(
-    (sum, p) => sum + p.stockQty * Number(p.price),
-    0,
+export const StockSummaryCards: React.FC<StockSummaryCardsProps> = ({ meats }) => {
+  const totalMeats = meats.length;
+  const totalStockValue = meats.reduce(
+    (sum, m) => sum + m.currentStock * m.pricePerKg,
+    0
   );
-  const lowStockCount = products.filter(
-    (p) => p.stockQty > 0 && p.stockQty <= 5,
+  const lowStockCount = meats.filter(
+    (m) => m.currentStock > 0 && m.currentStock <= m.reorderLevel
   ).length;
-  const outOfStockCount = products.filter((p) => p.stockQty === 0).length;
+  const outOfStockCount = meats.filter((m) => m.currentStock === 0).length;
 
   return (
-    <div className="grid grid-cols-4 gap-4 mb-6">
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-[var(--text-tertiary)]">
-              Total Products
-            </p>
+            <p className="text-sm text-[var(--text-tertiary)]">Total Meats</p>
             <p className="text-2xl font-bold text-[var(--text-primary)]">
-              {totalProducts}
+              {totalMeats}
             </p>
           </div>
-          <Package className="w-8 h-8 text-[var(--accent-blue)] opacity-70" />
+          <Beef className="w-8 h-8 text-[var(--accent-gold)] opacity-70" />
         </div>
       </div>
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4">
+
+      <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-[var(--text-tertiary)]">Stock Value</p>
-            <p className="text-2xl font-bold text-[var(--accent-green)]">
+            <p className="text-2xl font-bold text-[var(--accent-gold)]">
               ₱{new Decimal(totalStockValue).toFixed(2)}
             </p>
           </div>
-          <DollarSign className="w-8 h-8 text-[var(--accent-green)] opacity-70" />
+          <DollarSign className="w-8 h-8 text-[var(--accent-gold)] opacity-70" />
         </div>
       </div>
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4">
+
+      <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-[var(--text-tertiary)]">Low Stock</p>
@@ -58,7 +56,8 @@ export const StockSummaryCards: React.FC<StockSummaryCardsProps> = ({
           <AlertTriangle className="w-8 h-8 text-[var(--status-pending)] opacity-70" />
         </div>
       </div>
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4">
+
+      <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-[var(--text-tertiary)]">Out of Stock</p>

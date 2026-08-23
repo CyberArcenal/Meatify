@@ -4,7 +4,7 @@ const { logger } = require("../utils/logger");
 const { SystemSettingStateTransitionService } = require("../stateServices/systemSettings");
 const { BrowserWindow } = require("electron");
 
-console.log("[Subscriber] Loading SystemSettingSubscriber");
+logger.debug("[Subscriber] Loading SystemSettingSubscriber");
 
 class SystemSettingSubscriber {
   constructor() {

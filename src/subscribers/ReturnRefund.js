@@ -4,7 +4,7 @@ const { logger } = require("../utils/logger");
 const { ReturnRefundStateService } = require("../stateServices/ReturnRefund");
 const { AppDataSource } = require("../main/db/data-source");
 
-console.log("[Subscriber] Loading ReturnRefundSubscriber");
+logger.debug("[Subscriber] Loading ReturnRefundSubscriber");
 
 class ReturnRefundSubscriber {
   constructor() {

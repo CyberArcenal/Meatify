@@ -116,9 +116,9 @@ export const PurchaseViewDialog: React.FC<PurchaseViewDialogProps> = ({
                     {items.map((item) => (
                       <tr key={item.id}>
                         <td className="px-4 py-2 text-sm text-[var(--text-primary)]">
-                          {item.product?.name || `Product #${item.product?.id}`}
+                          {item.meat?.name || `Product #${item.meat?.id}`}
                           <span className="text-xs text-[var(--text-tertiary)] ml-2">
-                            SKU: {item.product?.sku}
+                            SKU: {item.meat?.sku}
                           </span>
                         </td>
                         <td className="px-4 py-2 text-right text-sm text-[var(--text-secondary)]">

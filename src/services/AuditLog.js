@@ -2,6 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
+const { logger } = require("../utils/logger");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -28,7 +29,7 @@ class AuditLogService {
       await AppDataSource.initialize();
     }
     this.auditLogRepository = AppDataSource.getRepository(AuditLog);
-    console.log("AuditLogService initialized");
+    logger.debug("AuditLogService initialized");
   }
 
   async getRepository() {
@@ -49,7 +50,7 @@ class AuditLogService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[AuditLog._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -59,7 +60,7 @@ class AuditLogService {
     }
     // Fallback to global data source
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[AuditLog._getRepo] Using global repository (fallback)`);
+    logger.debug(`[AuditLog._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -94,7 +95,7 @@ class AuditLogService {
       // We use the direct auditLogger utility which does NOT call this service.
       await auditLogger.logCreate("AuditLog", saved.id, saved, user);
 
-      console.log(`AuditLog created: #${saved.id} - ${data.action} on ${data.entity}`);
+      logger.debug(`AuditLog created: #${saved.id} - ${data.action} on ${data.entity}`);
       return saved;
     } catch (error) {
       console.error("Failed to create audit log:", error.message);
@@ -115,7 +116,7 @@ class AuditLogService {
     if (!log) {
       throw new Error(`AuditLog with ID ${id} not found`);
     }
-    await auditLogger.logView("AuditLog", id, "system");
+    await logger.debug("AuditLog", id, "system");
     return log;
   }
 
@@ -172,7 +173,7 @@ class AuditLogService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("AuditLog", null, "system");
+    await logger.debug("AuditLog", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -193,8 +194,8 @@ class AuditLogService {
     }
 
     await removeDb(repo, log, { queryRunner: qr });
-    await auditLogger.logDelete("AuditLog", id, log, user);
-    console.log(`AuditLog #${id} permanently deleted`);
+    await auditLogger.debugDelete("AuditLog", id, log, user);
+    logger.debug(`AuditLog #${id} permanently deleted`);
   }
 
   /**
@@ -283,8 +284,8 @@ class AuditLogService {
         };
       }
 
-      await auditLogger.logExport("AuditLog", format, filters, user);
-      console.log(`Exported ${logs.length} audit logs in ${format} format`);
+      await auditLogger.debugExport("AuditLog", format, filters, user);
+      logger.debug(`Exported ${logs.length} audit logs in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export audit logs:", error);

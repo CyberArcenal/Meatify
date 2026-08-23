@@ -278,7 +278,7 @@ class NotificationLogStateService {
 
     for (const log of logs) {
       await removeDb(repo, log, { queryRunner });
-      await auditLogger.logDelete("NotificationLog", log.id, log, user);
+      await auditLogger.debugDelete("NotificationLog", log.id, log, user);
     }
 
     logger.info(`[NotificationLogState] Cleaned up ${logs.length} old logs`);

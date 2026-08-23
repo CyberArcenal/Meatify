@@ -1,3 +1,4 @@
+// src/renderer/pages/sales/transactions/components/FilterBar.tsx
 import React, { useState } from "react";
 import { Search, Calendar, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
@@ -37,7 +38,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
   };
 
   return (
-    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-4 mb-4">
+    <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-4">
         {/* Date Range */}
         <div className="flex items-center gap-2">
@@ -45,7 +46,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
           <select
             value={dateRange}
             onChange={(e) => handleDateRangeChange(e.target.value as any)}
-            className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+            className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
           >
             <option value="today">Today</option>
             <option value="week">Last 7 days</option>
@@ -61,27 +62,27 @@ export const FilterBar: React.FC<FilterBarProps> = ({
               type="date"
               value={filters.startDate}
               onChange={(e) => onFilterChange("startDate", e.target.value)}
-              className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+              className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
             />
             <span className="text-[var(--text-tertiary)]">–</span>
             <input
               type="date"
               value={filters.endDate}
               onChange={(e) => onFilterChange("endDate", e.target.value)}
-              className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+              className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
             />
           </>
         )}
 
-        {/* Search */}
+        {/* Search - updated placeholder */}
         <div className="flex-1 min-w-[200px] relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
           <input
             type="text"
-            placeholder="Search by ID, customer, SKU..."
+            placeholder="Search by ID, customer, meat SKU or name..."
             value={filters.search}
             onChange={(e) => onFilterChange("search", e.target.value)}
-            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
+            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
           />
         </div>
 
@@ -89,7 +90,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         <select
           value={filters.paymentMethod}
           onChange={(e) => onFilterChange("paymentMethod", e.target.value as PaymentMethod)}
-          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
         >
           <option value="">All Payments</option>
           <option value="cash">Cash</option>
@@ -101,10 +102,9 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         <select
           value={filters.status}
           onChange={(e) => onFilterChange("status", e.target.value as SaleStatus)}
-          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent outline-none"
         >
           <option value="">All Status</option>
-          {/* <option value="initiated">Initiated</option> */}
           <option value="paid">Paid</option>
           <option value="refunded">Refunded</option>
           <option value="voided">Voided</option>

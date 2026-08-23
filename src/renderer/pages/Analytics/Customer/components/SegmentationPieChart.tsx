@@ -1,12 +1,16 @@
 import React from 'react';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-import type { CustomerSegmentation } from '../../../../api/analytics/customer_insight';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 interface Props {
-  segmentation: CustomerSegmentation;
+  segmentation: {
+    highValue: number;
+    mediumValue: number;
+    lowValue: number;
+    inactive: number;
+  };
 }
 
 const SegmentationPieChart: React.FC<Props> = ({ segmentation }) => {
@@ -20,7 +24,7 @@ const SegmentationPieChart: React.FC<Props> = ({ segmentation }) => {
           segmentation.lowValue,
           segmentation.inactive,
         ],
-   backgroundColor: [
+        backgroundColor: [
           '#22c55e', // bright green
           '#3b82f6', // bright blue
           '#f97316', // bright orange
@@ -41,10 +45,8 @@ const SegmentationPieChart: React.FC<Props> = ({ segmentation }) => {
           color: 'var(--text-primary)',
           font: { size: 12 },
         },
-        
         position: 'bottom' as const,
       },
-      
       tooltip: {
         backgroundColor: 'var(--card-bg)',
         titleColor: 'var(--text-primary)',

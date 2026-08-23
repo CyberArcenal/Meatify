@@ -36,7 +36,7 @@ contextBridge.exposeInMainWorld("backendAPI", {
 
   // ========== LOGGING ==========
   log: {
-    info: (message, data) => console.log("[Renderer]", message, data),
+    info: (message, data) => logger.debug("[Renderer]", message, data),
     error: (message, error) => console.error("[Renderer]", message, error),
     warn: (message, warning) => console.warn("[Renderer]", message, warning),
   },

@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -46,7 +46,7 @@ class SaleService {
     this.saleItemRepository = AppDataSource.getRepository(SaleItem);
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.customerRepository = AppDataSource.getRepository(Customer);
-    console.log("SaleService initialized");
+    logger.debug("SaleService initialized");
   }
 
   async getRepositories() {
@@ -71,7 +71,7 @@ class SaleService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[Sale._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -79,7 +79,7 @@ class SaleService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[Sale._getRepo] Using global repository (fallback)`);
+    logger.debug(`[Sale._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -196,7 +196,7 @@ class SaleService {
       }
 
       await auditLogger.logCreate("Sale", savedSale.id, savedSale, user);
-      console.log(`Sale created: #${savedSale.id} (initiated)`);
+      logger.debug(`Sale created: #${savedSale.id} (initiated)`);
 
       // Reload with items
       const fullSale = await saleRepo.findOne({
@@ -342,7 +342,7 @@ class SaleService {
 
       const saved = await updateDb(saleRepo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("Sale", id, oldData, saved, user);
-      console.log(`Sale updated: #${id}`);
+      logger.debug(`Sale updated: #${id}`);
 
       // Reload with relations
       const fullSale = await saleRepo.findOne({
@@ -397,8 +397,8 @@ class SaleService {
     }
 
     await removeDb(saleRepo, sale, { queryRunner: qr });
-    await auditLogger.logDelete("Sale", id, sale, user);
-    console.log(`Sale #${id} permanently deleted`);
+    await auditLogger.debugDelete("Sale", id, sale, user);
+    logger.debug(`Sale #${id} permanently deleted`);
   }
 
   /**
@@ -422,7 +422,7 @@ class SaleService {
     if (!sale) {
       throw new Error(`Sale with ID ${id} not found`);
     }
-    await auditLogger.logView("Sale", id, "system");
+    await logger.debug("Sale", id, "system");
     return sale;
   }
 
@@ -488,7 +488,7 @@ class SaleService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("Sale", null, "system");
+    await logger.debug("Sale", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -611,8 +611,8 @@ class SaleService {
         };
       }
 
-      await auditLogger.logExport("Sale", format, filters, user);
-      console.log(`Exported ${sales.length} sales in ${format} format`);
+      await auditLogger.debugExport("Sale", format, filters, user);
+      logger.debug(`Exported ${sales.length} sales in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export sales:", error);

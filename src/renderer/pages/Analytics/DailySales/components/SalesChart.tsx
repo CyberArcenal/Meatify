@@ -11,12 +11,11 @@ import {
   Filler,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import type { DailySalesChartPoint } from '../../../../api/analytics/daily_sales';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 interface Props {
-  data: DailySalesChartPoint[];
+  data: Array<{ date: string; total: number; count: number }>;
   loading: boolean;
 }
 
@@ -26,7 +25,7 @@ const SalesChart: React.FC<Props> = ({ data, loading }) => {
     datasets: [
       {
         label: 'Total Sales',
-        data: data.map(item => Number(item.total)),
+        data: data.map(item => item.total),
         borderColor: 'var(--accent-blue)',
         backgroundColor: 'rgba(37, 99, 235, 0.1)',
         fill: true,
@@ -35,7 +34,7 @@ const SalesChart: React.FC<Props> = ({ data, loading }) => {
       },
       {
         label: 'Transaction Count',
-        data: data.map(item => Number(item.count)),
+        data: data.map(item => item.count),
         borderColor: 'var(--accent-green)',
         backgroundColor: 'rgba(34, 197, 94, 0.1)',
         fill: true,

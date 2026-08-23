@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -38,7 +38,7 @@ class ReturnRefundItemService {
     this.returnRefundRepository = AppDataSource.getRepository(ReturnRefund);
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.batchRepository = AppDataSource.getRepository(Batch);
-    console.log("ReturnRefundItemService initialized");
+    logger.debug("ReturnRefundItemService initialized");
   }
 
   async getRepositories() {
@@ -63,7 +63,7 @@ class ReturnRefundItemService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[ReturnRefundItem._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -71,7 +71,7 @@ class ReturnRefundItemService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[ReturnRefundItem._getRepo] Using global repository (fallback)`);
+    logger.debug(`[ReturnRefundItem._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -154,7 +154,7 @@ class ReturnRefundItemService {
 
       const saved = await saveDb(returnItemRepo, returnItem, { queryRunner: qr });
       await auditLogger.logCreate("ReturnRefundItem", saved.id, saved, user);
-      console.log(`ReturnRefundItem created: #${saved.id} - Meat: ${meat.name}, Weight: ${saved.weightKg}kg`);
+      logger.debug(`ReturnRefundItem created: #${saved.id} - Meat: ${meat.name}, Weight: ${saved.weightKg}kg`);
       return saved;
     } catch (error) {
       console.error("Failed to create return refund item:", error.message);
@@ -225,7 +225,7 @@ class ReturnRefundItemService {
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("ReturnRefundItem", id, oldData, saved, user);
-      console.log(`ReturnRefundItem updated: #${id}`);
+      logger.debug(`ReturnRefundItem updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update return refund item:", error.message);
@@ -258,8 +258,8 @@ class ReturnRefundItemService {
     }
 
     await removeDb(repo, item, { queryRunner: qr });
-    await auditLogger.logDelete("ReturnRefundItem", id, item, user);
-    console.log(`ReturnRefundItem #${id} permanently deleted`);
+    await auditLogger.debugDelete("ReturnRefundItem", id, item, user);
+    logger.debug(`ReturnRefundItem #${id} permanently deleted`);
   }
 
   /**
@@ -282,7 +282,7 @@ class ReturnRefundItemService {
     if (!item) {
       throw new Error(`ReturnRefundItem with ID ${id} not found`);
     }
-    await auditLogger.logView("ReturnRefundItem", id, "system");
+    await logger.debug("ReturnRefundItem", id, "system");
     return item;
   }
 
@@ -355,7 +355,7 @@ class ReturnRefundItemService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("ReturnRefundItem", null, "system");
+    await logger.debug("ReturnRefundItem", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -458,8 +458,8 @@ class ReturnRefundItemService {
         };
       }
 
-      await auditLogger.logExport("ReturnRefundItem", format, filters, user);
-      console.log(`Exported ${items.length} return refund items in ${format} format`);
+      await auditLogger.debugExport("ReturnRefundItem", format, filters, user);
+      logger.debug(`Exported ${items.length} return refund items in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export return refund items:", error);

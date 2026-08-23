@@ -1,88 +1,78 @@
-import React from 'react';
-import { RotateCcw, DollarSign, Receipt, TrendingDown } from 'lucide-react';
-import type { ReturnRefundSummary } from '../../../../api/analytics/return_refund_reports';
+// src/renderer/pages/analytics/returns/components/SummaryCards.tsx
+import React from "react";
+import { RotateCcw, DollarSign, Receipt, CheckCircle } from "lucide-react";
+import Decimal from "decimal.js";
+import type { ReturnSummary } from "../hooks/useReturnRefunds";
 
-interface Props {
-  summary: ReturnRefundSummary | null;
-  loading: boolean;
+interface SummaryCardsProps {
+  summary: ReturnSummary | null;
+  loading?: boolean;
 }
 
-const SummaryCards: React.FC<Props> = ({ summary, loading }) => {
-  const colorClasses = {
-    amber: 'bg-[var(--accent-amber-light)] text-[var(--accent-amber)] border-[var(--accent-amber)]/20',
-    blue: 'bg-[var(--accent-blue-light)] text-[var(--accent-blue)] border-[var(--accent-blue)]/20',
-    purple: 'bg-[var(--accent-purple-light)] text-[var(--accent-purple)] border-[var(--accent-purple)]/20',
-    red: 'bg-[var(--danger-bg)] text-[var(--danger-color)] border-[var(--danger-color)]/20',
-  };
-
-  if (loading) {
+export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary, loading }) => {
+  if (loading || !summary) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map(i => (
-          <div key={i} className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)] animate-pulse">
-            <div className="h-4 bg-[var(--border-color)] rounded w-24 mb-2" />
-            <div className="h-6 bg-[var(--border-color)] rounded w-32" />
-          </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="h-24 bg-[var(--card-secondary-bg)] rounded-lg animate-pulse" />
         ))}
       </div>
     );
   }
 
-  if (!summary) return null;
-
   const cards = [
     {
-      title: 'Total Returns',
+      title: "Total Returns",
       value: summary.totalCount,
       icon: RotateCcw,
-      color: 'amber',
+      color: "var(--accent-amber)",
     },
     {
-      title: 'Total Amount',
-      value: summary.totalAmount,
+      title: "Total Amount",
+      value: `₱${new Decimal(summary.totalAmount).toFixed(2)}`,
       icon: DollarSign,
-      color: 'blue',
-      format: (val: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val),
+      color: "var(--accent-gold)",
     },
     {
-      title: 'Average Amount',
-      value: summary.averageAmount,
+      title: "Average Amount",
+      value: `₱${new Decimal(summary.avgAmount).toFixed(2)}`,
       icon: Receipt,
-      color: 'purple',
-      format: (val: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val),
+      color: "var(--accent-blue)",
     },
     {
-      title: 'Most Common Status',
-      value: summary.statusBreakdown?.sort((a, b) => b.count - a.count)[0]?.status || 'N/A',
-      icon: TrendingDown,
-      color: 'red',
+      title: "Processed",
+      value: summary.processedCount,
+      icon: CheckCircle,
+      color: "var(--accent-green)",
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-      {cards.map((card, idx) => (
-        <div
-          key={idx}
-          className={`rounded-xl p-5 border transition-all duration-300 hover:scale-[1.02] hover:shadow-lg ${
-            colorClasses[card.color as keyof typeof colorClasses]
-          }`}
-        >
-          <div className="flex items-start justify-between">
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      {cards.map((card, idx) => {
+        const Icon = card.icon;
+        return (
+          <div
+            key={idx}
+            className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-xl p-4 flex items-center justify-between"
+          >
             <div>
-              <p className="text-sm font-medium opacity-80">{card.title}</p>
-              <p className="text-2xl font-bold mt-1">
-                {card.format ? card.format(card.value) : card.value}
+              <p className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                {card.title}
+              </p>
+              <p className="text-2xl font-bold text-[var(--text-primary)] mt-1">
+                {card.value}
               </p>
             </div>
-            <div className="p-2 rounded-lg bg-black/10">
-              <card.icon className="w-6 h-6" />
+            <div
+              className="p-3 rounded-lg"
+              style={{ backgroundColor: `${card.color}20`, color: card.color }}
+            >
+              <Icon className="w-5 h-5" />
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
-
-export default SummaryCards;

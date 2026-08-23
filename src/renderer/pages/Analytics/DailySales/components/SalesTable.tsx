@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import type { DailySalesEntry } from '../../../../api/analytics/daily_sales';
-import dailySalesAPI from '../../../../api/analytics/daily_sales';
+import type { DailySale } from '../../../../api/analytics/dailySales';
+import dailySalesAPI from '../../../../api/analytics/dailySales';
 
 interface Props {
-  data: DailySalesEntry[];
+  data: Array<{ date: string; count: number; total: number; average: number; paidCount: number }>;
   loading: boolean;
   page: number;
   totalPages: number;
@@ -21,7 +21,7 @@ const SalesTable: React.FC<Props> = ({
   onPageChange,
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [details, setDetails] = useState<any[]>([]);
+  const [details, setDetails] = useState<DailySale[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
@@ -33,9 +33,13 @@ const SalesTable: React.FC<Props> = ({
     setLoadingDetails(true);
     setShowModal(true);
     try {
-      const res = await dailySalesAPI.getDailySalesDetails({ date, page: 1, limit: 100 });
-      if (res.status) setDetails(res.data);
-      else throw new Error(res.message);
+      // Fetch sales for the specific date
+      const res = await dailySalesAPI.getData({ date, limit: 100 });
+      if (res.status) {
+        setDetails(res.data.sales);
+      } else {
+        throw new Error(res.message);
+      }
     } catch (err: any) {
       alert('Failed to load details: ' + err.message);
     } finally {

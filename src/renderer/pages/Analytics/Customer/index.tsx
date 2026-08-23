@@ -4,8 +4,39 @@ import TopSpendersTable from './components/TopSpendersTable';
 import TopLoyaltyTable from './components/TopLoyaltyTable';
 import SegmentationPieChart from './components/SegmentationPieChart';
 import CustomerTable from './components/CustomerTable';
-import type { CustomerSegmentation, CustomerSummary, TopCustomerLoyalty, TopCustomerSpending } from '../../../api/analytics/customer_insight';
-import customerInsightsAPI from '../../../api/analytics/customer_insight';
+import customerInsightsAPI from '../../../api/analytics/customerInsights';
+import type {
+  CustomerInsightsSummaryData,
+  CustomerInsight,
+} from '../../../api/analytics/customerInsights';
+
+// Local type aliases based on the API response
+type CustomerSummary = {
+  totalCustomers: number;
+  activeCustomers: number;
+  averageLoyaltyPoints: number;
+  newCustomersThisMonth: number;
+};
+
+type TopCustomerSpending = {
+  customerId: number;
+  customerName: string;
+  purchaseCount: number;
+  totalSpent: number;
+};
+
+type TopCustomerLoyalty = {
+  customerId: number;
+  customerName: string;
+  points: number;
+};
+
+type CustomerSegmentation = {
+  highValue: number;
+  mediumValue: number;
+  lowValue: number;
+  inactive: number;
+};
 
 const CustomerInsights: React.FC = () => {
   const [summary, setSummary] = useState<CustomerSummary | null>(null);
@@ -19,17 +50,57 @@ const CustomerInsights: React.FC = () => {
     const fetchAll = async () => {
       try {
         setLoading(true);
-        const [sumRes, spendRes, loyaltyRes, segRes] = await Promise.all([
-          customerInsightsAPI.getSummary(),
-          customerInsightsAPI.getTopBySpending({ limit: 5 }),
-          customerInsightsAPI.getTopByLoyaltyPoints({ limit: 5 }),
-          customerInsightsAPI.getSegmentation(),
-        ]);
 
-        if (sumRes.status) setSummary(sumRes.data);
-        if (spendRes.status) setTopSpenders(spendRes.data as TopCustomerSpending[]);
-        if (loyaltyRes.status) setTopLoyalty(loyaltyRes.data as TopCustomerLoyalty[]);
-        if (segRes.status) setSegmentation(segRes.data);
+        // Fetch summary data
+        const sumRes = await customerInsightsAPI.getSummary();
+        if (sumRes.status) {
+          const data = sumRes.data; // CustomerInsightsSummaryData
+          setSummary({
+            totalCustomers: data.totalCustomers,
+            activeCustomers: data.activeCount,
+            averageLoyaltyPoints: data.pointsSummary.average,
+            newCustomersThisMonth: data.totalCustomers - data.inactiveCount, // or any appropriate field
+          });
+
+          // Derive segmentation
+          setSegmentation({
+            highValue: data.byStatus.elite,
+            mediumValue: data.byStatus.vip,
+            lowValue: data.byStatus.regular,
+            inactive: data.inactiveCount,
+          });
+        }
+
+        // Fetch top spenders (using getData with sort)
+        const spendRes = await customerInsightsAPI.getData({
+          sortBy: 'totalSpent',
+          sortOrder: 'DESC',
+          limit: 5,
+        });
+        if (spendRes.status) {
+          const topSpendersList = spendRes.data.customers.slice(0, 5).map((c) => ({
+            customerId: c.id,
+            customerName: c.name,
+            purchaseCount: c.purchaseCount,
+            totalSpent: c.totalSpent,
+          }));
+          setTopSpenders(topSpendersList);
+        }
+
+        // Fetch top loyalty (using getData with sort)
+        const loyaltyRes = await customerInsightsAPI.getData({
+          sortBy: 'loyaltyPointsBalance',
+          sortOrder: 'DESC',
+          limit: 5,
+        });
+        if (loyaltyRes.status) {
+          const topLoyaltyList = loyaltyRes.data.customers.slice(0, 5).map((c) => ({
+            customerId: c.id,
+            customerName: c.name,
+            points: c.loyaltyPointsBalance,
+          }));
+          setTopLoyalty(topLoyaltyList);
+        }
       } catch (err: any) {
         setError(err.message);
       } finally {

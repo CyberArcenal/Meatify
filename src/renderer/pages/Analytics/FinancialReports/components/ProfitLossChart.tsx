@@ -11,12 +11,20 @@ import {
   Legend,
   Filler,
 } from 'chart.js';
-import type { ProfitLossItem } from '../../../../api/analytics/financial_reports';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend, Filler);
 
 interface Props {
-  data: ProfitLossItem[];
+  data: Array<{
+    period: string;
+    revenue: number;
+    refunds: number;
+    netRevenue: number;
+    transactions: number;
+    discounts: number;
+    costOfGoods: number;
+    profit: number;
+  }>;
   groupBy: string;
   loading: boolean;
 }

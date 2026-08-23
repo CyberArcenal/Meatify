@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -39,7 +39,7 @@ class BatchService {
     this.batchRepository = AppDataSource.getRepository(Batch);
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.supplierRepository = AppDataSource.getRepository(Supplier);
-    console.log("BatchService initialized");
+    logger.debug("BatchService initialized");
   }
 
   async getRepositories() {
@@ -63,7 +63,7 @@ class BatchService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[Batch._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -71,7 +71,7 @@ class BatchService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[Batch._getRepo] Using global repository (fallback)`);
+    logger.debug(`[Batch._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -144,7 +144,7 @@ class BatchService {
 
       const saved = await saveDb(batchRepo, batch, { queryRunner: qr });
       await auditLogger.logCreate("Batch", saved.id, saved, user);
-      console.log(`Batch created: #${saved.id} - ${saved.batchCode}`);
+      logger.debug(`Batch created: #${saved.id} - ${saved.batchCode}`);
       return saved;
     } catch (error) {
       console.error("Failed to create batch:", error.message);
@@ -193,7 +193,7 @@ class BatchService {
 
       const saved = await updateDb(batchRepo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("Batch", id, oldData, saved, user);
-      console.log(`Batch updated: #${id}`);
+      logger.debug(`Batch updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update batch:", error.message);
@@ -235,8 +235,8 @@ class BatchService {
       batch.updatedAt = new Date();
 
       const saved = await updateDb(batchRepo, batch, { queryRunner: qr });
-      await auditLogger.logDelete("Batch", id, oldData, user);
-      console.log(`Batch #${id} soft deleted (depleted)`);
+      await auditLogger.debugDelete("Batch", id, oldData, user);
+      logger.debug(`Batch #${id} soft deleted (depleted)`);
       return saved;
     } catch (error) {
       console.error("Failed to delete batch:", error.message);
@@ -276,7 +276,7 @@ class BatchService {
 
       const saved = await updateDb(batchRepo, batch, { queryRunner: qr });
       await auditLogger.logUpdate("Batch", id, oldData, saved, user);
-      console.log(`Batch #${id} restored to active`);
+      logger.debug(`Batch #${id} restored to active`);
       return saved;
     } catch (error) {
       console.error("Failed to restore batch:", error.message);
@@ -304,8 +304,8 @@ class BatchService {
     // You can add a check here if needed (e.g., count sale items referencing this batch)
 
     await removeDb(batchRepo, batch, { queryRunner: qr });
-    await auditLogger.logDelete("Batch", id, batch, user);
-    console.log(`Batch #${id} permanently deleted`);
+    await auditLogger.debugDelete("Batch", id, batch, user);
+    logger.debug(`Batch #${id} permanently deleted`);
   }
 
   /**
@@ -332,7 +332,7 @@ class BatchService {
     if (!batch) {
       throw new Error(`Batch with ID ${id} not found`);
     }
-    await auditLogger.logView("Batch", id, "system");
+    await logger.debug("Batch", id, "system");
     return batch;
   }
 
@@ -408,7 +408,7 @@ class BatchService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("Batch", null, "system");
+    await logger.debug("Batch", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -520,8 +520,8 @@ class BatchService {
         };
       }
 
-      await auditLogger.logExport("Batch", format, filters, user);
-      console.log(`Exported ${batches.length} batches in ${format} format`);
+      await auditLogger.debugExport("Batch", format, filters, user);
+      logger.debug(`Exported ${batches.length} batches in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export batches:", error);

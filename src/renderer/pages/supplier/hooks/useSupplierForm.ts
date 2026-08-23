@@ -1,16 +1,14 @@
-// src/renderer/pages/supplier/hooks/useSupplierForm.ts
+// src/renderer/pages/inventory/suppliers/hooks/useSupplierForm.ts
 import { useState } from "react";
 import type { Supplier } from "../../../api/core/supplier";
 
 export type FormMode = "add" | "edit";
 
-export function useSupplierForm() {
+export const useSupplierForm = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<FormMode>("add");
   const [supplierId, setSupplierId] = useState<number | undefined>();
-  const [initialData, setInitialData] = useState<
-    Partial<Supplier> | undefined
-  >();
+  const [initialData, setInitialData] = useState<Partial<Supplier> | undefined>();
 
   const openAdd = () => {
     setMode("add");
@@ -42,4 +40,4 @@ export function useSupplierForm() {
     openEdit,
     close,
   };
-}
+};

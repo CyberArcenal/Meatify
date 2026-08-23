@@ -2,7 +2,7 @@
 const ReturnRefundItem = require("../entities/ReturnRefundItem");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading ReturnRefundItemSubscriber");
+logger.debug("[Subscriber] Loading ReturnRefundItemSubscriber");
 
 class ReturnRefundItemSubscriber {
   listenTo() {

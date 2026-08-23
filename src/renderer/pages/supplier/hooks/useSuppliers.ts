@@ -1,8 +1,8 @@
-// src/renderer/pages/supplier/hooks/useSuppliers.ts
+// src/renderer/pages/inventory/suppliers/hooks/useSuppliers.ts
 import { useState, useEffect, useCallback } from "react";
 import supplierAPI, {
   type Supplier,
-  type SupplierWithProductCount,
+  type SupplierStatistics,
 } from "../../../api/core/supplier";
 
 export interface SupplierFilters {
@@ -12,14 +12,12 @@ export interface SupplierFilters {
   sortOrder: "ASC" | "DESC";
 }
 
-export function useSuppliers(initialFilters?: Partial<SupplierFilters>) {
+export const useSuppliers = (initialFilters?: Partial<SupplierFilters>) => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [productCounts, setProductCounts] = useState<Map<number, number>>(
-    new Map(),
-  );
+  const [meatCounts, setMeatCounts] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [total, setTotal] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
   const [filters, setFilters] = useState<SupplierFilters>({
     search: "",
     status: "all",
@@ -28,62 +26,79 @@ export function useSuppliers(initialFilters?: Partial<SupplierFilters>) {
     ...initialFilters,
   });
 
-  const fetchSuppliers = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Convert status filter to isActive for API
-      const isActive =
-        filters.status === "all" ? undefined : filters.status === "active";
+  const fetchSuppliers = useCallback(
+    async (options?: { page?: number; limit?: number }) => {
+      const page = options?.page || 1;
+      const limit = options?.limit || 10;
 
-      const response = await supplierAPI.getAll({
-        search: filters.search || undefined,
-        isActive,
-        sortBy: filters.sortBy,
-        sortOrder: filters.sortOrder,
-      });
+      setLoading(true);
+      setError(null);
 
-      if (response.status) {
-        setSuppliers(response.data);
-        setTotal(response.data.length); // Note: backend doesn't return total count yet
-      } else {
-        throw new Error(response.message || "Failed to fetch suppliers");
-      }
+      try {
+        const isActive =
+          filters.status === "all" ? undefined : filters.status === "active";
 
-      // Fetch product counts (active suppliers only)
-      const countsResponse = await supplierAPI.getWithProductCount();
-      if (countsResponse.status) {
-        const countsMap = new Map<number, number>();
-        countsResponse.data.forEach((item: SupplierWithProductCount) => {
-          countsMap.set(item.id, item.productCount);
+        const response = await supplierAPI.getAll({
+          page,
+          limit,
+          search: filters.search || undefined,
+          isActive,
+          sortBy: filters.sortBy,
+          sortOrder: filters.sortOrder,
         });
-        setProductCounts(countsMap);
+
+        if (response.status) {
+          const data = response.data;
+          setSuppliers(data.items || []);
+          setTotalItems(data.total || 0);
+        } else {
+          throw new Error(response.message || "Failed to fetch suppliers");
+        }
+
+        // Fetch meat counts from statistics
+        const statsResponse = await supplierAPI.getStatistics();
+        if (statsResponse.status) {
+          const stats = statsResponse.data;
+          const countsMap = new Map<number, number>();
+          if (stats.suppliersWithMeats) {
+            stats.suppliersWithMeats.forEach((item) => {
+              countsMap.set(item.id, item.meatCount);
+            });
+          }
+          setMeatCounts(countsMap);
+        }
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to fetch suppliers";
+        setError(message);
+        setSuppliers([]);
+        setTotalItems(0);
+      } finally {
+        setLoading(false);
       }
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch suppliers";
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+    },
+    [filters]
+  );
 
   useEffect(() => {
-    fetchSuppliers();
+    fetchSuppliers({ page: 1, limit: 10 });
   }, [fetchSuppliers]);
 
-  const reload = useCallback(() => {
-    fetchSuppliers();
-  }, [fetchSuppliers]);
+  const reload = useCallback(
+    (options?: { page?: number; limit?: number }) => {
+      fetchSuppliers(options);
+    },
+    [fetchSuppliers]
+  );
 
   return {
     suppliers,
-    productCounts,
+    meatCounts,
     loading,
     error,
-    total,
+    totalItems,
     filters,
     setFilters,
     reload,
   };
-}
+};

@@ -1,6 +1,7 @@
-
+//@ts-check
 
 const { AppDataSource } = require("../../main/db/data-source");
+const { logger } = require("../logger");
 
 class TransactionError extends Error {
   /**
@@ -39,7 +40,7 @@ async function withTransaction(operation, options = {}) {
   await queryRunner.startTransaction();
 
   let transactionTimeout = null;
-  console.log(`[Transaction] Starting transaction: ${name}`);
+  logger.debug(`[Transaction] Starting transaction: ${name}`);
 
   try {
     // Set transaction timeout
@@ -57,7 +58,7 @@ async function withTransaction(operation, options = {}) {
     await queryRunner.commitTransaction();
     if (transactionTimeout) clearTimeout(transactionTimeout);
 
-    console.log(`[Transaction] Successfully committed: ${name}`);
+    logger.debug(`[Transaction] Successfully committed: ${name}`);
     return result;
   } catch (error) {
     console.error(`[Transaction] Error in transaction ${name}:`, error);
@@ -66,7 +67,7 @@ async function withTransaction(operation, options = {}) {
     if (autoRollbackOnError) {
       try {
         await queryRunner.rollbackTransaction();
-        console.log(`[Transaction] Rolled back: ${name}`);
+        logger.debug(`[Transaction] Rolled back: ${name}`);
       } catch (rollbackError) {
         console.error(
           `[Transaction] Failed to rollback ${name}:`,
@@ -213,7 +214,7 @@ async function withRetry(operation, options = {}) {
         maxDelay
       );
 
-      console.log(
+      logger.debug(
         `[Transaction] Retry ${attempt}/${maxRetries} after ${delay}ms`
       );
       await new Promise((resolve) => setTimeout(resolve, delay));
@@ -308,7 +309,7 @@ class ManualTransaction {
     this.transactionActive = true;
     
     // @ts-ignore
-    console.log(`[ManualTransaction] Started: ${options.name || "unnamed"}`);
+    logger.debug(`[ManualTransaction] Started: ${options.name || "unnamed"}`);
   }
 
   async commit() {
@@ -321,7 +322,7 @@ class ManualTransaction {
     this.transactionActive = false;
     await this.release();
     
-    console.log("[ManualTransaction] Committed");
+    logger.debug("[ManualTransaction] Committed");
   }
 
   async rollback() {
@@ -334,7 +335,7 @@ class ManualTransaction {
     this.transactionActive = false;
     await this.release();
     
-    console.log("[ManualTransaction] Rolled back");
+    logger.debug("[ManualTransaction] Rolled back");
   }
 
   async release() {

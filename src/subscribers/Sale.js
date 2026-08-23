@@ -4,7 +4,7 @@ const { logger } = require("../utils/logger");
 const { SaleStateService } = require("../stateServices/Sale");
 const { AppDataSource } = require("../main/db/data-source");
 
-console.log("[Subscriber] Loading SaleSubscriber");
+logger.debug("[Subscriber] Loading SaleSubscriber");
 
 class SaleSubscriber {
   constructor() {

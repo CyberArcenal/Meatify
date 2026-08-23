@@ -156,7 +156,7 @@ class CategoryStateService {
         }
 
         // Log the reassignment
-        await auditLogger.log(
+        await logger.debug(
           `Reassigned ${meats.length} meat(s) from category "${category.name}" to "${targetCategory.name}"`
         );
       } else {
@@ -269,7 +269,7 @@ class CategoryStateService {
     await updateDb(categoryRepo, sourceCategory, { queryRunner, skipSignal: false });
 
     // Audit logs
-    await auditLogger.log(
+    await logger.debug(
       `Merged category "${sourceCategory.name}" into "${targetCategory.name}". ${meats.length} meat(s) reassigned.`,
       user
     );

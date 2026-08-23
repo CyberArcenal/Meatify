@@ -3,6 +3,7 @@
 const path = require("path");
 const fs = require("fs");
 const { app } = require("electron");
+const { logger } = require("../../utils/logger");
 
 const isDev = process.env.NODE_ENV === "development" || !app?.isPackaged;
 
@@ -16,7 +17,7 @@ function getDatabaseConfig() {
     databasePath = "App.db";
     entitiesPath = "src/entities/*.js";
     migrationsPath = "src/migrations/*.js";
-    console.log(`Development DB path: ${databasePath}`);
+    logger.debug(`Development DB path: ${databasePath}`);
   } else {
     // Production mode
     const userDataPath = app.getPath('userData');
@@ -44,7 +45,7 @@ function getDatabaseConfig() {
       migrationsPath = path.join(appPath, 'src/migrations/*.js');
     }
     
-    console.log(`Production DB path: ${databasePath}`);
+    logger.debug(`Production DB path: ${databasePath}`);
   }
   
   return {

@@ -2,7 +2,7 @@
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
-
+const { logger } = require("../utils/logger");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -35,7 +35,7 @@ class PurchaseItemService {
     this.purchaseItemRepository = AppDataSource.getRepository(PurchaseItem);
     this.purchaseRepository = AppDataSource.getRepository(Purchase);
     this.meatRepository = AppDataSource.getRepository(Meat);
-    console.log("PurchaseItemService initialized");
+    logger.debug("PurchaseItemService initialized");
   }
 
   async getRepositories() {
@@ -59,7 +59,7 @@ class PurchaseItemService {
     const qrType =
       qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    console.log(
+    logger.debug(
       `[PurchaseItem._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
     );
 
@@ -67,7 +67,7 @@ class PurchaseItemService {
       return qr.manager.getRepository(entityClass);
     }
     const { AppDataSource } = require("../main/db/data-source");
-    console.log(`[PurchaseItem._getRepo] Using global repository (fallback)`);
+    logger.debug(`[PurchaseItem._getRepo] Using global repository (fallback)`);
     return AppDataSource.getRepository(entityClass);
   }
 
@@ -129,7 +129,7 @@ class PurchaseItemService {
 
       const saved = await saveDb(purchaseItemRepo, purchaseItem, { queryRunner: qr });
       await auditLogger.logCreate("PurchaseItem", saved.id, saved, user);
-      console.log(`PurchaseItem created: #${saved.id} - Meat: ${meat.name}, Qty: ${saved.quantity}`);
+      logger.debug(`PurchaseItem created: #${saved.id} - Meat: ${meat.name}, Qty: ${saved.quantity}`);
       return saved;
     } catch (error) {
       console.error("Failed to create purchase item:", error.message);
@@ -190,7 +190,7 @@ class PurchaseItemService {
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
       await auditLogger.logUpdate("PurchaseItem", id, oldData, saved, user);
-      console.log(`PurchaseItem updated: #${id}`);
+      logger.debug(`PurchaseItem updated: #${id}`);
       return saved;
     } catch (error) {
       console.error("Failed to update purchase item:", error.message);
@@ -225,8 +225,8 @@ class PurchaseItemService {
     }
 
     await removeDb(repo, item, { queryRunner: qr });
-    await auditLogger.logDelete("PurchaseItem", id, item, user);
-    console.log(`PurchaseItem #${id} permanently deleted`);
+    await auditLogger.debugDelete("PurchaseItem", id, item, user);
+    logger.debug(`PurchaseItem #${id} permanently deleted`);
   }
 
   /**
@@ -248,7 +248,7 @@ class PurchaseItemService {
     if (!item) {
       throw new Error(`PurchaseItem with ID ${id} not found`);
     }
-    await auditLogger.logView("PurchaseItem", id, "system");
+    await logger.debug("PurchaseItem", id, "system");
     return item;
   }
 
@@ -307,7 +307,7 @@ class PurchaseItemService {
       limit: options.limit,
     });
 
-    await auditLogger.logView("PurchaseItem", null, "system");
+    await logger.debug("PurchaseItem", null, "system");
     return result; // { data: [], pagination: {} }
   }
 
@@ -401,8 +401,8 @@ class PurchaseItemService {
         };
       }
 
-      await auditLogger.logExport("PurchaseItem", format, filters, user);
-      console.log(`Exported ${items.length} purchase items in ${format} format`);
+      await auditLogger.debugExport("PurchaseItem", format, filters, user);
+      logger.debug(`Exported ${items.length} purchase items in ${format} format`);
       return exportData;
     } catch (error) {
       console.error("Failed to export purchase items:", error);

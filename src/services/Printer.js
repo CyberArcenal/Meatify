@@ -2,6 +2,7 @@
 
 const auditLogger = require("../utils/auditLogger");
 const Sale = require("../entities/Sale");
+const { logger } = require("../utils/logger");
 const {
   companyName,
   companyLocation,
@@ -9,7 +10,6 @@ const {
   receiptPrinterType,
 } = require("../utils/system");
 
-const { logger } = require("../utils/logger");
 class PrinterService {
   constructor() {
     this.driver = null;
@@ -87,7 +87,7 @@ class PrinterService {
         { action: "printReceipt" },
         "system",
       );
-      console.log(`[PrinterService] Printed receipt for sale #${sale.id}`);
+      logger.debug(`[PrinterService] Printed receipt for sale #${sale.id}`);
       return true;
     } catch (err) {
       // @ts-ignore

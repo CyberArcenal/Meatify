@@ -11,6 +11,12 @@ import CustomerLoyaltyPage from "../pages/CustomerLoyalty";
 import MovementPage from "../pages/Movement";
 import NotificationLogPage from "../pages/NotificationLog";
 import MeatPage from "../pages/Meat";
+import PurchasePage from "../pages/purchase";
+import ReorderPage from "../pages/reorder/Reorder";
+import SupplierPage from "../pages/supplier";
+import StockLevelsPage from "../pages/stock";
+import ReturnRefundReportsPage from "../pages/Analytics/ReturnRefundReports";
+import Transactions from "../pages/Transactions";
 
 
 const PageNotFound = () => <div> Page Not Found</div>;
@@ -52,7 +58,7 @@ function App() {
         {/* Core POS */}
         <Route path="dashboard" element={<DashboardPage />} />
         {/* <Route path="pos/cashier" element={<Cashier />} /> */}
-        {/* <Route path="pos/transactions" element={<Transactions />} /> */}
+        <Route path="pos/transactions" element={<Transactions />} />
       <Route path="inventory/products" element={<MeatPage />} />
 
         {/* Customers */}
@@ -65,11 +71,11 @@ function App() {
         {/* <Route path="sales/returns" element={<ReturnRefundReportsPage />} /> */}
 
         {/* Inventory */}
-        {/* <Route path="inventory/stock" element={<StockLevelsPage />} /> */}
+        <Route path="inventory/stock" element={<StockLevelsPage />} />
         <Route path="inventory/movements" element={<MovementPage />} />
-        {/* <Route path="inventory/reorder" element={<ReorderPage />} /> */}
-        {/* <Route path="inventory/purchases" element={<PurchasePage />} /> */}
-        {/* <Route path="inventory/suppliers" element={<SupplierPage />} /> */}
+        <Route path="inventory/reorder" element={<ReorderPage />} />
+        <Route path="inventory/purchases" element={<PurchasePage />} />
+        <Route path="inventory/suppliers" element={<SupplierPage />} />
         <Route path="inventory/categories" element={<CategoryPage />} />
 
         {/* Reports */}

@@ -4,7 +4,7 @@ import { Filter } from 'lucide-react';
 interface Props {
   startDate: string;
   endDate: string;
-  revenueGroupBy: 'paymentMethod' | 'category' | 'product';
+  revenueGroupBy: 'paymentMethod' | 'product';
   profitGroupBy: 'day' | 'week' | 'month';
   onFilterChange: (filters: any) => void;
 }
@@ -64,7 +64,6 @@ const FilterBar: React.FC<Props> = ({
             className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-[var(--text-primary)] focus:outline-none focus:border-[var(--input-focus)]"
           >
             <option value="paymentMethod">Payment Method</option>
-            <option value="category">Category</option>
             <option value="product">Product</option>
           </select>
         </div>

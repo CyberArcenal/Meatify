@@ -1,140 +1,94 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type {
-  FinancialSummary,
-  RevenueBreakdownItem,
-  ProfitLossItem,
-  ExpenseBreakdownItem,
-  FinancialChartDataPoint,
-} from '../../../api/analytics/financial_reports';
+  FinancialSummary, // for display maybe not used
+  FinancialData,
+  FinancialPeriodData,
+  TopProduct,
+} from '../../../api/analytics/financialReports';
 import FilterBar from './components/FilterBar';
-import financialReportsAPI from '../../../api/analytics/financial_reports';
+import financialReportsAPI from '../../../api/analytics/financialReports';
 import ExportButton from './components/ExportButton';
 import RevenueBreakdown from './components/RevenueBreakdown';
-import ExpenseBreakdown from './components/ExpenseBreakdown';
 import ProfitLossChart from './components/ProfitLossChart';
 import SummaryCards from './components/SummaryCards';
+
+// Local types based on API response
+type RevenueBreakdownItem = {
+  name: string;
+  amount: number;
+  count: number;
+};
+
+type ProfitLossItem = FinancialPeriodData;
 
 const FinancialReportsPage: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [revenueGroupBy, setRevenueGroupBy] = useState<'paymentMethod' | 'category' | 'product'>('paymentMethod');
+  const [revenueGroupBy, setRevenueGroupBy] = useState<'paymentMethod' | 'product'>('paymentMethod');
   const [profitGroupBy, setProfitGroupBy] = useState<'day' | 'week' | 'month'>('day');
 
   const [summary, setSummary] = useState<FinancialSummary | null>(null);
   const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueBreakdownItem[]>([]);
   const [profitLoss, setProfitLoss] = useState<ProfitLossItem[]>([]);
-  const [expenseBreakdown, setExpenseBreakdown] = useState<ExpenseBreakdownItem[]>([]);
-  const [chartData, setChartData] = useState<FinancialChartDataPoint[]>([]);
-
   const [loading, setLoading] = useState({
     summary: false,
     revenue: false,
     profit: false,
-    expense: false,
-    chart: false,
   });
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSummary = useCallback(async () => {
-    setLoading(prev => ({ ...prev, summary: true }));
+  // Fetch all data using getData
+  const fetchData = useCallback(async () => {
+    setLoading({ summary: true, revenue: true, profit: true });
+    setError(null);
     try {
-      const res = await financialReportsAPI.getSummary({
+      const res = await financialReportsAPI.getData({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
+        groupBy: profitGroupBy, // use same grouping for chart; could separate but we only have one
       });
-      if (res.status) setSummary(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, summary: false }));
-    }
-  }, [startDate, endDate]);
 
-  const fetchRevenueBreakdown = useCallback(async () => {
-    setLoading(prev => ({ ...prev, revenue: true }));
-    try {
-      const res = await financialReportsAPI.getRevenueBreakdown({
-        groupBy: revenueGroupBy,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        limit: 20,
-      });
-      if (res.status) setRevenueBreakdown(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, revenue: false }));
-    }
-  }, [revenueGroupBy, startDate, endDate]);
+      if (!res.status) throw new Error(res.message);
 
-  const fetchProfitLoss = useCallback(async () => {
-    setLoading(prev => ({ ...prev, profit: true }));
-    try {
-      const res = await financialReportsAPI.getProfitLoss({
-        groupBy: profitGroupBy,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-      if (res.status) setProfitLoss(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, profit: false }));
-    }
-  }, [profitGroupBy, startDate, endDate]);
+      const data = res.data as FinancialData;
 
-  const fetchExpenseBreakdown = useCallback(async () => {
-    setLoading(prev => ({ ...prev, expense: true }));
-    try {
-      const res = await financialReportsAPI.getExpenseBreakdown({
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-      if (res.status) setExpenseBreakdown(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, expense: false }));
-    }
-  }, [startDate, endDate]);
+      // Set summary
+      setSummary(data.summary as unknown as FinancialSummary);
 
-  const fetchChartData = useCallback(async () => {
-    setLoading(prev => ({ ...prev, chart: true }));
-    try {
-      const res = await financialReportsAPI.getChartData({
-        chartType: 'revenue',
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-      if (res.status) setChartData(res.data);
-      else throw new Error(res.message);
+      // Revenue breakdown
+      if (revenueGroupBy === 'paymentMethod') {
+        const items: RevenueBreakdownItem[] = Object.entries(data.summary.paymentBreakdown).map(([name, total]) => ({
+          name,
+          amount: total,
+          count: 0, // Not available from this API
+        }));
+        setRevenueBreakdown(items);
+      } else {
+        // product
+        const items: RevenueBreakdownItem[] = data.summary.topProducts.map((p: TopProduct) => ({
+          name: p.meatName,
+          amount: p.totalRevenue,
+          count: p.count,
+        }));
+        setRevenueBreakdown(items);
+      }
+
+      // Profit/Loss data
+      setProfitLoss(data.groupedData as ProfitLossItem[]);
     } catch (err: any) {
       setError(err.message);
     } finally {
-      setLoading(prev => ({ ...prev, chart: false }));
+      setLoading({ summary: false, revenue: false, profit: false });
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, revenueGroupBy, profitGroupBy]);
 
   useEffect(() => {
-    fetchSummary();
-    fetchRevenueBreakdown();
-    fetchProfitLoss();
-    fetchExpenseBreakdown();
-    fetchChartData();
-  }, [fetchSummary, fetchRevenueBreakdown, fetchProfitLoss, fetchExpenseBreakdown, fetchChartData]);
+    fetchData();
+  }, [fetchData]);
 
   const handleRefresh = () => {
-    setError(null);
-    fetchSummary();
-    fetchRevenueBreakdown();
-    fetchProfitLoss();
-    fetchExpenseBreakdown();
-    fetchChartData();
+    fetchData();
   };
 
   const handleFilterChange = (filters: any) => {
@@ -179,10 +133,7 @@ const FinancialReportsPage: React.FC = () => {
 
       <SummaryCards summary={summary} loading={loading.summary} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <RevenueBreakdown data={revenueBreakdown} groupBy={revenueGroupBy} loading={loading.revenue} />
-        <ExpenseBreakdown data={expenseBreakdown} loading={loading.expense} />
-      </div>
+      <RevenueBreakdown data={revenueBreakdown} groupBy={revenueGroupBy} loading={loading.revenue} />
 
       <ProfitLossChart data={profitLoss} groupBy={profitGroupBy} loading={loading.profit} />
     </div>

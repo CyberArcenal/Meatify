@@ -1,54 +1,57 @@
+// src/renderer/pages/inventory/stock/components/StockTable.tsx
 import React from "react";
-import { Package, CheckSquare, Square, ShoppingCart } from "lucide-react";
-import type { Product } from "../../../api/core/product";
+import { Beef, CheckSquare, Square, ShoppingCart } from "lucide-react";
+import type { StockMeat } from "../hooks/useStockLevels";
 import Decimal from "decimal.js";
 
-const StockBadge: React.FC<{ qty: number }> = ({ qty }) => {
-  if (qty <= 0) {
+const StockBadge: React.FC<{ currentStock: number; reorderLevel: number }> = ({
+  currentStock,
+  reorderLevel,
+}) => {
+  if (currentStock <= 0) {
     return (
       <span className="px-2 py-1 rounded-full text-xs font-medium bg-[var(--stock-outstock-bg)] text-[var(--stock-outstock)]">
         Out of Stock
       </span>
     );
   }
-  if (qty <= 5) {
+  if (currentStock <= reorderLevel) {
     return (
       <span className="px-2 py-1 rounded-full text-xs font-medium bg-[var(--stock-lowstock-bg)] text-[var(--stock-lowstock)]">
-        Low ({qty})
+        Low ({currentStock.toFixed(2)} kg)
       </span>
     );
   }
   return (
     <span className="px-2 py-1 rounded-full text-xs font-medium bg-[var(--stock-instock-bg)] text-[var(--stock-instock)]">
-      In Stock ({qty})
+      In Stock ({currentStock.toFixed(2)} kg)
     </span>
   );
 };
 
 interface StockTableProps {
-  products: Product[];
+  meats: StockMeat[];
   selectedIds: Set<number>;
-  onToggleSelect: (productId: number) => void;
+  onToggleSelect: (meatId: number) => void;
   onSelectAll: () => void;
-  onReorder: (product: Product) => void;
+  onReorder: (meat: StockMeat) => void;
 }
 
 export const StockTable: React.FC<StockTableProps> = ({
-  products,
+  meats,
   selectedIds,
   onToggleSelect,
   onSelectAll,
   onReorder,
 }) => {
-  const allSelected =
-    products.length > 0 && selectedIds.size === products.length;
+  const allSelected = meats.length > 0 && selectedIds.size === meats.length;
 
-  if (products.length === 0) {
+  if (meats.length === 0) {
     return (
       <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-8 text-center">
-        <Package className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
+        <Beef className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
         <p className="text-[var(--text-primary)] font-medium">
-          No products found
+          No meats found
         </p>
         <p className="text-sm text-[var(--text-tertiary)] mt-1">
           Try adjusting your filters.
@@ -59,7 +62,6 @@ export const StockTable: React.FC<StockTableProps> = ({
 
   return (
     <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg flex flex-col">
-      {/* Scrollable Table with Sticky Header */}
       <div className="flex-1 overflow-auto">
         <table className="w-full table-fixed">
           <thead className="bg-[var(--table-header-bg)] sticky top-0 z-10">
@@ -67,7 +69,7 @@ export const StockTable: React.FC<StockTableProps> = ({
               <th className="w-12 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 <button
                   onClick={onSelectAll}
-                  className="text-[var(--text-tertiary)] hover:text-[var(--accent-blue)]"
+                  className="text-[var(--text-tertiary)] hover:text-[var(--accent-gold)]"
                 >
                   {allSelected ? (
                     <CheckSquare className="w-4 h-4" />
@@ -89,9 +91,9 @@ export const StockTable: React.FC<StockTableProps> = ({
                 Category
               </th>
               <th className="w-24 px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Price
+                Price / kg
               </th>
-              <th className="w-24 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+              <th className="w-32 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Stock
               </th>
               <th className="w-20 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
@@ -100,17 +102,17 @@ export const StockTable: React.FC<StockTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
-            {products.map((product) => (
+            {meats.map((meat) => (
               <tr
-                key={product.id}
-                className="hover:bg-[var(--table-row-hover)]"
+                key={meat.id}
+                className="hover:bg-[var(--table-row-hover)] transition-colors"
               >
                 <td className="w-12 px-4 py-3 text-center">
                   <button
-                    onClick={() => onToggleSelect(product.id)}
-                    className="text-[var(--text-tertiary)] hover:text-[var(--accent-blue)]"
+                    onClick={() => onToggleSelect(meat.id)}
+                    className="text-[var(--text-tertiary)] hover:text-[var(--accent-gold)]"
                   >
-                    {selectedIds.has(product.id) ? (
+                    {selectedIds.has(meat.id) ? (
                       <CheckSquare className="w-4 h-4" />
                     ) : (
                       <Square className="w-4 h-4" />
@@ -118,27 +120,30 @@ export const StockTable: React.FC<StockTableProps> = ({
                   </button>
                 </td>
                 <td className="w-24 px-4 py-3 text-sm font-mono text-[var(--text-secondary)] truncate">
-                  {product.sku}
+                  {meat.sku}
                 </td>
-                <td className="w-48 px-4 py-3 text-sm text-[var(--text-primary)] truncate">
-                  {product.name}
+                <td className="w-48 px-4 py-3 text-sm text-[var(--text-primary)] font-medium truncate">
+                  {meat.name}
                 </td>
                 <td className="w-36 px-4 py-3 text-sm text-[var(--text-secondary)] truncate">
-                  {product.supplier?.name || "—"}
+                  {meat.supplier?.name || "—"}
                 </td>
                 <td className="w-32 px-4 py-3 text-sm text-[var(--text-secondary)] truncate">
-                  {product.category?.name || "—"}
+                  {meat.category?.name || "—"}
                 </td>
-                <td className="w-24 px-4 py-3 text-right text-sm text-[var(--accent-green)]">
-                  ₱{new Decimal(product.price).toFixed(2)}
+                <td className="w-24 px-4 py-3 text-right text-sm text-[var(--accent-gold)] font-semibold">
+                  ₱{new Decimal(meat.pricePerKg).toFixed(2)}
                 </td>
-                <td className="w-24 px-4 py-3 text-center">
-                  <StockBadge qty={product.stockQty} />
+                <td className="w-32 px-4 py-3 text-center">
+                  <StockBadge
+                    currentStock={meat.currentStock}
+                    reorderLevel={meat.reorderLevel}
+                  />
                 </td>
                 <td className="w-20 px-4 py-3 text-center">
                   <button
-                    onClick={() => onReorder(product)}
-                    className="p-1 text-[var(--text-tertiary)] hover:text-[var(--accent-blue)]"
+                    onClick={() => onReorder(meat)}
+                    className="p-1 text-[var(--text-tertiary)] hover:text-[var(--accent-gold)] transition-colors"
                     title="Reorder"
                   >
                     <ShoppingCart className="w-4 h-4" />

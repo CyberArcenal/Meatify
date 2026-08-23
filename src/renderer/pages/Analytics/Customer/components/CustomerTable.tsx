@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { CustomerProfile } from '../../../../api/analytics/customer_insight';
-import customerInsightsAPI from '../../../../api/analytics/customer_insight';
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import type { CustomerInsight } from '../../../../api/analytics/customerInsights';
+import customerInsightsAPI from '../../../../api/analytics/customerInsights';
+
 
 const CustomerTable: React.FC = () => {
-  const [customers, setCustomers] = useState<CustomerProfile[]>([]);
+  const [customers, setCustomers] = useState<CustomerInsight[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -34,17 +35,18 @@ const CustomerTable: React.FC = () => {
       const params: any = {
         page,
         limit: 10,
-        searchTerm: debouncedSearch || undefined,
+        search: debouncedSearch || undefined,
+        minPoints: filters.minPoints ? parseInt(filters.minPoints) : undefined,
+        maxPoints: filters.maxPoints ? parseInt(filters.maxPoints) : undefined,
+        // hasLoyaltyPoints is translated to minPoints > 0 if checked
+        ...(filters.hasLoyaltyPoints ? { minPoints: 1 } : {}),
       };
-      if (filters.minPoints) params.minPoints = parseInt(filters.minPoints);
-      if (filters.maxPoints) params.maxPoints = parseInt(filters.maxPoints);
-      if (filters.hasLoyaltyPoints) params.hasLoyaltyPoints = true;
 
-      const response = await customerInsightsAPI.getProfiles(params);
+      const response = await customerInsightsAPI.getData(params);
       if (response.status) {
-        setCustomers(response.data);
-        setTotal(response.total);
-        setTotalPages(response.total);
+        setCustomers(response.data.customers);
+        setTotal(response.data.pagination.total);
+        setTotalPages(response.data.pagination.totalPages);
       }
     } catch (error) {
       console.error('Failed to fetch customers:', error);
@@ -155,7 +157,9 @@ const CustomerTable: React.FC = () => {
               customers.map((cust) => (
                 <tr key={cust.id} className="border-b border-[var(--border-light)] hover:bg-[var(--card-hover-bg)]">
                   <td className="py-3 px-5 text-[var(--text-primary)] font-medium">{cust.name}</td>
-                  <td className="py-3 px-5 text-[var(--text-primary)]">{cust.contactInfo}</td>
+                  <td className="py-3 px-5 text-[var(--text-primary)]">
+                    {cust.email || cust.phone || '-'}
+                  </td>
                   <td className="py-3 px-5">
                     <span className="px-2 py-1 rounded-full text-xs bg-[var(--accent-amber-light)] text-[var(--accent-amber)]">
                       {cust.loyaltyPointsBalance} pts

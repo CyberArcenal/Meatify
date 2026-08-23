@@ -2,7 +2,7 @@
 const Meat = require("../entities/Meat");
 const { logger } = require("../utils/logger");
 
-console.log("[Subscriber] Loading MeatSubscriber");
+logger.debug("[Subscriber] Loading MeatSubscriber");
 
 class MeatSubscriber {
   listenTo() {

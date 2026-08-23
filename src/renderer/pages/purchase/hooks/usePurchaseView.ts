@@ -1,13 +1,8 @@
-// src/renderer/pages/purchase/hooks/usePurchaseView.ts
+// src/renderer/pages/inventory/purchases/hooks/usePurchaseView.ts
 import { useState } from "react";
-import purchaseAPI, {
-  type Purchase,
-  type PurchaseItem,
-} from "../../../api/core/purchase";
-import supplierAPI, { type Supplier } from "../../../api/core/supplier";
-import productAPI, { type Product } from "../../../api/core/product";
+import purchaseAPI, { type Purchase, type PurchaseItem } from "../../../api/core/purchase";
 
-export function usePurchaseView() {
+export const usePurchaseView = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [purchase, setPurchase] = useState<Purchase | null>(null);
   const [items, setItems] = useState<PurchaseItem[]>([]);
@@ -17,18 +12,11 @@ export function usePurchaseView() {
     setIsOpen(true);
     setLoading(true);
     try {
-      // Fetch purchase with details
       const response = await purchaseAPI.getById(purchaseId);
       if (response.status) {
         const purchaseData = response.data;
         setPurchase(purchaseData);
-        // If purchaseItems are included, use them; otherwise fetch separately
-        if (purchaseData.purchaseItems) {
-          setItems(purchaseData.purchaseItems);
-        } else {
-          const itemsRes = await purchaseAPI.getItems(purchaseId);
-          if (itemsRes.status) setItems(itemsRes.data);
-        }
+        setItems(purchaseData.purchaseItems || []);
       }
     } catch (error) {
       console.error("Error loading purchase details:", error);
@@ -51,4 +39,4 @@ export function usePurchaseView() {
     open,
     close,
   };
-}
+};

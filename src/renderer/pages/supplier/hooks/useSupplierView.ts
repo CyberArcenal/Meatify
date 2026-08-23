@@ -1,13 +1,15 @@
-// src/renderer/pages/supplier/hooks/useSupplierView.ts
+// src/renderer/pages/inventory/suppliers/hooks/useSupplierView.ts
 import { useState } from "react";
 import type { Supplier } from "../../../api/core/supplier";
-import productAPI, { type Product } from "../../../api/core/product";
-import purchaseAPI, { type Purchase } from "../../../api/core/purchase";
+import type { Meat } from "../../../api/core/meat";
+import type { Purchase } from "../../../api/core/purchase";
+import meatAPI from "../../../api/core/meat";
+import purchaseAPI from "../../../api/core/purchase";
 
-export function useSupplierView() {
+export const useSupplierView = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [supplier, setSupplier] = useState<Supplier | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
+  const [meats, setMeats] = useState<Meat[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(false);
   const [metrics, setMetrics] = useState({
@@ -22,33 +24,34 @@ export function useSupplierView() {
     setLoading(true);
 
     try {
-      // Fetch products by supplier
-      const productsRes = await productAPI.getBySupplier(supplier.id, {
+      // Fetch meats by supplier
+      const meatsRes = await meatAPI.getAll({
+        supplierId: supplier.id,
         isActive: true,
+        limit: 1000,
       });
-      if (productsRes.status) {
-        setProducts(productsRes.data);
+      if (meatsRes.status) {
+        setMeats(meatsRes.data.items || []);
       }
 
       // Fetch purchases by supplier
-      const purchasesRes = await purchaseAPI.getBySupplier({
-        supplierId: supplier.id,
+      const purchasesRes = await purchaseAPI.getBySupplier(supplier.id, {
+        limit: 1000,
       });
       if (purchasesRes.status) {
-        const allPurchases = purchasesRes.data;
+        const allPurchases = purchasesRes.data.items || [];
         setPurchases(allPurchases);
+
         // Compute metrics from completed purchases
         const completed = allPurchases.filter((p) => p.status === "completed");
         const totalSpent = completed.reduce(
           (sum, p) => sum + Number(p.totalAmount),
-          0,
+          0
         );
         setMetrics({
           totalSpent,
           purchaseCount: completed.length,
-          averageOrderValue: completed.length
-            ? totalSpent / completed.length
-            : 0,
+          averageOrderValue: completed.length ? totalSpent / completed.length : 0,
         });
       }
     } catch (error) {
@@ -61,7 +64,7 @@ export function useSupplierView() {
   const close = () => {
     setIsOpen(false);
     setSupplier(null);
-    setProducts([]);
+    setMeats([]);
     setPurchases([]);
     setMetrics({ totalSpent: 0, purchaseCount: 0, averageOrderValue: 0 });
   };
@@ -69,11 +72,11 @@ export function useSupplierView() {
   return {
     isOpen,
     supplier,
-    products,
+    meats,
     purchases,
     metrics,
     loading,
     open,
     close,
   };
-}
+};
