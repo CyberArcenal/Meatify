@@ -1,12 +1,37 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw } from 'lucide-react';
-import type { SaleEntry, SalesStats, SalesSummary } from '../../../api/analytics/sales_reports';
-import salesReportAPI from '../../../api/analytics/sales_reports';
+import type {
+  SalesReportSummaryData,
+  SalesReportData,
+  SalesReportItem,
+  CustomerReportItem,
+  DailyTrend,
+} from '../../../api/analytics/salesReport';
+import salesReportAPI from '../../../api/analytics/salesReport';
 import ExportButton from './components/ExportButton';
 import FilterBar from './components/FilterBar';
 import SummaryCards from './components/SummaryCards';
 import StatsCards from './components/StatsCards';
 import SalesTable from './components/SalesTable';
+
+// Local type for the sales entries we want to display
+type SaleEntry = {
+  id: number;
+  timestamp: string;
+  customer?: { name: string } | null;
+  paymentMethod: string;
+  totalAmount: number;
+  status: string;
+  notes?: string | null;
+  saleItems?: Array<{
+    id: number;
+    productId: number;
+    product?: { name: string } | null;
+    quantity: number;
+    unitPrice: number;
+    lineTotal: number;
+  }>;
+};
 
 const SalesReportsPage: React.FC = () => {
   // Filters
@@ -20,9 +45,11 @@ const SalesReportsPage: React.FC = () => {
   const [maxAmount, setMaxAmount] = useState<number | undefined>();
 
   // Data states
-  const [summary, setSummary] = useState<SalesSummary | null>(null);
-  const [stats, setStats] = useState<SalesStats | null>(null);
+  const [summary, setSummary] = useState<SalesReportSummaryData | null>(null);
   const [sales, setSales] = useState<SaleEntry[]>([]);
+  const [productBreakdown, setProductBreakdown] = useState<SalesReportItem[]>([]);
+  const [customerBreakdown, setCustomerBreakdown] = useState<CustomerReportItem[]>([]);
+  const [dailyTrend, setDailyTrend] = useState<DailyTrend[]>([]);
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -33,12 +60,11 @@ const SalesReportsPage: React.FC = () => {
   // Loading states
   const [loading, setLoading] = useState({
     summary: false,
-    stats: false,
     sales: false,
   });
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch functions
+  // Fetch summary
   const fetchSummary = useCallback(async () => {
     setLoading(prev => ({ ...prev, summary: true }));
     try {
@@ -55,26 +81,11 @@ const SalesReportsPage: React.FC = () => {
     }
   }, [startDate, endDate]);
 
-  const fetchStats = useCallback(async () => {
-    setLoading(prev => ({ ...prev, stats: true }));
-    try {
-      const res = await salesReportAPI.getStats({
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-      if (res.status) setStats(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, stats: false }));
-    }
-  }, [startDate, endDate]);
-
+  // Fetch sales + breakdowns
   const fetchSales = useCallback(async () => {
     setLoading(prev => ({ ...prev, sales: true }));
     try {
-      const res = await salesReportAPI.getAll({
+      const res = await salesReportAPI.getData({
         customerId,
         status: status || undefined,
         paymentMethod: paymentMethod || undefined,
@@ -82,14 +93,20 @@ const SalesReportsPage: React.FC = () => {
         endDate: endDate || undefined,
         minAmount,
         maxAmount,
-        searchTerm: searchTerm || undefined,
+        search: searchTerm || undefined, // API supports 'search' parameter
         page,
         limit,
+        includeProductBreakdown: true,
+        includeCustomerBreakdown: true,
       });
       if (res.status) {
-        setSales(res.data);
-        setTotal(res.total);
-        setTotalPages(Math.ceil(res.total / limit));
+        const data = res.data;
+        setSales(data.sales as SaleEntry[]);
+        setProductBreakdown(data.productBreakdown || []);
+        setCustomerBreakdown(data.customerBreakdown || []);
+        setDailyTrend(data.dailyTrend || []);
+        setTotal(data.pagination.total);
+        setTotalPages(data.pagination.totalPages);
       } else throw new Error(res.message);
     } catch (err: any) {
       setError(err.message);
@@ -109,17 +126,10 @@ const SalesReportsPage: React.FC = () => {
     limit,
   ]);
 
-  // Initial load and filter changes
   useEffect(() => {
     fetchSummary();
-    fetchStats();
     fetchSales();
-  }, [
-    fetchSummary,
-    fetchStats,
-    fetchSales,
-    // Dependencies are already in the fetch functions
-  ]);
+  }, [fetchSummary, fetchSales]);
 
   const handleFilterChange = (filters: any) => {
     setCustomerId(filters.customerId ? Number(filters.customerId) : undefined);
@@ -136,7 +146,6 @@ const SalesReportsPage: React.FC = () => {
   const handleRefresh = () => {
     setError(null);
     fetchSummary();
-    fetchStats();
     fetchSales();
   };
 
@@ -188,7 +197,12 @@ const SalesReportsPage: React.FC = () => {
 
       <SummaryCards summary={summary} loading={loading.summary} />
 
-      <StatsCards stats={stats} loading={loading.stats} />
+      <StatsCards
+        topProducts={productBreakdown.slice(0, 5)}
+        topCustomers={customerBreakdown.slice(0, 5)}
+        hourlyData={dailyTrend.slice(0, 12)}
+        loading={loading.sales}
+      />
 
       <SalesTable
         data={sales}

@@ -10,6 +10,7 @@ const Supplier = new EntitySchema({
     contactInfo: { type: String, nullable: true },
     email: {type: String, nullable:true},
     phone: {type: String, nullable: true},
+    notes: { type: String, nullable: true },   
     address: { type: String, nullable: true },
     isActive: { type: Boolean, default: true },
     createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },

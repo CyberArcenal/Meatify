@@ -1,12 +1,8 @@
-// src/renderer/pages/Cashier/components/CashierHeader.tsx
-
 import React from "react";
 import {
   Search,
-  Barcode,
   RefreshCw,
   XCircle,
-  X,
   Printer,
   Lock,
   Wifi,
@@ -26,8 +22,6 @@ interface CashierHeaderProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
   searchInputRef: React.RefObject<HTMLInputElement | null>;
-  scannedBarcode: string;
-  onClearScannedBarcode: () => void;
   itemCount: number;
   total: Decimal;
   categoryId: number | null;
@@ -45,8 +39,6 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
   searchTerm,
   onSearchChange,
   searchInputRef,
-  scannedBarcode,
-  onClearScannedBarcode,
   itemCount,
   total,
   categoryId,
@@ -59,15 +51,13 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
   drawerOpen = false,
   online = true,
 }) => {
-  const isBarcodeEnabled = useBarcodeEnabled();
   const cashDrawerEnabled = useCashDrawerEnabled();
   const receiptPrintingEnabled = useReceiptPrintingEnabled();
 
   return (
     <div className="flex-shrink-0 bg-[var(--header-bg)] border-b border-[var(--border-color)] px-3 py-2 space-y-2">
-      {/* ROW 1: Search + Barcode (left) | Large Total (right) */}
+      {/* ROW 1: Search + Total */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        {/* Left group: search + barcode */}
         <div className="flex flex-1 flex-wrap items-center gap-2 min-w-[240px]">
           <div className="flex-1 min-w-[140px]">
             <div className="relative">
@@ -75,38 +65,15 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="Search products..."
+                placeholder="Search meats..."
                 value={searchTerm}
                 onChange={(e) => onSearchChange(e.target.value)}
                 className="w-full bg-[var(--card-bg)] border border-[var(--accent-blue)] rounded-lg pl-8 pr-3 py-2 text-sm text-[var(--accent-blue)] placeholder-[var(--text-tertiary)]"
               />
             </div>
           </div>
-
-          {isBarcodeEnabled && (
-            <div className="flex-1 min-w-[140px]">
-              <div className="relative">
-                <Barcode className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-[var(--accent-green)] w-4 h-4" />
-                <input
-                  type="text"
-                  readOnly
-                  value={scannedBarcode || "Scan barcode..."}
-                  className="w-full bg-[var(--card-bg)] border border-[var(--accent-green)] rounded-lg pl-8 pr-7 py-2 text-sm font-mono text-[var(--accent-green)]"
-                />
-                {scannedBarcode && (
-                  <button
-                    onClick={onClearScannedBarcode}
-                    className="absolute right-2 top-1/2 transform -translate-y-1/2 p-0.5 rounded hover:bg-[var(--card-hover-bg)] text-[var(--text-tertiary)]"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Right group: Large Total + item count badge */}
         <div className="flex items-center gap-3 bg-[var(--card-bg)] border-2 border-[var(--accent-green)] rounded-lg px-4 py-2 shadow-md">
           <ShoppingBag className="w-5 h-5 text-[var(--accent-green)]" />
           <div className="text-right">
@@ -123,7 +90,6 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
       {/* ROW 2: Category, Actions, Status, Hotkeys */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Category dropdown */}
           <div className="w-60">
             <CategorySelect
               value={categoryId}
@@ -133,7 +99,6 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
             />
           </div>
 
-          {/* Action buttons */}
           <div className="flex items-center gap-1">
             <button
               onClick={onRefresh}
@@ -154,7 +119,6 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
             )}
           </div>
 
-          {/* Status indicators */}
           <div className="flex items-center gap-2">
             {receiptPrintingEnabled && (
               <div
@@ -184,11 +148,9 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
           </div>
         </div>
 
-        {/* Hotkeys as compact badges */}
         <div className="flex flex-wrap gap-2 text-[11px] font-mono text-[var(--text-secondary)]">
           <kbd className="px-1.5 py-0.5 bg-[var(--card-bg)] rounded border border-[var(--border-color)]">Ctrl+D</kbd>
           <kbd className="px-1.5 py-0.5 bg-[var(--card-bg)] rounded border border-[var(--border-color)]">Ctrl+Enter</kbd>
-          <kbd className="px-1.5 py-0.5 bg-[var(--card-bg)] rounded border border-[var(--border-color)]">Ctrl+Shift+N</kbd>
         </div>
       </div>
     </div>

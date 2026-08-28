@@ -15,6 +15,7 @@ const SaleItem = new EntitySchema({
     discount: { type: "decimal", precision: 10, scale: 2, default: 0.00 },
     tax: { type: "decimal", precision: 10, scale: 2, default: 0.00 },
     lineTotal: { type: "decimal", precision: 10, scale: 2, default: 0.00 },
+    batchId: { type: Number, nullable: true },
     createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },
     updatedAt: { type: Date, nullable: true }
   },
@@ -35,7 +36,7 @@ const SaleItem = new EntitySchema({
       target: "Batch",
       type: "many-to-one",
       joinColumn: true,
-      nullable: false // Dapat laging may batch
+      nullable: true,
     }
   }
 });

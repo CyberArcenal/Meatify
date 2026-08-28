@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Download } from 'lucide-react';
-import salesReportAPI from '../../../../api/analytics/sales_reports';
+import salesReportAPI from '../../../../api/analytics/salesReport';
 
 interface Props {
   customerId?: number;
@@ -28,7 +28,7 @@ const ExportButton: React.FC<Props> = ({
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await salesReportAPI.exportCSV({
+      const res = await salesReportAPI.getData({
         customerId,
         status: status || undefined,
         paymentMethod: paymentMethod || undefined,
@@ -36,11 +36,21 @@ const ExportButton: React.FC<Props> = ({
         endDate: endDate || undefined,
         minAmount,
         maxAmount,
-        searchTerm: searchTerm || undefined,
+        search: searchTerm || undefined,
+        limit: 10000,
       });
-      if (res.status && res.data.length) {
-        const headers = Object.keys(res.data[0]).join(',');
-        const csv = res.data.map(row => Object.values(row).join(',')).join('\n');
+      if (res.status) {
+        const rows = res.data.sales.map(item => ({
+          ID: item.id,
+          Date: item.timestamp,
+          Customer: item.customer?.name || '',
+          PaymentMethod: item.paymentMethod,
+          TotalAmount: item.totalAmount,
+          Status: item.status,
+          Notes: item.notes || '',
+        }));
+        const headers = Object.keys(rows[0]).join(',');
+        const csv = rows.map(row => Object.values(row).join(',')).join('\n');
         const blob = new Blob([headers + '\n' + csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

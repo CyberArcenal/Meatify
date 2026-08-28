@@ -8,11 +8,12 @@ const Customer = require("../entities/Customer");
 const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const notificationService = require("../services/Notification");
 const { BatchStateService } = require("./Batch");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
 
-// Settings getters (you can implement these as async functions)
-const emailEnabled = async () => true;
-const smsEnabled = async () => true;
-const companyName = async () => "Meatify Shop";
+// ❌ REMOVED hardcoded functions:
+// const emailEnabled = async () => true;
+// const smsEnabled = async () => true;
+// const companyName = async () => "Meatify Shop";
 
 /**
  * ReturnRefundStateService handles state transitions for returns/refunds.
@@ -80,8 +81,8 @@ class ReturnRefundStateService {
           item.batch.id,
           item.weightKg,
           "refund",
-          { 
-            saleId: returnRefund.sale?.id, 
+          {
+            saleId: returnRefund.sale?.id,
             notes: `Return #${returnRefund.id} - ${returnRefund.referenceNo}`
           },
           user,
@@ -97,8 +98,8 @@ class ReturnRefundStateService {
       const customerRepo = this._getRepo(queryRunner, Customer);
       const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
 
-      const customer = await customerRepo.findOne({ 
-        where: { id: returnRefund.sale.customer.id } 
+      const customer = await customerRepo.findOne({
+        where: { id: returnRefund.sale.customer.id }
       });
       if (customer) {
         // We need to deduct the points earned from the sale
@@ -148,7 +149,7 @@ class ReturnRefundStateService {
 
     // --- STEP 5: Side effects (non-critical) ---
     try {
-      // Notify customer (if email/SMS enabled)
+      // Notify customer (if email/SMS enabled) - ✅ Uses system settings
       await this._notifyCustomer(returnRefund, "processed", user, queryRunner);
 
       // In-app notification for admin
@@ -198,7 +199,7 @@ class ReturnRefundStateService {
     if (returnRefund.status === "pending") {
       // Simple cancellation – just update status, no stock changes
       returnRefund.status = "cancelled";
-      returnRefund.notes = returnRefund.notes 
+      returnRefund.notes = returnRefund.notes
         ? `${returnRefund.notes}\nCancelled: ${reason}`
         : `Cancelled: ${reason}`;
       returnRefund.updatedAt = new Date();
@@ -226,8 +227,8 @@ class ReturnRefundStateService {
             item.batch.id,
             item.weightKg,
             "adjustment",
-            { 
-              saleId: returnRefund.sale?.id, 
+            {
+              saleId: returnRefund.sale?.id,
               notes: `Cancellation of return #${returnRefund.id} - ${returnRefund.referenceNo}`
             },
             user,
@@ -243,8 +244,8 @@ class ReturnRefundStateService {
         const customerRepo = this._getRepo(queryRunner, Customer);
         const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
 
-        const customer = await customerRepo.findOne({ 
-          where: { id: returnRefund.sale.customer.id } 
+        const customer = await customerRepo.findOne({
+          where: { id: returnRefund.sale.customer.id }
         });
         if (customer) {
           const pointsToAdd = returnRefund.sale.pointsEarn;
@@ -279,7 +280,7 @@ class ReturnRefundStateService {
 
       // --- Update status to cancelled ---
       returnRefund.status = "cancelled";
-      returnRefund.notes = returnRefund.notes 
+      returnRefund.notes = returnRefund.notes
         ? `${returnRefund.notes}\nCancelled: ${reason} (was processed)`
         : `Cancelled: ${reason} (was processed)`;
       returnRefund.updatedAt = new Date();
@@ -322,9 +323,10 @@ class ReturnRefundStateService {
    * @private
    */
   async _notifyCustomer(returnRefund, action, user, queryRunner) {
-    const canSendEmail = await emailEnabled();
-    const canSendSms = await smsEnabled();
-    const company = await companyName();
+    // ✅ Use system settings instead of hardcoded values
+    const canSendEmail = await system.emailEnabled();
+    const canSendSms = await system.smsEnabled();
+    const company = await system.companyName();
 
     const customer = returnRefund.customer;
     if (!customer) {
@@ -332,7 +334,7 @@ class ReturnRefundStateService {
       return;
     }
 
-    const subject = action === "processed" 
+    const subject = action === "processed"
       ? `Return Processed – ${returnRefund.referenceNo}`
       : `Return Cancelled – ${returnRefund.referenceNo}`;
 
@@ -346,7 +348,7 @@ class ReturnRefundStateService {
 
     const htmlBody = textBody.replace(/\n/g, "<br>");
 
-    // Send email
+    // Send email - ✅ Uses system setting
     if (canSendEmail && customer.email) {
       try {
         // Use your email sender (e.g., via NotificationLogService)
@@ -357,7 +359,7 @@ class ReturnRefundStateService {
       }
     }
 
-    // Send SMS
+    // Send SMS - ✅ Uses system setting
     if (canSendSms && customer.phone) {
       try {
         const smsMessage = action === "processed"

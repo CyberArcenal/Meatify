@@ -8,7 +8,6 @@ interface ProductGridProps {
 }
 
 const ProductGrid: React.FC<ProductGridProps> = ({ products, onAddToCart }) => {
-  // Limit initial render to first 100 items – maiiwasan ang sobrang maraming DOM elements
   const visibleProducts = useMemo(() => products.slice(0, 100), [products]);
 
   return (

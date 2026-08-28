@@ -1,0 +1,542 @@
+# TODO List: Refactoring Services to Use System Settings
+
+## 📊 Summary of Current State
+
+✅ **COMPLETED (State Services)** - Already refactored to use `system.js`:
+- `stateServices/Customer.js`
+- `stateServices/LoyaltyTransaction.js`
+- `stateServices/SaleStateService.js`
+- `stateServices/ReturnRefundStateService.js`
+- `stateServices/Notification.js`
+- `stateServices/Supplier.js`
+
+⏳ **PENDING (Regular Services)** - Need refactoring to use `system.js`:
+- All services in `src/services/` directory
+
+---
+
+## 🎯 Refactoring Todo List
+
+### 1. **AuditLog.js** (`src/services/AuditLog.js`)
+
+**Issue:** Uses hardcoded `auditLogger` and `logger` without checking if audit logging is enabled via settings.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() method - check if audit logging is enabled
+async create(data, user = "system", qr = null) {
+  // ✅ Add this check
+  const auditEnabled = await system.auditLogEnabled();
+  if (!auditEnabled) {
+    logger.debug("[AuditLog] Audit logging is disabled, skipping");
+    return null;
+  }
+  // ... rest of the code
+}
+
+// In findAll() - use logRetentionDays for filtering old logs
+async findAll(options = {}, qr = null) {
+  // ✅ Add default date filter based on retention
+  if (!options.startDate && !options.endDate) {
+    const retentionDays = await system.logRetentionDays();
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - retentionDays);
+    options.startDate = startDate.toISOString();
+  }
+  // ... rest of the code
+}
+```
+
+---
+
+### 2. **Batch.js** (`src/services/Batch.js`)
+
+**Issue:** No settings integration for batch-related thresholds and defaults.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - use system for batch code prefix
+async create(data, user = "system", qr = null) {
+  // ✅ Use company name for prefix
+  const company = await system.companyName();
+  const prefix = company.substring(0, 4).toUpperCase();
+  // ... use prefix in generateBatchCode
+}
+
+// In getStatistics() - use lowStockThreshold from settings
+async getStatistics(qr = null) {
+  const threshold = await system.lowStockThreshold();
+  // ... use threshold for low stock calculation
+}
+```
+
+---
+
+### 3. **CashDrawer.js** (`src/services/CashDrawerService.js`)
+
+**Issue:** Already uses `system.js` functions. No changes needed.
+
+✅ **Already compliant**
+
+---
+
+### 4. **Category.js** (`src/services/Category.js`)
+
+**Issue:** Uses hardcoded `isActive` default without settings.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - use system for default active status
+async create(data, user = "system", qr = null) {
+  // ✅ isActive default from settings (if available)
+  const defaultActive = data.isActive !== undefined ? data.isActive : true;
+  // ... rest of the code
+}
+```
+
+---
+
+### 5. **Customer.js** (`src/services/Customer.js`)
+
+**Issue:** Hardcoded loyalty points defaults and status thresholds.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - use loyalty point defaults
+async create(data, user = "system", qr = null) {
+  // ✅ Use loyalty settings
+  const loyaltyEnabled = await system.loyaltyPointsEnabled();
+  // ... rest of the code
+}
+
+// In getStatistics() - use loyalty point rate
+async getStatistics(qr = null) {
+  const rate = await system.getLoyaltyPointRate();
+  // ... use rate for points calculation
+}
+```
+
+---
+
+### 6. **InventoryMovement.js** (`src/services/InventoryMovement.js`)
+
+**Issue:** No settings for movement types or validation.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - validate movement types against allowed list
+async create(data, user = "system", qr = null) {
+  // ✅ Get allowed movement types from settings
+  const allowedTypes = await system.getArray("allowed_movement_types", SettingType.INVENTORY, [
+    "sale", "refund", "adjustment", "purchase", "expiry_write_off"
+  ]);
+  if (!allowedTypes.includes(data.movementType)) {
+    throw new Error(`Invalid movement type: ${data.movementType}`);
+  }
+  // ... rest of the code
+}
+
+// In getStatistics() - use system for threshold
+async getStatistics(qr = null) {
+  const threshold = await system.lowStockThreshold();
+  // ... use threshold
+}
+```
+
+---
+
+### 7. **LoyaltyTransaction.js** (`src/services/LoyaltyTransaction.js`)
+
+**Issue:** Hardcoded transaction types and validation.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - validate transaction types
+async create(data, user = "system", qr = null) {
+  // ✅ Get allowed transaction types from settings
+  const allowedTypes = await system.getArray("allowed_loyalty_types", SettingType.SALES, [
+    "earn", "redeem", "adjustment", "refund"
+  ]);
+  if (!allowedTypes.includes(data.transactionType)) {
+    throw new Error(`Invalid transaction type: ${data.transactionType}`);
+  }
+  // ... rest of the code
+}
+
+// In getStatistics() - use loyalty settings
+async getStatistics(qr = null) {
+  const rate = await system.getLoyaltyPointRate();
+  // ... use rate
+}
+```
+
+---
+
+### 8. **Meat.js** (`src/services/Meat.js`)
+
+**Issue:** Hardcoded SKU prefix and price validation.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In generateSku() - use company for prefix
+async generateSku(repo) {
+  // ✅ Use company name for SKU prefix
+  const company = await system.companyName();
+  const prefix = company.substring(0, 4).toUpperCase();
+  // ... rest of the code
+}
+
+// In create() - validate price against settings
+async create(data, user = "system", qr = null) {
+  // ✅ Check max price from settings
+  const maxPrice = await system.getDecimal("max_price_per_kg", SettingType.SALES, 9999.99);
+  if (data.pricePerKg > maxPrice) {
+    throw new Error(`Price exceeds maximum allowed: ${maxPrice}`);
+  }
+  // ... rest of the code
+}
+```
+
+---
+
+### 9. **Notification.js** (`src/services/Notification.js`)
+
+**Issue:** Directly uses `system.js` for some functions, but missing settings for notification types and retention.
+
+**Changes Needed:**
+```javascript
+// Add at top (already has system import)
+const system = require("../utils/system");
+
+// In create() - validate notification type
+async create(data, user = "system", qr = null) {
+  // ✅ Get allowed notification types
+  const allowedTypes = await system.getArray("allowed_notification_types", SettingType.NOTIFICATIONS, [
+    "info", "success", "warning", "error", "purchase", "sale"
+  ]);
+  if (data.type && !allowedTypes.includes(data.type)) {
+    data.type = "info"; // default to info
+  }
+  // ... rest of the code
+}
+
+// In cleanOldNotifications() - use retention days from settings
+async cleanOldNotifications(user = "system", qr = null) {
+  const daysOld = await system.dataRetentionDays();
+  // ... use daysOld for cleanup
+}
+```
+
+---
+
+### 10. **NotificationLog.js** (`src/services/NotificationLog.js`)
+
+**Issue:** Hardcoded retry limits and channel types.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - validate channel
+async create(data, user = "system", qr = null) {
+  // ✅ Get allowed channels
+  const allowedChannels = await system.getArray("allowed_notification_channels", SettingType.NOTIFICATIONS, [
+    "email", "sms"
+  ]);
+  if (data.channel && !allowedChannels.includes(data.channel)) {
+    data.channel = "email"; // default
+  }
+  // ... rest of the code
+}
+
+// In retryReminder() - use max retries from settings
+async retryReminder({ id }, user = "system", qr = null) {
+  const MAX_RETRIES = await system.getInt("max_retry_attempts", SettingType.NOTIFICATIONS, 3);
+  // ... use MAX_RETRIES
+}
+```
+
+---
+
+### 11. **Printer.js** (`src/services/PrinterService.js`)
+
+**Issue:** Already uses `system.js` functions. No changes needed.
+
+✅ **Already compliant**
+
+---
+
+### 12. **Purchase.js** (`src/services/Purchase.js`)
+
+**Issue:** Hardcoded status transitions and reference prefix.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In generateReferenceNo() - use company prefix
+async generateReferenceNo(repo) {
+  // ✅ Use company name for prefix
+  const company = await system.companyName();
+  const prefix = company.substring(0, 2).toUpperCase();
+  // ... rest of the code
+}
+
+// In create() - validate status
+async create(data, user = "system", qr = null) {
+  // ✅ Get allowed statuses
+  const allowedStatuses = await system.getArray("allowed_purchase_statuses", SettingType.INVENTORY, [
+    "pending", "approved", "completed", "cancelled"
+  ]);
+  if (data.status && !allowedStatuses.includes(data.status)) {
+    data.status = "pending";
+  }
+  // ... rest of the code
+}
+```
+
+---
+
+### 13. **PurchaseItem.js** (`src/services/PurchaseItem.js`)
+
+**Issue:** Hardcoded quantity and price validation.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - validate quantity and price
+async create(data, user = "system", qr = null) {
+  // ✅ Get max quantity from settings
+  const maxQuantity = await system.getDecimal("max_purchase_quantity", SettingType.INVENTORY, 9999.999);
+  if (data.quantity > maxQuantity) {
+    throw new Error(`Quantity exceeds maximum allowed: ${maxQuantity}`);
+  }
+  // ... rest of the code
+}
+```
+
+---
+
+### 14. **ReturnRefund.js** (`src/services/ReturnRefund.js`)
+
+**Issue:** Hardcoded refund window and status validation.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - validate refund window
+async create(data, user = "system", qr = null) {
+  // ✅ Check if refund is within window
+  const windowDays = await system.refundWindowDays();
+  const saleDate = new Date(sale.timestamp);
+  const now = new Date();
+  const daysDiff = (now - saleDate) / (1000 * 60 * 60 * 24);
+  if (daysDiff > windowDays) {
+    throw new Error(`Refund window of ${windowDays} days has passed`);
+  }
+  // ... rest of the code
+}
+
+// In create() - check if refunds are enabled
+async create(data, user = "system", qr = null) {
+  const refundsEnabled = await system.enableRefunds();
+  if (!refundsEnabled) {
+    throw new Error("Refunds are disabled in system settings");
+  }
+  // ... rest of the code
+}
+```
+
+---
+
+### 15. **ReturnRefundItem.js** (`src/services/ReturnRefundItem.js`)
+
+**Issue:** Hardcoded weight and price validation.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - validate weight
+async create(data, user = "system", qr = null) {
+  // ✅ Check refund restock setting
+  const restockEnabled = await system.refundRestockEnabled();
+  if (!restockEnabled) {
+    throw new Error("Restocking on refund is disabled in system settings");
+  }
+  // ... rest of the code
+}
+```
+
+---
+
+### 16. **Sale.js** (`src/services/SaleService.js`)
+
+**Issue:** Hardcoded statuses, payment methods, and validation.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - validate payment method
+async create(data, user = "system", qr = null) {
+  // ✅ Get enabled payment methods
+  const paymentMethods = [];
+  if (await system.enableCashPayment()) paymentMethods.push("cash");
+  if (await system.enableCardPayment()) paymentMethods.push("card");
+  if (await system.enableWalletPayment()) paymentMethods.push("wallet");
+  
+  if (data.paymentMethod && !paymentMethods.includes(data.paymentMethod)) {
+    throw new Error(`Payment method "${data.paymentMethod}" is not enabled`);
+  }
+  // ... rest of the code
+}
+
+// In create() - use max discount from settings
+async create(data, user = "system", qr = null) {
+  const maxDiscount = await system.maxDiscountPercent();
+  // ... validate discounts don't exceed maxDiscount
+}
+
+// In create() - use default payment method
+async create(data, user = "system", qr = null) {
+  const defaultPayment = await system.defaultPaymentMethod();
+  data.paymentMethod = data.paymentMethod || defaultPayment;
+  // ... rest of the code
+}
+```
+
+---
+
+### 17. **SaleItem.js** (`src/services/SaleItem.js`)
+
+**Issue:** Hardcoded tax and discount validation.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - validate tax and discount
+async create(data, user = "system", qr = null) {
+  // ✅ Get tax rate from settings
+  const taxRate = await system.taxRate();
+  if (data.tax && data.tax > taxRate) {
+    throw new Error(`Tax cannot exceed ${taxRate}%`);
+  }
+  // ... rest of the code
+}
+```
+
+---
+
+### 18. **Settings.js** (`src/services/SystemSettingService.js`)
+
+**Issue:** This is the settings service itself. Already uses the settings system. No changes needed for consuming settings, but should ensure it uses the `system.js` utilities for defaults.
+
+✅ **Already compliant**
+
+---
+
+### 19. **Supplier.js** (`src/services/Supplier.js`)
+
+**Issue:** Hardcoded active status and validation.
+
+**Changes Needed:**
+```javascript
+// Add at top
+const system = require("../utils/system");
+
+// In create() - use default active status
+async create(data, user = "system", qr = null) {
+  // ✅ isActive default from settings (if available)
+  const defaultActive = data.isActive !== undefined ? data.isActive : true;
+  // ... rest of the code
+}
+```
+
+---
+
+## 📋 Summary Checklist
+
+| File | Status | Priority |
+|------|--------|----------|
+| `services/AuditLog.js` | ⏳ Pending | High |
+| `services/Batch.js` | ⏳ Pending | High |
+| `services/CashDrawer.js` | ✅ Done | - |
+| `services/Category.js` | ⏳ Pending | Medium |
+| `services/Customer.js` | ⏳ Pending | High |
+| `services/InventoryMovement.js` | ⏳ Pending | High |
+| `services/LoyaltyTransaction.js` | ⏳ Pending | High |
+| `services/Meat.js` | ⏳ Pending | High |
+| `services/Notification.js` | ⏳ Pending | Medium |
+| `services/NotificationLog.js` | ⏳ Pending | Medium |
+| `services/Printer.js` | ✅ Done | - |
+| `services/Purchase.js` | ⏳ Pending | High |
+| `services/PurchaseItem.js` | ⏳ Pending | Medium |
+| `services/ReturnRefund.js` | ⏳ Pending | High |
+| `services/ReturnRefundItem.js` | ⏳ Pending | Medium |
+| `services/Sale.js` | ⏳ Pending | High |
+| `services/SaleItem.js` | ⏳ Pending | Medium |
+| `services/Settings.js` | ✅ Done | - |
+| `services/Supplier.js` | ⏳ Pending | Medium |
+
+---
+
+## 🚀 Quick Start Template
+
+Gamitin ang template na ito para sa bawat service:
+
+```javascript
+// src/services/[ServiceName].js
+//@ts-check
+const auditLogger = require("../utils/auditLogger");
+const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
+const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADD THIS
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADD THIS (kung kailangan)
+
+class ServiceName {
+  // ... existing code
+
+  async create(data, user = "system", qr = null) {
+    // ✅ Add validation using system settings
+    const enabled = await system.getBool("feature_enabled", SettingType.SALES, true);
+    if (!enabled) {
+      throw new Error("Feature is disabled in system settings");
+    }
+    // ... rest of the code
+  }
+}
+
+module.exports = serviceName;
+```

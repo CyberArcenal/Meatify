@@ -13,6 +13,7 @@ const Purchase = new EntitySchema({
       default: "pending",
       enum: ["pending", "approved", "completed", "cancelled"],
     }, // pending, completed, cancelled
+    notes: { type: String, nullable: true },
     totalAmount: { type: "decimal", default: 0 },
     createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },
     updatedAt: { type: Date, nullable: true },

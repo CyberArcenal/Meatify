@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import productAPI, { type Product } from "../../../api/core/product";
+import inventoryReportsAPI from "../../../api/analytics/inventoryReports";
+import type { Product } from "../types";
 import { dialogs } from "../../../utils/dialogs";
 
 export const useProducts = () => {
@@ -12,14 +13,19 @@ export const useProducts = () => {
   const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
     try {
-      const params: any = { limit: 100 };
+      const params: any = { limit: 1000 };
       if (categoryId) params.categoryId = categoryId;
       if (searchTerm.trim()) params.search = searchTerm;
 
-      const response = await productAPI.getActive(params);
+      const response = await inventoryReportsAPI.getData(params);
       if (response.status && response.data) {
-        setProducts(response.data);
-        setFilteredProducts(response.data.slice(0, 20)); // simple pagination
+        // Map MeatInventory to Product - add stockQty
+        const mappedProducts: Product[] = response.data.meats.map((m) => ({
+          ...m,
+          stockQty: m.inventory.totalActiveStock,
+        }));
+        setProducts(mappedProducts);
+        setFilteredProducts(mappedProducts.slice(0, 50)); // simple pagination
       } else {
         setProducts([]);
         setFilteredProducts([]);
@@ -35,7 +41,7 @@ export const useProducts = () => {
     }
   }, [categoryId, searchTerm]);
 
-  // Debounce search to avoid too many API calls
+  // Debounce search
   useEffect(() => {
     const handler = setTimeout(() => {
       loadProducts();
@@ -43,7 +49,6 @@ export const useProducts = () => {
     return () => clearTimeout(handler);
   }, [searchTerm, categoryId, loadProducts]);
 
-  // Initial load
   useEffect(() => {
     loadProducts();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

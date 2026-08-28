@@ -5,6 +5,8 @@
 // ----------------------------------------------------------------------
 
 export interface InventoryMovement {
+  newStockQty: ReactNode;
+  type: ReactNode;
   id: number;
   movementType: 'sale' | 'refund' | 'adjustment' | 'purchase' | 'expiry_write_off';
   qtyChange: number;

@@ -24,21 +24,14 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
   isProcessing = false,
 }) => {
   const [paidAmount, setPaidAmount] = useState<number | null>(total.toNumber());
-  const [isConfirmEnabled, setIsConfirmEnabled] = useState(false); // for 2‑second delay
+  const [isConfirmEnabled, setIsConfirmEnabled] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Reset and auto-focus when dialog opens
   useEffect(() => {
     if (isOpen) {
       setPaidAmount(total.toNumber());
-      setIsConfirmEnabled(false); // disable confirm on open
-      // Small delay to ensure DOM is ready
-      setTimeout(() => {
-        if (inputRef.current) {
-          inputRef.current.focus();
-        }
-      }, 50);
-      // 2‑second delay before enabling confirm
+      setIsConfirmEnabled(false);
+      setTimeout(() => inputRef.current?.focus(), 50);
       const timer = setTimeout(() => setIsConfirmEnabled(true), 2000);
       return () => clearTimeout(timer);
     }
@@ -47,31 +40,22 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
   if (!isOpen) return null;
 
   const paymentMethodLabel =
-    {
-      cash: "Cash",
-      card: "Card",
-      wallet: "E-Wallet",
-    }[paymentMethod] || paymentMethod;
+    { cash: "Cash", card: "Card", wallet: "E-Wallet" }[paymentMethod] || paymentMethod;
 
-  const itemCount = cartItems.reduce((acc, item) => acc + item.cartQuantity, 0);
-
+  const totalWeight = cartItems.reduce((sum, item) => sum + (item.weightKg || 0), 0);
   const isCash = paymentMethod === "cash";
   const numericPaid = paidAmount ?? 0;
   const isValid = !isCash || numericPaid >= total.toNumber();
 
   const handleConfirm = () => {
-    if (isCash) {
-      onConfirm(numericPaid);
-    } else {
-      onConfirm();
-    }
+    if (isCash) onConfirm(numericPaid);
+    else onConfirm();
   };
 
   const handlePaidChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
-    if (value === "") {
-      setPaidAmount(null);
-    } else {
+    if (value === "") setPaidAmount(null);
+    else {
       const num = parseFloat(value);
       setPaidAmount(isNaN(num) ? null : num);
     }
@@ -79,9 +63,7 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
 
   const clearPaid = () => {
     setPaidAmount(null);
-    if (inputRef.current) {
-      inputRef.current.focus();
-    }
+    inputRef.current?.focus();
   };
 
   return (
@@ -93,9 +75,7 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
             <div className="p-2 rounded-lg bg-[var(--accent-blue-light)]">
               <ShoppingBag className="w-6 h-6 text-[var(--accent-blue)]" />
             </div>
-            <h2 className="text-xl font-semibold text-[var(--text-primary)]">
-              Complete Sale
-            </h2>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)]">Complete Sale</h2>
           </div>
           <button
             onClick={onClose}
@@ -108,7 +88,7 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
 
         {/* Body */}
         <div className="p-6 space-y-6">
-          {/* Total Amount - Larger like success dialog */}
+          {/* Total Amount */}
           <div className="text-center">
             <div className="text-sm uppercase tracking-wider text-[var(--text-tertiary)] mb-1">
               Total Amount
@@ -117,7 +97,7 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
               {formatCurrency(total.toFixed(2))}
             </div>
             <div className="text-sm text-[var(--text-secondary)] mt-1">
-              {itemCount} item(s) • {paymentMethodLabel}
+              {totalWeight.toFixed(2)} kg • {paymentMethodLabel}
             </div>
           </div>
 
@@ -143,9 +123,7 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
           {/* Amount Paid (only for cash) */}
           {isCash && (
             <div className="space-y-2">
-              <label className="block text-sm text-[var(--text-tertiary)]">
-                Amount Paid
-              </label>
+              <label className="block text-sm text-[var(--text-tertiary)]">Amount Paid</label>
               <div className="relative">
                 <input
                   ref={inputRef}
@@ -174,23 +152,18 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
             </div>
           )}
 
-          {/* Optional: quick summary of cart items */}
+          {/* Item summary */}
           {cartItems.length > 0 && (
             <div className="bg-[var(--card-secondary-bg)] rounded-lg p-4 max-h-40 overflow-y-auto notes-scrollbar">
-              <p className="text-xs font-medium text-[var(--text-tertiary)] uppercase mb-2">
-                Items
-              </p>
+              <p className="text-xs font-medium text-[var(--text-tertiary)] uppercase mb-2">Items</p>
               {cartItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex justify-between text-sm py-1"
-                >
+                <div key={item.id} className="flex justify-between text-sm py-1">
                   <span className="text-[var(--text-secondary)]">
-                    {item.name} x{item.cartQuantity}
+                    {item.name} x{item.weightKg.toFixed(2)} kg
                   </span>
                   <span className="text-[var(--text-primary)] font-mono">
                     {formatCurrency(
-                      new Decimal(item.price).times(item.cartQuantity).toFixed(2)
+                      new Decimal(item.pricePerKg || 0).times(item.weightKg || 0).toFixed(2)
                     )}
                   </span>
                 </div>
@@ -199,7 +172,7 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
           )}
         </div>
 
-        {/* Footer / Actions */}
+        {/* Footer */}
         <div className="flex gap-3 p-6 border-t border-[var(--border-color)] bg-[var(--card-secondary-bg)]/50">
           <button
             onClick={onClose}

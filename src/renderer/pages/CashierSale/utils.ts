@@ -3,13 +3,13 @@ import type { CartItem } from './types';
 
 export const calculateSubtotal = (cart: CartItem[]): Decimal => {
   return cart.reduce(
-    (sum, item) => sum.plus(new Decimal(item.price).times(item.cartQuantity)),
+    (sum, item) => sum.plus(new Decimal(item.pricePerKg).times(item.weightKg)),
     new Decimal(0)
   );
 };
 
 export const calculateLineTotal = (item: CartItem): Decimal => {
-  const base = new Decimal(item.price).times(item.cartQuantity);
+  const base = new Decimal(item.pricePerKg).times(item.weightKg);
   const afterDiscount = base.times(new Decimal(1).minus(item.lineDiscount / 100));
   const afterTax = afterDiscount.times(new Decimal(1).plus(item.lineTax / 100));
   return afterTax;

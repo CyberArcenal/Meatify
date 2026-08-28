@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -77,6 +80,118 @@ class SaleItemService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[SaleItem] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get tax rate from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getTaxRate(qr = null) {
+    try {
+      return await system.taxRate();
+    } catch (error) {
+      logger.warn(`[SaleItem] Failed to get tax rate: ${error.message}, defaulting to 0`);
+      return 0;
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if discounts are enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isDiscountsEnabled(qr = null) {
+    try {
+      return await system.enableDiscounts();
+    } catch (error) {
+      logger.warn(`[SaleItem] Failed to check discounts enabled: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max discount percent from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxDiscountPercent(qr = null) {
+    try {
+      return await system.maxDiscountPercent();
+    } catch (error) {
+      logger.warn(`[SaleItem] Failed to get max discount percent: ${error.message}, defaulting to 20`);
+      return 20;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max weight per item from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxWeightKg(qr = null) {
+    try {
+      return await system.getDecimal("max_sale_weight_kg", SettingType.SALES, 999.999);
+    } catch (error) {
+      logger.warn(`[SaleItem] Failed to get max weight: ${error.message}, defaulting to 999.999`);
+      return 999.999;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max unit price from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxUnitPrice(qr = null) {
+    try {
+      return await system.getDecimal("max_sale_unit_price", SettingType.SALES, 9999.99);
+    } catch (error) {
+      logger.warn(`[SaleItem] Failed to get max unit price: ${error.message}, defaulting to 9999.99`);
+      return 9999.99;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max line total from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxLineTotal(qr = null) {
+    try {
+      return await system.getDecimal("max_sale_line_total", SettingType.SALES, 999999.99);
+    } catch (error) {
+      logger.warn(`[SaleItem] Failed to get max line total: ${error.message}, defaulting to 999999.99`);
+      return 999999.99;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get retention days from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getRetentionDays(qr = null) {
+    try {
+      return await system.getInt("sale_item_retention_days", SettingType.SALES, 730);
+    } catch (error) {
+      logger.warn(`[SaleItem] Failed to get retention days: ${error.message}, defaulting to 730`);
+      return 730;
+    }
+  }
+
+  /**
    * Create a new sale item
    * @param {Object} data - { saleId, meatId, batchId, weightKg, unitPrice, discount?, tax?, lineTotal? }
    * @param {string} user
@@ -106,6 +221,24 @@ class SaleItemService {
         throw new Error("unitPrice must be non-negative");
       }
 
+      // ✅ Get settings
+      const taxRate = await this._getTaxRate(qr);
+      const discountsEnabled = await this._isDiscountsEnabled(qr);
+      const maxDiscountPercent = await this._getMaxDiscountPercent(qr);
+      const maxWeight = await this._getMaxWeightKg(qr);
+      const maxUnitPrice = await this._getMaxUnitPrice(qr);
+      const maxLineTotal = await this._getMaxLineTotal(qr);
+
+      // ✅ Validate max weight
+      if (data.weightKg > maxWeight) {
+        throw new Error(`Weight ${data.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`);
+      }
+
+      // ✅ Validate max unit price
+      if (data.unitPrice > maxUnitPrice) {
+        throw new Error(`Unit price ₱${data.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
+      }
+
       // Validate sale exists
       const sale = await saleRepo.findOne({ where: { id: data.saleId } });
       if (!sale) {
@@ -127,19 +260,42 @@ class SaleItemService {
         throw new Error(`Batch #${data.batchId} does not belong to meat #${data.meatId}`);
       }
 
+      // ✅ Validate tax
+      const tax = data.tax || 0;
+      if (tax > taxRate) {
+        throw new Error(`Tax ${tax}% exceeds maximum tax rate of ${taxRate}%`);
+      }
+
+      // ✅ Validate discount
+      const discount = data.discount || 0;
+      if (discount > 0) {
+        if (!discountsEnabled) {
+          throw new Error("Discounts are disabled in system settings");
+        }
+        const discountPercent = (discount / (data.unitPrice * data.weightKg)) * 100;
+        if (discountPercent > maxDiscountPercent) {
+          throw new Error(
+            `Discount ${discountPercent.toFixed(1)}% exceeds maximum allowed of ${maxDiscountPercent}%`
+          );
+        }
+      }
+
       // Compute lineTotal if not provided
       let lineTotal = data.lineTotal;
       if (lineTotal === undefined || lineTotal === null) {
-        const discount = data.discount || 0;
-        const tax = data.tax || 0;
         lineTotal = (data.unitPrice * data.weightKg) - discount + tax;
+      }
+
+      // ✅ Validate max line total
+      if (lineTotal > maxLineTotal) {
+        throw new Error(`Line total ₱${lineTotal} exceeds maximum allowed of ₱${maxLineTotal}`);
       }
 
       const saleItem = saleItemRepo.create({
         weightKg: data.weightKg,
         unitPrice: data.unitPrice,
-        discount: data.discount || 0,
-        tax: data.tax || 0,
+        discount: discount,
+        tax: tax,
         lineTotal: lineTotal,
         sale: sale,
         meat: meat,
@@ -149,7 +305,13 @@ class SaleItemService {
       });
 
       const saved = await saveDb(saleItemRepo, saleItem, { queryRunner: qr });
-      await auditLogger.logCreate("SaleItem", saved.id, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("SaleItem", saved.id, saved, user);
+      }
+
       logger.debug(`SaleItem created: #${saved.id} - Meat: ${meat.name}, Weight: ${saved.weightKg}kg`);
       return saved;
     } catch (error) {
@@ -183,30 +345,60 @@ class SaleItemService {
 
       const oldData = { ...existing };
 
+      // ✅ Get settings for validation
+      const taxRate = await this._getTaxRate(qr);
+      const discountsEnabled = await this._isDiscountsEnabled(qr);
+      const maxDiscountPercent = await this._getMaxDiscountPercent(qr);
+      const maxWeight = await this._getMaxWeightKg(qr);
+      const maxUnitPrice = await this._getMaxUnitPrice(qr);
+      const maxLineTotal = await this._getMaxLineTotal(qr);
+
       // Update fields if provided
       if (data.weightKg !== undefined) {
         if (data.weightKg <= 0) throw new Error("weightKg must be greater than 0");
+        if (data.weightKg > maxWeight) {
+          throw new Error(`Weight ${data.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`);
+        }
         existing.weightKg = data.weightKg;
-        // Recalculate lineTotal if unitPrice exists
         existing.lineTotal = (existing.unitPrice * existing.weightKg) - existing.discount + existing.tax;
       }
       if (data.unitPrice !== undefined) {
         if (data.unitPrice < 0) throw new Error("unitPrice must be non-negative");
+        if (data.unitPrice > maxUnitPrice) {
+          throw new Error(`Unit price ₱${data.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
+        }
         existing.unitPrice = data.unitPrice;
         existing.lineTotal = (existing.unitPrice * existing.weightKg) - existing.discount + existing.tax;
       }
       if (data.discount !== undefined) {
+        if (data.discount > 0 && !discountsEnabled) {
+          throw new Error("Discounts are disabled in system settings");
+        }
+        if (data.discount > 0) {
+          const discountPercent = (data.discount / (existing.unitPrice * existing.weightKg)) * 100;
+          if (discountPercent > maxDiscountPercent) {
+            throw new Error(
+              `Discount ${discountPercent.toFixed(1)}% exceeds maximum allowed of ${maxDiscountPercent}%`
+            );
+          }
+        }
         existing.discount = data.discount;
         existing.lineTotal = (existing.unitPrice * existing.weightKg) - existing.discount + existing.tax;
       }
       if (data.tax !== undefined) {
+        if (data.tax > taxRate) {
+          throw new Error(`Tax ${data.tax}% exceeds maximum tax rate of ${taxRate}%`);
+        }
         existing.tax = data.tax;
         existing.lineTotal = (existing.unitPrice * existing.weightKg) - existing.discount + existing.tax;
       }
       if (data.lineTotal !== undefined) {
         // Allow manual lineTotal override if no other fields changed
-        if (data.weightKg === undefined && data.unitPrice === undefined && 
+        if (data.weightKg === undefined && data.unitPrice === undefined &&
             data.discount === undefined && data.tax === undefined) {
+          if (data.lineTotal > maxLineTotal) {
+            throw new Error(`Line total ₱${data.lineTotal} exceeds maximum allowed of ₱${maxLineTotal}`);
+          }
           existing.lineTotal = data.lineTotal;
         }
         // Otherwise, the recalculation above will override
@@ -215,7 +407,13 @@ class SaleItemService {
       existing.updatedAt = new Date();
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("SaleItem", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("SaleItem", id, oldData, saved, user);
+      }
+
       logger.debug(`SaleItem updated: #${id}`);
       return saved;
     } catch (error) {
@@ -251,7 +449,13 @@ class SaleItemService {
     }
 
     await removeDb(repo, item, { queryRunner: qr });
-    await auditLogger.debugDelete("SaleItem", id, item, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("SaleItem", id, item, user);
+    }
+
     logger.debug(`SaleItem #${id} permanently deleted`);
   }
 
@@ -294,6 +498,14 @@ class SaleItemService {
       .leftJoinAndSelect("saleItem.meat", "meat")
       .leftJoinAndSelect("saleItem.batch", "batch");
 
+    // ✅ Apply retention days filter automatically if not specified
+    if (!options.startDate && !options.endDate && !options.ignoreRetention) {
+      const retentionDays = await this._getRetentionDays(qr);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      qb.andWhere("saleItem.createdAt >= :cutoffDate", { cutoffDate });
+    }
+
     // Filters
     if (options.saleId) {
       qb.andWhere("saleItem.saleId = :saleId", { saleId: options.saleId });
@@ -324,12 +536,12 @@ class SaleItemService {
       end.setHours(23, 59, 59, 999);
       qb.andWhere("saleItem.createdAt <= :endDate", { endDate: end });
     }
- if (options.search) {
-  qb.andWhere(
-    "(meat.name LIKE :search OR CAST(sale.id AS TEXT) LIKE :search OR batch.batchCode LIKE :search)",
-    { search: `%${options.search}%` }
-  );
-}
+    if (options.search) {
+      qb.andWhere(
+        "(meat.name LIKE :search OR CAST(sale.id AS TEXT) LIKE :search OR batch.batchCode LIKE :search)",
+        { search: `%${options.search}%` }
+      );
+    }
 
     // Sorting
     let sortBy = options.sortBy || "createdAt";
@@ -358,11 +570,17 @@ class SaleItemService {
     const SaleItem = require("../entities/SaleItem");
     const repo = this._getRepo(qr, SaleItem);
 
+    // ✅ Apply retention days filter
+    const retentionDays = await this._getRetentionDays(qr);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
     // Total weight and amount
     const totalResult = await repo
       .createQueryBuilder("saleItem")
       .select("SUM(saleItem.weightKg)", "totalWeight")
       .addSelect("SUM(saleItem.lineTotal)", "totalAmount")
+      .where("saleItem.createdAt >= :cutoffDate", { cutoffDate })
       .getRawOne();
 
     // By meat
@@ -374,6 +592,7 @@ class SaleItemService {
       .addSelect("COUNT(saleItem.id)", "count")
       .addSelect("SUM(saleItem.weightKg)", "totalWeight")
       .addSelect("SUM(saleItem.lineTotal)", "totalAmount")
+      .where("saleItem.createdAt >= :cutoffDate", { cutoffDate })
       .groupBy("meat.id")
       .orderBy("totalAmount", "DESC")
       .limit(5)
@@ -383,13 +602,23 @@ class SaleItemService {
     const avgWeightResult = await repo
       .createQueryBuilder("saleItem")
       .select("AVG(saleItem.weightKg)", "avgWeight")
+      .where("saleItem.createdAt >= :cutoffDate", { cutoffDate })
       .getRawOne();
 
     // Items with discount
     const withDiscount = await repo
       .createQueryBuilder("saleItem")
       .where("saleItem.discount > 0")
+      .andWhere("saleItem.createdAt >= :cutoffDate", { cutoffDate })
       .getCount();
+
+    // ✅ Get settings info
+    const taxRate = await this._getTaxRate(qr);
+    const discountsEnabled = await this._isDiscountsEnabled(qr);
+    const maxDiscountPercent = await this._getMaxDiscountPercent(qr);
+    const maxWeight = await this._getMaxWeightKg(qr);
+    const maxUnitPrice = await this._getMaxUnitPrice(qr);
+    const maxLineTotal = await this._getMaxLineTotal(qr);
 
     return {
       totalWeight: parseFloat(totalResult.totalWeight) || 0,
@@ -397,6 +626,14 @@ class SaleItemService {
       averageWeight: parseFloat(avgWeightResult.avgWeight) || 0,
       topMeats: byMeat,
       itemsWithDiscount: withDiscount,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      taxRate,
+      discountsEnabled,
+      maxDiscountPercent,
+      maxWeight,
+      maxUnitPrice,
+      maxLineTotal,
     };
   }
 
@@ -409,7 +646,8 @@ class SaleItemService {
    */
   async exportItems(format = "json", filters = {}, user = "system", qr = null) {
     try {
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
+      // Fetch all data without pagination for export
+      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
       const items = result.data;
 
       let exportData;
@@ -451,7 +689,12 @@ class SaleItemService {
         };
       }
 
-      await auditLogger.debugExport("SaleItem", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("SaleItem", format, filters, user);
+      }
+
       logger.debug(`Exported ${items.length} sale items in ${format} format`);
       return exportData;
     } catch (error) {
@@ -537,6 +780,132 @@ class SaleItemService {
       }
     }
     return results;
+  }
+
+  /**
+   * ✅ NEW: Clean up old sale items (hard delete)
+   * @param {number} daysOld - Delete items older than this (overrides settings)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanOldItems(daysOld = null, user = "system", qr = null) {
+    const { removeDb } = require("../utils/dbUtils/dbActions");
+    const SaleItem = require("../entities/SaleItem");
+    const repo = this._getRepo(qr, SaleItem);
+
+    // ✅ Use settings if not provided
+    if (daysOld === null) {
+      daysOld = await this._getRetentionDays(qr);
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    // ✅ Only delete items from paid sales (not refunded or voided)
+    const oldItems = await repo
+      .createQueryBuilder("saleItem")
+      .leftJoin("saleItem.sale", "sale")
+      .where("saleItem.createdAt < :cutoffDate", { cutoffDate })
+      .andWhere("sale.status = 'paid'")
+      .getMany();
+
+    if (oldItems.length === 0) {
+      logger.info(`[SaleItem] No old items to clean up (threshold: ${daysOld} days)`);
+      return { count: 0 };
+    }
+
+    let deletedCount = 0;
+    for (const item of oldItems) {
+      try {
+        await removeDb(repo, item, { queryRunner: qr, skipSignal: true });
+
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.debugDelete("SaleItem", item.id, item, user);
+        }
+
+        deletedCount++;
+        logger.debug(`[SaleItem] Deleted item #${item.id} (older than ${daysOld} days)`);
+      } catch (err) {
+        logger.error(`[SaleItem] Failed to delete item #${item.id}:`, err);
+      }
+    }
+
+    logger.info(`[SaleItem] Cleaned up ${deletedCount} old items (older than ${daysOld} days)`);
+    return { count: deletedCount };
+  }
+
+  /**
+   * ✅ NEW: Get sale item retention info
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getRetentionInfo(qr = null) {
+    const retentionDays = await this._getRetentionDays(qr);
+    const auditEnabled = await this._isAuditEnabled(qr);
+
+    const SaleItem = require("../entities/SaleItem");
+    const repo = this._getRepo(qr, SaleItem);
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    const totalItems = await repo.count();
+    const oldItems = await repo
+      .createQueryBuilder("saleItem")
+      .leftJoin("saleItem.sale", "sale")
+      .where("saleItem.createdAt < :cutoffDate", { cutoffDate })
+      .andWhere("sale.status = 'paid'")
+      .getCount();
+
+    const taxRate = await this._getTaxRate(qr);
+    const maxDiscountPercent = await this._getMaxDiscountPercent(qr);
+
+    return {
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      totalItems,
+      itemsToDelete: oldItems,
+      taxRate,
+      maxDiscountPercent,
+      auditEnabled,
+    };
+  }
+
+  /**
+   * ✅ NEW: Get sale items by sale ID with summary
+   * @param {number} saleId
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getItemsBySale(saleId, qr = null) {
+    const SaleItem = require("../entities/SaleItem");
+    const repo = this._getRepo(qr, SaleItem);
+
+    const items = await repo
+      .createQueryBuilder("saleItem")
+      .leftJoinAndSelect("saleItem.meat", "meat")
+      .leftJoinAndSelect("saleItem.batch", "batch")
+      .where("saleItem.saleId = :saleId", { saleId })
+      .orderBy("saleItem.createdAt", "DESC")
+      .getMany();
+
+    const summary = {
+      saleId,
+      totalItems: items.length,
+      totalWeight: 0,
+      totalAmount: 0,
+      totalDiscount: 0,
+      totalTax: 0,
+      items,
+    };
+
+    for (const item of items) {
+      summary.totalWeight += item.weightKg;
+      summary.totalAmount += item.lineTotal;
+      summary.totalDiscount += item.discount || 0;
+      summary.totalTax += item.tax || 0;
+    }
+
+    return summary;
   }
 }
 

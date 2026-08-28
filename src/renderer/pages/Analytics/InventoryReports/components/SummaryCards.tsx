@@ -1,6 +1,6 @@
 import React from 'react';
 import { Package, Layers, DollarSign, AlertTriangle, XCircle } from 'lucide-react';
-import type { InventorySummary } from '../../../../api/analytics/inventory_reports';
+import type { InventorySummary } from '../../../../api/analytics/inventoryReports';
 
 interface Props {
   summary: InventorySummary | null;
@@ -33,14 +33,14 @@ const SummaryCards: React.FC<Props> = ({ summary, loading }) => {
 
   const cards = [
     {
-      title: 'Total Products',
-      value: summary.totalProducts,
+      title: 'Total Meats',
+      value: summary.totalMeats,
       icon: Package,
       color: 'blue',
     },
     {
-      title: 'Total Stock Qty',
-      value: summary.totalStockQty,
+      title: 'Total Stock',
+      value: summary.totalStock,
       icon: Layers,
       color: 'green',
     },

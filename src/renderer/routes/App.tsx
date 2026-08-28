@@ -17,6 +17,12 @@ import SupplierPage from "../pages/supplier";
 import StockLevelsPage from "../pages/stock";
 import ReturnRefundReportsPage from "../pages/Analytics/ReturnRefundReports";
 import Transactions from "../pages/Transactions";
+import SalesReportsPage from "../pages/Analytics/SalesReports";
+import DailySalesPage from "../pages/Analytics/DailySales";
+import FinancialReportsPage from "../pages/Analytics/FinancialReports";
+import InventoryReportsPage from "../pages/Analytics/InventoryReports";
+import CustomerInsights from "../pages/Analytics/Customer";
+import Cashier from "../pages/CashierSale";
 
 
 const PageNotFound = () => <div> Page Not Found</div>;
@@ -53,11 +59,11 @@ function App() {
     <Routes>
       <Route path="/help" element={<Help />} />
       <Route path="/" element={<Layout />}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route index element={<Navigate to="/pos/cashier" replace />} />
 
         {/* Core POS */}
         <Route path="dashboard" element={<DashboardPage />} />
-        {/* <Route path="pos/cashier" element={<Cashier />} /> */}
+        <Route path="pos/cashier" element={<Cashier />} />
         <Route path="pos/transactions" element={<Transactions />} />
       <Route path="inventory/products" element={<MeatPage />} />
 
@@ -66,9 +72,9 @@ function App() {
         <Route path="customers/loyalty" element={<CustomerLoyaltyPage />} />
 
         {/* Sales */}
-        {/* <Route path="sales/daily" element={<DailySalesPage />} /> */}
-        {/* <Route path="sales/reports" element={<SalesReportsPage />} /> */}
-        {/* <Route path="sales/returns" element={<ReturnRefundReportsPage />} /> */}
+        <Route path="sales/daily" element={<DailySalesPage />} />
+        <Route path="sales/reports" element={<SalesReportsPage />} />
+        <Route path="sales/returns" element={<ReturnRefundReportsPage />} />
 
         {/* Inventory */}
         <Route path="inventory/stock" element={<StockLevelsPage />} />
@@ -79,9 +85,9 @@ function App() {
         <Route path="inventory/categories" element={<CategoryPage />} />
 
         {/* Reports */}
-        {/* <Route path="reports/financial" element={<FinancialReportsPage />} /> */}
-        {/* <Route path="reports/inventory" element={<InventoryReportsPage />} /> */}
-        {/* <Route path="reports/customer" element={<CustomerInsights />} /> */}
+        <Route path="reports/financial" element={<FinancialReportsPage />} />
+        <Route path="reports/inventory" element={<InventoryReportsPage />} />
+        <Route path="reports/customer" element={<CustomerInsights />} />
 
         {/* System */}
         <Route path="system/audit" element={<AuditTrailPage />} />

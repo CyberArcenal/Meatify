@@ -7,11 +7,12 @@ const Meat = require("../entities/Meat");
 const Purchase = require("../entities/Purchase");
 const Batch = require("../entities/Batch");
 const notificationService = require("../services/Notification");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
 
-// Settings getters
-const emailEnabled = async () => true;
-const smsEnabled = async () => true;
-const companyName = async () => "Meatify Shop";
+// ❌ REMOVED hardcoded functions:
+// const emailEnabled = async () => true;
+// const smsEnabled = async () => true;
+// const companyName = async () => "Meatify Shop";
 
 /**
  * SupplierStateService handles state transitions and side effects for suppliers.
@@ -442,9 +443,10 @@ class SupplierStateService {
       throw new Error(`Supplier with ID ${supplierId} not found`);
     }
 
-    const canSendEmail = await emailEnabled();
-    const canSendSms = await smsEnabled();
-    const company = await companyName();
+    // ✅ Use system settings instead of hardcoded values
+    const canSendEmail = await system.emailEnabled();
+    const canSendSms = await system.smsEnabled();
+    const company = await system.companyName();
 
     // Email
     if (canSendEmail && supplier.email) {

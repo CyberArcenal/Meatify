@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Search, Loader2, Barcode, RefreshCw, XCircle, X } from "lucide-react";
+import { Loader2, RefreshCw, XCircle } from "lucide-react";
 import Decimal from "decimal.js";
 import { useProducts } from "./hooks/useProducts";
 import { useCustomers } from "./hooks/useCustomers";
@@ -9,15 +9,12 @@ import { useCheckout } from "./hooks/useCheckout";
 import ProductGrid from "./components/ProductGrid";
 import Cart from "./components/Cart";
 import CheckoutDialog from "./components/CheckoutDialog";
-import { calculateCartTotal } from "./utils";
 import type { CartItem } from "./types";
 import PaymentSuccessDialog from "./components/PaymentSuccessDialog";
-import CategorySelect from "../../components/Selects/Category";
 import CashierHeader from "./components/CashierHeader";
 import { useSettings } from "../../contexts/SettingsContext";
 import { useBarcodeEnabled } from "../../utils/posUtils";
-import productAPI from "../../api/core/product";
-import { useBarcodeScanner } from "./hooks/useBarcodeScanner";
+import { calculateCartTotal } from "./utils";
 
 const Cashier: React.FC = () => {
   const {
@@ -30,9 +27,8 @@ const Cashier: React.FC = () => {
     loadProducts,
     clearFilters,
   } = useProducts();
-  const isBarcodeEnabled = useBarcodeEnabled();
-  const { selectedCustomer, selectCustomer, setSelectedCustomer } =
-    useCustomers();
+
+  const { selectedCustomer, selectCustomer, setSelectedCustomer } = useCustomers();
 
   const {
     cart,
@@ -70,8 +66,9 @@ const Cashier: React.FC = () => {
     total: Decimal;
     cartItems: CartItem[];
   } | null>(null);
-  const [scannedBarcode, setScannedBarcode] = useState<string>("");
+
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const isBarcodeEnabled = useBarcodeEnabled();
 
   // ========== OPTIMIZATION: useMemo for heavy calculations ==========
   const loyaltyDeduction = useMemo(
@@ -139,36 +136,13 @@ const Cashier: React.FC = () => {
     loadProducts();
   }, [clearCart, setSelectedCustomer, setUseLoyalty, setLoyaltyPointsToRedeem, loadProducts]);
 
-  const handleBarcodeScanned = useCallback(
-    async (barcode: string) => {
-      setScannedBarcode(barcode);
-      try {
-        const response = await productAPI.getByBarcode(barcode);
-        if (response.status && response.data) {
-          addToCart(response.data);
-        } else {
-          setSearchTerm(barcode);
-        }
-      } catch (error) {
-        console.error("Barcode lookup failed:", error);
-        setSearchTerm(barcode);
-      }
-    },
-    [addToCart, setSearchTerm]
-  );
-
-  // Use optimized barcode scanner hook
-  useBarcodeScanner(handleBarcodeScanned, isBarcodeEnabled);
-
   const handleClearCart = useCallback(() => {
-  clearCart();
-  // Reset loyalty redemption when cart is cleared
-  setUseLoyalty(false);
-  setLoyaltyPointsToRedeem(0);
-}, [clearCart, setUseLoyalty, setLoyaltyPointsToRedeem]);
+    clearCart();
+    setUseLoyalty(false);
+    setLoyaltyPointsToRedeem(0);
+  }, [clearCart, setUseLoyalty, setLoyaltyPointsToRedeem]);
 
-
-  // Keyboard shortcuts (unchanged, but keep as is)
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (
@@ -194,31 +168,12 @@ const Cashier: React.FC = () => {
         e.preventDefault();
         handleCheckoutClick();
       }
-      if (e.ctrlKey && e.shiftKey && e.key === "N") {
-        e.preventDefault();
-        const factorStr = window.prompt("Enter multiplier factor (e.g., 2 to double):", "2");
-        if (factorStr !== null) {
-          const factor = parseFloat(factorStr);
-          if (!isNaN(factor) && factor > 0) {
-            cart.forEach((item) => {
-              const newQty = Math.floor(item.cartQuantity * factor);
-              if (newQty > item.stockQty) {
-                alert(`Cannot multiply ${item.name}: only ${item.stockQty} available.`);
-              } else {
-                updateCartQuantity(item.id, newQty);
-              }
-            });
-          } else {
-            alert("Invalid factor. Must be a positive number.");
-          }
-        }
-      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [globalDiscount, setGlobalDiscount, handleCheckoutClick, cart, updateCartQuantity]);
+  }, [globalDiscount, setGlobalDiscount, handleCheckoutClick]);
 
-  // Initial load (unchanged)
+  // Initial load
   useEffect(() => {
     loadProducts();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -229,8 +184,6 @@ const Cashier: React.FC = () => {
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         searchInputRef={searchInputRef}
-        scannedBarcode={scannedBarcode}
-        onClearScannedBarcode={() => setScannedBarcode("")}
         itemCount={itemCount}
         total={finalTotal}
         categoryId={categoryId}

@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -74,6 +77,141 @@ class MeatService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[Meat] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get default active status from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _getDefaultActiveStatus(qr = null) {
+    try {
+      return await system.getBool("default_meat_active", SettingType.INVENTORY, true);
+    } catch (error) {
+      logger.warn(`[Meat] Failed to get default active status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get SKU prefix from settings or company name
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string>}
+   */
+  async _getSkuPrefix(qr = null) {
+    try {
+      // Try to get custom SKU prefix from settings
+      const prefix = await system.getValue("meat_sku_prefix", SettingType.INVENTORY, null);
+      if (prefix && prefix.trim()) {
+        return prefix.trim().toUpperCase();
+      }
+      // Fallback to company name
+      const company = await system.companyName();
+      return company.substring(0, 4).toUpperCase() || "MEAT";
+    } catch (error) {
+      logger.warn(`[Meat] Failed to get SKU prefix: ${error.message}, defaulting to "MEAT"`);
+      return "MEAT";
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max price per kg from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxPrice(qr = null) {
+    try {
+      return await system.getDecimal("max_price_per_kg", SettingType.SALES, 9999.99);
+    } catch (error) {
+      logger.warn(`[Meat] Failed to get max price: ${error.message}, defaulting to 9999.99`);
+      return 9999.99;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max name length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxNameLength(qr = null) {
+    try {
+      return await system.getInt("max_meat_name_length", SettingType.INVENTORY, 100);
+    } catch (error) {
+      logger.warn(`[Meat] Failed to get max name length: ${error.message}, defaulting to 100`);
+      return 100;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max description length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxDescriptionLength(qr = null) {
+    try {
+      return await system.getInt("max_meat_description_length", SettingType.INVENTORY, 500);
+    } catch (error) {
+      logger.warn(`[Meat] Failed to get max description length: ${error.message}, defaulting to 500`);
+      return 500;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get tax rate from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getTaxRate(qr = null) {
+    try {
+      return await system.taxRate();
+    } catch (error) {
+      logger.warn(`[Meat] Failed to get tax rate: ${error.message}, defaulting to 0`);
+      return 0;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get discount settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<{ enabled: boolean, maxPercent: number, defaultRate: number }>}
+   */
+  async _getDiscountSettings(qr = null) {
+    try {
+      const [enabled, maxPercent, defaultRate] = await Promise.all([
+        system.enableDiscounts(),
+        system.maxDiscountPercent(),
+        system.defaultDiscountRate(),
+      ]);
+      return { enabled, maxPercent, defaultRate };
+    } catch (error) {
+      logger.warn(`[Meat] Failed to get discount settings: ${error.message}, using defaults`);
+      return { enabled: true, maxPercent: 20, defaultRate: 0 };
+    }
+  }
+
+  /**
+   * ✅ NEW: Validate barcode format
+   * @param {string} barcode
+   * @returns {boolean}
+   */
+  _isValidBarcode(barcode) {
+    // Basic barcode validation - can be extended
+    if (!barcode) return true;
+    return barcode.length >= 4 && barcode.length <= 20 && /^[\d\-]+$/.test(barcode);
+  }
+
+  /**
    * Create a new meat product
    * @param {Object} data - { sku?, name, barcode?, description?, pricePerKg, isActive?, categoryId?, supplierId?, image? }
    * @param {string} user - User performing the action
@@ -96,10 +234,36 @@ class MeatService {
         throw new Error("pricePerKg must be a non-negative number");
       }
 
+      // ✅ Validate name length
+      const maxNameLength = await this._getMaxNameLength(qr);
+      if (data.name.length > maxNameLength) {
+        throw new Error(`Meat name cannot exceed ${maxNameLength} characters`);
+      }
+
+      // ✅ Validate description length
+      if (data.description) {
+        const maxDescLength = await this._getMaxDescriptionLength(qr);
+        if (data.description.length > maxDescLength) {
+          throw new Error(`Description cannot exceed ${maxDescLength} characters`);
+        }
+      }
+
+      // ✅ Validate max price
+      const maxPrice = await this._getMaxPrice(qr);
+      if (data.pricePerKg > maxPrice) {
+        throw new Error(`Price ₱${data.pricePerKg} exceeds maximum allowed of ₱${maxPrice}`);
+      }
+
+      // ✅ Validate barcode format
+      if (data.barcode && !this._isValidBarcode(data.barcode)) {
+        throw new Error(`Invalid barcode format: "${data.barcode}"`);
+      }
+
       // Auto-generate SKU if not provided
       let sku = data.sku;
       if (!sku) {
-        sku = await this.generateSku(meatRepo);
+        const prefix = await this._getSkuPrefix(qr);
+        sku = await this.generateSku(meatRepo, prefix);
       } else {
         const existing = await meatRepo.findOne({ where: { sku } });
         if (existing) {
@@ -133,6 +297,10 @@ class MeatService {
         }
       }
 
+      // ✅ Use system setting for default active status
+      const defaultActive = await this._getDefaultActiveStatus(qr);
+      const isActive = data.isActive !== undefined ? data.isActive : defaultActive;
+
       // Handle image (if any) – you can implement file storage later
       let imagePath = data.image || null;
 
@@ -142,7 +310,7 @@ class MeatService {
         barcode: data.barcode || null,
         description: data.description || null,
         pricePerKg: data.pricePerKg,
-        isActive: data.isActive !== undefined ? data.isActive : true,
+        isActive: isActive,
         image: imagePath,
         category: category,
         supplier: supplier,
@@ -151,7 +319,13 @@ class MeatService {
       });
 
       const saved = await saveDb(meatRepo, meat, { queryRunner: qr });
-      await auditLogger.logCreate("Meat", saved.id, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Meat", saved.id, saved, user);
+      }
+
       logger.debug(`Meat created: #${saved.id} - ${saved.name} (SKU: ${saved.sku})`);
       return saved;
     } catch (error) {
@@ -185,6 +359,33 @@ class MeatService {
 
       const oldData = { ...existing };
 
+      // ✅ Validate name length if changed
+      if (data.name) {
+        const maxNameLength = await this._getMaxNameLength(qr);
+        if (data.name.length > maxNameLength) {
+          throw new Error(`Meat name cannot exceed ${maxNameLength} characters`);
+        }
+      }
+
+      // ✅ Validate description length if changed
+      if (data.description) {
+        const maxDescLength = await this._getMaxDescriptionLength(qr);
+        if (data.description.length > maxDescLength) {
+          throw new Error(`Description cannot exceed ${maxDescLength} characters`);
+        }
+      }
+
+      // ✅ Validate max price if changed
+      if (data.pricePerKg !== undefined) {
+        if (data.pricePerKg < 0) {
+          throw new Error("pricePerKg must be non-negative");
+        }
+        const maxPrice = await this._getMaxPrice(qr);
+        if (data.pricePerKg > maxPrice) {
+          throw new Error(`Price ₱${data.pricePerKg} exceeds maximum allowed of ₱${maxPrice}`);
+        }
+      }
+
       // SKU uniqueness
       if (data.sku && data.sku !== existing.sku) {
         const duplicate = await meatRepo.findOne({ where: { sku: data.sku } });
@@ -195,6 +396,9 @@ class MeatService {
 
       // Barcode uniqueness
       if (data.barcode && data.barcode !== existing.barcode) {
+        if (!this._isValidBarcode(data.barcode)) {
+          throw new Error(`Invalid barcode format: "${data.barcode}"`);
+        }
         const duplicate = await meatRepo.findOne({ where: { barcode: data.barcode } });
         if (duplicate) {
           throw new Error(`Barcode "${data.barcode}" already exists`);
@@ -245,7 +449,13 @@ class MeatService {
       existing.updatedAt = new Date();
 
       const saved = await updateDb(meatRepo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("Meat", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Meat", id, oldData, saved, user);
+      }
+
       logger.debug(`Meat updated: #${id}`);
       return saved;
     } catch (error) {
@@ -280,7 +490,13 @@ class MeatService {
       meat.updatedAt = new Date();
 
       const saved = await updateDb(meatRepo, meat, { queryRunner: qr });
-      await auditLogger.debugDelete("Meat", id, oldData, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugDelete("Meat", id, oldData, user);
+      }
+
       logger.debug(`Meat deactivated: #${id}`);
       return saved;
     } catch (error) {
@@ -315,7 +531,13 @@ class MeatService {
       meat.updatedAt = new Date();
 
       const saved = await updateDb(meatRepo, meat, { queryRunner: qr });
-      await auditLogger.logUpdate("Meat", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Meat", id, oldData, saved, user);
+      }
+
       logger.debug(`Meat restored: #${id}`);
       return saved;
     } catch (error) {
@@ -355,7 +577,13 @@ class MeatService {
     // Optionally delete image file if needed
 
     await removeDb(meatRepo, meat, { queryRunner: qr });
-    await auditLogger.debugDelete("Meat", id, meat, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("Meat", id, meat, user);
+    }
+
     logger.debug(`Meat #${id} permanently deleted`);
   }
 
@@ -461,6 +689,9 @@ class MeatService {
       .getRawOne();
     const avgPrice = parseFloat(avgPriceResult.avg) || 0;
 
+    // ✅ Get max price from settings
+    const maxPriceAllowed = await this._getMaxPrice(qr);
+
     // Count by category (active meats only)
     const byCategory = await meatRepo
       .createQueryBuilder("meat")
@@ -472,11 +703,34 @@ class MeatService {
       .groupBy("category.id")
       .getRawMany();
 
+    // ✅ Count meats with price above max allowed (for alerting)
+    const aboveMaxPrice = await meatRepo
+      .createQueryBuilder("meat")
+      .where("meat.pricePerKg > :maxPrice", { maxPrice: maxPriceAllowed })
+      .andWhere("meat.isActive = true")
+      .getCount();
+
+    // ✅ Count meats with no category
+    const noCategory = await meatRepo
+      .createQueryBuilder("meat")
+      .where("meat.categoryId IS NULL")
+      .andWhere("meat.isActive = true")
+      .getCount();
+
+    // ✅ Get tax rate and discount settings
+    const taxRate = await this._getTaxRate(qr);
+    const discountSettings = await this._getDiscountSettings(qr);
+
     return {
       totalActive,
       totalInactive,
       averagePricePerKg: avgPrice,
+      maxPriceAllowed,
+      aboveMaxPrice,
+      noCategory,
       byCategory,
+      taxRate,
+      discountSettings,
     };
   }
 
@@ -533,7 +787,12 @@ class MeatService {
         };
       }
 
-      await auditLogger.debugExport("Meat", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("Meat", format, filters, user);
+      }
+
       logger.debug(`Exported ${meats.length} meats in ${format} format`);
       return exportData;
     } catch (error) {
@@ -622,15 +881,197 @@ class MeatService {
   }
 
   /**
+   * ✅ NEW: Bulk price update with validation
+   * @param {Array<{ id: number, price: number }>} updates
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async bulkPriceUpdate(updates, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Meat = require("../entities/Meat");
+    const meatRepo = this._getRepo(qr, Meat);
+
+    const results = { updated: [], errors: [] };
+    const maxPrice = await this._getMaxPrice(qr);
+
+    for (const { id, price } of updates) {
+      try {
+        if (price < 0) {
+          throw new Error("Price cannot be negative");
+        }
+        if (price > maxPrice) {
+          throw new Error(`Price ₱${price} exceeds maximum allowed of ₱${maxPrice}`);
+        }
+
+        const existing = await meatRepo.findOne({ where: { id } });
+        if (!existing) {
+          throw new Error(`Meat with ID ${id} not found`);
+        }
+
+        const oldPrice = existing.pricePerKg;
+        existing.pricePerKg = price;
+        existing.updatedAt = new Date();
+
+        const saved = await updateDb(meatRepo, existing, { queryRunner: qr, skipSignal: true });
+
+        // ✅ Check if audit logging is enabled before logging
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.logUpdate("Meat", id, { pricePerKg: oldPrice }, { pricePerKg: price }, user);
+        }
+
+        results.updated.push(saved);
+      } catch (err) {
+        results.errors.push({ id, price, error: err.message });
+      }
+    }
+
+    logger.info(`[Meat] Bulk price update: ${results.updated.length} updated, ${results.errors.length} errors`);
+    return results;
+  }
+
+  /**
+   * ✅ NEW: Clean up inactive meats (hard delete)
+   * @param {number} daysOld - Inactive for this many days
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanInactiveMeats(daysOld = 365, user = "system", qr = null) {
+    const { removeDb } = require("../utils/dbUtils/dbActions");
+    const Meat = require("../entities/Meat");
+    const meatRepo = this._getRepo(qr, Meat);
+
+    // ✅ Get threshold from settings if not provided
+    if (daysOld === 365) {
+      try {
+        daysOld = await system.getInt("inactive_meat_cleanup_days", SettingType.INVENTORY, 365);
+      } catch (error) {
+        logger.warn(`[Meat] Failed to get inactive cleanup days: ${error.message}, defaulting to 365`);
+      }
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    // ✅ Only delete meats with no active batches
+    const inactiveMeats = await meatRepo
+      .createQueryBuilder("meat")
+      .where("meat.isActive = false")
+      .andWhere("meat.updatedAt < :cutoffDate", { cutoffDate })
+      .getMany();
+
+    let deletedCount = 0;
+    for (const meat of inactiveMeats) {
+      try {
+        // Check if there are any batches (active or not)
+        const Batch = require("../entities/Batch");
+        const batchRepo = this._getRepo(qr, Batch);
+        const batchCount = await batchRepo.count({
+          where: { meat: { id: meat.id } },
+        });
+
+        if (batchCount > 0) {
+          logger.debug(`[Meat] Skipping meat #${meat.id} (${meat.name}) - has ${batchCount} batches`);
+          continue;
+        }
+
+        await removeDb(meatRepo, meat, { queryRunner: qr, skipSignal: true });
+
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.debugDelete("Meat", meat.id, meat, user);
+        }
+
+        deletedCount++;
+        logger.info(`[Meat] Permanently deleted inactive meat #${meat.id} (${meat.name})`);
+      } catch (err) {
+        logger.error(`[Meat] Failed to clean inactive meat #${meat.id}:`, err);
+      }
+    }
+
+    logger.info(`[Meat] Cleaned up ${deletedCount} inactive meats (older than ${daysOld} days)`);
+    return { count: deletedCount };
+  }
+
+  /**
+   * ✅ NEW: Get meat health summary
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getHealthSummary(qr = null) {
+    const Meat = require("../entities/Meat");
+    const meatRepo = this._getRepo(qr, Meat);
+
+    const totalActive = await meatRepo.count({ where: { isActive: true } });
+    const totalInactive = await meatRepo.count({ where: { isActive: false } });
+
+    // ✅ Get max price from settings
+    const maxPrice = await this._getMaxPrice(qr);
+
+    // ✅ Count meats above max price
+    const aboveMaxPrice = await meatRepo
+      .createQueryBuilder("meat")
+      .where("meat.pricePerKg > :maxPrice", { maxPrice })
+      .andWhere("meat.isActive = true")
+      .getCount();
+
+    // ✅ Count meats with no category
+    const noCategory = await meatRepo
+      .createQueryBuilder("meat")
+      .where("meat.categoryId IS NULL")
+      .andWhere("meat.isActive = true")
+      .getCount();
+
+    // ✅ Count meats with no supplier
+    const noSupplier = await meatRepo
+      .createQueryBuilder("meat")
+      .where("meat.supplierId IS NULL")
+      .andWhere("meat.isActive = true")
+      .getCount();
+
+    // ✅ Count meats with no barcode
+    const noBarcode = await meatRepo
+      .createQueryBuilder("meat")
+      .where("meat.barcode IS NULL")
+      .andWhere("meat.isActive = true")
+      .getCount();
+
+    // ✅ Get price range
+    const priceStats = await meatRepo
+      .createQueryBuilder("meat")
+      .select("MIN(meat.pricePerKg)", "min")
+      .addSelect("MAX(meat.pricePerKg)", "max")
+      .where("meat.isActive = true")
+      .getRawOne();
+
+    return {
+      totalActive,
+      totalInactive,
+      aboveMaxPrice,
+      noCategory,
+      noSupplier,
+      noBarcode,
+      priceRange: {
+        min: parseFloat(priceStats.min) || 0,
+        max: parseFloat(priceStats.max) || 0,
+      },
+      maxPriceAllowed: maxPrice,
+      healthScore: totalActive > 0
+        ? Math.round(((totalActive - aboveMaxPrice - noCategory - noSupplier) / totalActive) * 100)
+        : 100,
+    };
+  }
+
+  /**
    * Generate a unique SKU
    * @param {import("typeorm").Repository<any>} repo
+   * @param {string} prefix - Optional prefix (defaults to "MEAT")
    * @returns {Promise<string>}
    */
-  async generateSku(repo) {
-    const prefix = "MEAT";
+  async generateSku(repo, prefix = "MEAT") {
     const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const randomPart = Math.floor(100 + Math.random() * 900);
     let sku = `${prefix}-${datePart}-${randomPart}`;
+
     let attempts = 0;
     let existing = await repo.findOne({ where: { sku } });
     while (existing && attempts < 5) {

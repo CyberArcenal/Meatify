@@ -1,11 +1,14 @@
-import { type Product as ApiProduct } from "../../api/core/product";
+import { type MeatInventory } from "../../api/analytics/inventoryReports";
 import { type Customer as ApiCustomer } from "../../api/core/customer";
 
-export type Product = ApiProduct;
+export type Product = MeatInventory & {
+  stockQty: number;
+};
+
 export type Customer = ApiCustomer;
 
 export interface CartItem extends Product {
-  cartQuantity: number;
+  weightKg: number; // decimal weight in kg
   lineDiscount: number; // percentage
   lineTax: number; // percentage
 }

@@ -8,6 +8,8 @@ const Category = new EntitySchema({
     id: { type: Number, primary: true, generated: true },
     name: { type: String },
     description: { type: String, nullable: true },
+    address: { type: String, nullable: true }, // ✅ NEW
+    notes: { type: String, nullable: true }, // ✅ NEW
     isActive: { type: Boolean, default: true },
     createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },
     updatedAt: { type: Date, nullable: true },

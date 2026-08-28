@@ -1,8 +1,11 @@
-// src/services/Loyalty.js
+// src/services/LoyaltyTransaction.js
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -72,6 +75,120 @@ class LoyaltyTransactionService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[LoyaltyTransaction] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if loyalty points are enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isLoyaltyEnabled(qr = null) {
+    try {
+      return await system.loyaltyPointsEnabled();
+    } catch (error) {
+      logger.warn(`[LoyaltyTransaction] Failed to check loyalty enabled: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get allowed transaction types from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string[]>}
+   */
+  async _getAllowedTransactionTypes(qr = null) {
+    try {
+      return await system.getArray("allowed_loyalty_types", SettingType.SALES, [
+        "earn", "redeem", "adjustment", "refund"
+      ]);
+    } catch (error) {
+      logger.warn(`[LoyaltyTransaction] Failed to get allowed transaction types: ${error.message}, using defaults`);
+      return ["earn", "redeem", "adjustment", "refund"];
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max notes length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxNotesLength(qr = null) {
+    try {
+      return await system.getInt("max_loyalty_notes_length", SettingType.SALES, 500);
+    } catch (error) {
+      logger.warn(`[LoyaltyTransaction] Failed to get max notes length: ${error.message}, defaulting to 500`);
+      return 500;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get loyalty transaction retention days from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getRetentionDays(qr = null) {
+    try {
+      return await system.getInt("loyalty_retention_days", SettingType.SALES, 730);
+    } catch (error) {
+      logger.warn(`[LoyaltyTransaction] Failed to get retention days: ${error.message}, defaulting to 730`);
+      return 730;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get point rate from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getPointRate(qr = null) {
+    try {
+      return await system.getLoyaltyPointRate();
+    } catch (error) {
+      logger.warn(`[LoyaltyTransaction] Failed to get point rate: ${error.message}, defaulting to 100`);
+      return 100;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get VIP threshold from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getVipThreshold(qr = null) {
+    try {
+      return await system.loyaltyVipThreshold();
+    } catch (error) {
+      logger.warn(`[LoyaltyTransaction] Failed to get VIP threshold: ${error.message}, defaulting to 1000`);
+      return 1000;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get Elite threshold from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getEliteThreshold(qr = null) {
+    try {
+      return await system.loyaltyEliteThreshold();
+    } catch (error) {
+      logger.warn(`[LoyaltyTransaction] Failed to get Elite threshold: ${error.message}, defaulting to 5000`);
+      return 5000;
+    }
+  }
+
+  /**
    * Create a new loyalty transaction (manual adjustment - no side effects)
    * For earning/redeeming points, use LoyaltyTransactionStateService
    * @param {Object} data - { customerId, pointsChange, transactionType, notes?, saleId? }
@@ -89,6 +206,12 @@ class LoyaltyTransactionService {
     const saleRepo = this._getRepo(qr, Sale);
 
     try {
+      // ✅ Check if loyalty is enabled
+      const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+      if (!loyaltyEnabled) {
+        throw new Error("Loyalty points are disabled in system settings");
+      }
+
       // Validate required fields
       if (!data.customerId) throw new Error("customerId is required");
       if (data.pointsChange === undefined || data.pointsChange === null) {
@@ -98,6 +221,22 @@ class LoyaltyTransactionService {
         throw new Error("pointsChange cannot be zero");
       }
       if (!data.transactionType) throw new Error("transactionType is required");
+
+      // ✅ Validate transaction type against allowed list
+      const allowedTypes = await this._getAllowedTransactionTypes(qr);
+      if (!allowedTypes.includes(data.transactionType)) {
+        throw new Error(
+          `Invalid transaction type: "${data.transactionType}". Allowed: ${allowedTypes.join(", ")}`
+        );
+      }
+
+      // ✅ Validate notes length
+      if (data.notes) {
+        const maxLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxLength) {
+          throw new Error(`Notes cannot exceed ${maxLength} characters`);
+        }
+      }
 
       // Validate customer exists
       const customer = await customerRepo.findOne({ where: { id: data.customerId } });
@@ -134,7 +273,13 @@ class LoyaltyTransactionService {
       });
 
       const saved = await saveDb(loyaltyRepo, transaction, { queryRunner: qr });
-      await auditLogger.logCreate("LoyaltyTransaction", saved.id, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("LoyaltyTransaction", saved.id, saved, user);
+      }
+
       logger.debug(
         `LoyaltyTransaction created: #${saved.id} - ${saved.transactionType} (${saved.pointsChange > 0 ? "+" : ""}${saved.pointsChange})`
       );
@@ -165,8 +310,12 @@ class LoyaltyTransactionService {
 
       const oldData = { ...existing };
 
-      // Only allow updating notes
+      // ✅ Validate notes length if provided
       if (data.notes !== undefined) {
+        const maxLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxLength) {
+          throw new Error(`Notes cannot exceed ${maxLength} characters`);
+        }
         existing.notes = data.notes;
       }
 
@@ -179,7 +328,13 @@ class LoyaltyTransactionService {
       existing.updatedAt = new Date();
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("LoyaltyTransaction", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("LoyaltyTransaction", id, oldData, saved, user);
+      }
+
       logger.debug(`LoyaltyTransaction updated: #${id}`);
       return saved;
     } catch (error) {
@@ -216,7 +371,13 @@ class LoyaltyTransactionService {
       transaction.updatedAt = new Date();
 
       const saved = await updateDb(repo, transaction, { queryRunner: qr });
-      await auditLogger.debugDelete("LoyaltyTransaction", id, oldData, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugDelete("LoyaltyTransaction", id, oldData, user);
+      }
+
       logger.debug(`LoyaltyTransaction soft deleted: #${id}`);
       return saved;
     } catch (error) {
@@ -251,7 +412,13 @@ class LoyaltyTransactionService {
       transaction.updatedAt = new Date();
 
       const saved = await updateDb(repo, transaction, { queryRunner: qr });
-      await auditLogger.logUpdate("LoyaltyTransaction", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("LoyaltyTransaction", id, oldData, saved, user);
+      }
+
       logger.debug(`LoyaltyTransaction restored: #${id}`);
       return saved;
     } catch (error) {
@@ -277,7 +444,13 @@ class LoyaltyTransactionService {
     }
 
     await removeDb(repo, transaction, { queryRunner: qr });
-    await auditLogger.debugDelete("LoyaltyTransaction", id, transaction, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("LoyaltyTransaction", id, transaction, user);
+    }
+
     logger.debug(`LoyaltyTransaction #${id} permanently deleted`);
   }
 
@@ -328,6 +501,14 @@ class LoyaltyTransactionService {
       qb.andWhere("tx.deletedAt IS NULL");
     }
 
+    // ✅ Apply retention days filter automatically if not specified
+    if (!options.startDate && !options.endDate && !options.ignoreRetention) {
+      const retentionDays = await this._getRetentionDays(qr);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      qb.andWhere("tx.timestamp >= :cutoffDate", { cutoffDate });
+    }
+
     // Filters
     if (options.customerId) {
       qb.andWhere("tx.customerId = :customerId", { customerId: options.customerId });
@@ -337,6 +518,12 @@ class LoyaltyTransactionService {
     }
     if (options.transactionType) {
       const types = Array.isArray(options.transactionType) ? options.transactionType : [options.transactionType];
+      // ✅ Validate transaction types against allowed list
+      const allowedTypes = await this._getAllowedTransactionTypes(qr);
+      const invalidTypes = types.filter(t => !allowedTypes.includes(t));
+      if (invalidTypes.length > 0) {
+        logger.warn(`[LoyaltyTransaction] Invalid transaction types: ${invalidTypes.join(", ")}. Allowed: ${allowedTypes.join(", ")}`);
+      }
       qb.andWhere("tx.transactionType IN (:...types)", { types });
     }
     if (options.startDate) {
@@ -392,9 +579,15 @@ class LoyaltyTransactionService {
     const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
     const repo = this._getRepo(qr, LoyaltyTransaction);
 
+    // ✅ Apply retention days filter
+    const retentionDays = await this._getRetentionDays(qr);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
     const qb = repo
       .createQueryBuilder("tx")
-      .where("tx.deletedAt IS NULL");
+      .where("tx.deletedAt IS NULL")
+      .andWhere("tx.timestamp >= :cutoffDate", { cutoffDate });
 
     // By transaction type
     const byType = await qb
@@ -449,6 +642,11 @@ class LoyaltyTransactionService {
       .limit(5)
       .getRawMany();
 
+    // ✅ Get thresholds from settings
+    const vipThreshold = await this._getVipThreshold(qr);
+    const eliteThreshold = await this._getEliteThreshold(qr);
+    const pointRate = await this._getPointRate(qr);
+
     return {
       byType,
       totalEarned,
@@ -456,6 +654,11 @@ class LoyaltyTransactionService {
       netPoints,
       last30Days,
       topCustomers,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      vipThreshold,
+      eliteThreshold,
+      pointRate,
     };
   }
 
@@ -468,7 +671,8 @@ class LoyaltyTransactionService {
    */
   async exportTransactions(format = "json", filters = {}, user = "system", qr = null) {
     try {
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
+      // Fetch all data without pagination for export
+      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
       const transactions = result.data;
 
       let exportData;
@@ -506,7 +710,12 @@ class LoyaltyTransactionService {
         };
       }
 
-      await auditLogger.debugExport("LoyaltyTransaction", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("LoyaltyTransaction", format, filters, user);
+      }
+
       logger.debug(`Exported ${transactions.length} loyalty transactions in ${format} format`);
       return exportData;
     } catch (error) {
@@ -570,6 +779,173 @@ class LoyaltyTransactionService {
       }
     }
     return results;
+  }
+
+  /**
+   * ✅ NEW: Clean up old loyalty transactions (soft delete)
+   * @param {number} daysOld - Delete transactions older than this (overrides settings)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanOldTransactions(daysOld = null, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
+    const repo = this._getRepo(qr, LoyaltyTransaction);
+
+    // ✅ Use settings if not provided
+    if (daysOld === null) {
+      daysOld = await this._getRetentionDays(qr);
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    // ✅ Only delete transactions that are not linked to active sales
+    const oldTransactions = await repo
+      .createQueryBuilder("tx")
+      .where("tx.timestamp < :cutoffDate", { cutoffDate })
+      .andWhere("tx.deletedAt IS NULL")
+      .getMany();
+
+    if (oldTransactions.length === 0) {
+      logger.info(`[LoyaltyTransaction] No old transactions to clean up (threshold: ${daysOld} days)`);
+      return { count: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const tx of oldTransactions) {
+      try {
+        tx.deletedAt = new Date();
+        tx.updatedAt = new Date();
+        await updateDb(repo, tx, { queryRunner: qr, skipSignal: true });
+
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.debugDelete("LoyaltyTransaction", tx.id, tx, user);
+        }
+
+        updatedCount++;
+        logger.debug(`[LoyaltyTransaction] Soft deleted transaction #${tx.id} (older than ${daysOld} days)`);
+      } catch (err) {
+        logger.error(`[LoyaltyTransaction] Failed to clean transaction #${tx.id}:`, err);
+      }
+    }
+
+    logger.info(`[LoyaltyTransaction] Cleaned up ${updatedCount} old transactions (older than ${daysOld} days)`);
+    return { count: updatedCount };
+  }
+
+  /**
+   * ✅ NEW: Get customer loyalty summary
+   * @param {number} customerId
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getCustomerLoyaltySummary(customerId, qr = null) {
+    const Customer = require("../entities/Customer");
+    const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
+
+    const customerRepo = this._getRepo(qr, Customer);
+    const loyaltyRepo = this._getRepo(qr, LoyaltyTransaction);
+
+    const customer = await customerRepo.findOne({ where: { id: customerId } });
+    if (!customer) {
+      throw new Error(`Customer with ID ${customerId} not found`);
+    }
+
+    const transactions = await loyaltyRepo
+      .createQueryBuilder("tx")
+      .where("tx.customerId = :customerId", { customerId })
+      .andWhere("tx.deletedAt IS NULL")
+      .orderBy("tx.timestamp", "DESC")
+      .getMany();
+
+    // ✅ Get thresholds from settings
+    const vipThreshold = await this._getVipThreshold(qr);
+    const eliteThreshold = await this._getEliteThreshold(qr);
+    const pointRate = await this._getPointRate(qr);
+
+    const summary = {
+      customerId: customer.id,
+      name: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      currentBalance: customer.loyaltyPointsBalance,
+      lifetimeEarned: customer.lifetimePointsEarned || 0,
+      status: customer.status,
+      vipThreshold,
+      eliteThreshold,
+      pointRate, // points per peso spent
+      totalEarned: 0,
+      totalRedeemed: 0,
+      totalAdjusted: 0,
+      transactionCount: transactions.length,
+      nextTier: null,
+      pointsToNextTier: 0,
+    };
+
+    for (const tx of transactions) {
+      if (tx.transactionType === "earn") {
+        summary.totalEarned += tx.pointsChange;
+      } else if (tx.transactionType === "redeem") {
+        summary.totalRedeemed += Math.abs(tx.pointsChange);
+      } else if (tx.transactionType === "adjustment") {
+        summary.totalAdjusted += tx.pointsChange;
+      }
+    }
+
+    // Calculate next tier
+    if (customer.lifetimePointsEarned < vipThreshold) {
+      summary.nextTier = "vip";
+      summary.pointsToNextTier = vipThreshold - customer.lifetimePointsEarned;
+    } else if (customer.lifetimePointsEarned < eliteThreshold) {
+      summary.nextTier = "elite";
+      summary.pointsToNextTier = eliteThreshold - customer.lifetimePointsEarned;
+    } else {
+      summary.nextTier = null;
+      summary.pointsToNextTier = 0;
+    }
+
+    return {
+      customer,
+      summary,
+      transactions: transactions.slice(0, 50), // Return last 50 transactions
+    };
+  }
+
+  /**
+   * ✅ NEW: Get retention info
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getRetentionInfo(qr = null) {
+    const retentionDays = await this._getRetentionDays(qr);
+    const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+    const auditEnabled = await this._isAuditEnabled(qr);
+
+    const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
+    const repo = this._getRepo(qr, LoyaltyTransaction);
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    const totalTransactions = await repo.count({ where: { deletedAt: null } });
+    const oldTransactions = await repo
+      .createQueryBuilder("tx")
+      .where("tx.timestamp < :cutoffDate", { cutoffDate })
+      .andWhere("tx.deletedAt IS NULL")
+      .getCount();
+
+    // Get point rate
+    const pointRate = await this._getPointRate(qr);
+
+    return {
+      loyaltyEnabled,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      totalTransactions,
+      transactionsToDelete: oldTransactions,
+      pointRate,
+      auditEnabled,
+    };
   }
 }
 

@@ -5,13 +5,7 @@ const auditLogger = require("../utils/auditLogger");
 const Customer = require("../entities/Customer");
 const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const notificationService = require("../services/Notification");
-
-// Settings getters (you can implement these as async functions)
-const getLoyaltyPointRate = async () => 100; // points per peso spent
-const loyaltyPointsEnabled = async () => true;
-const emailEnabled = async () => true;
-const smsEnabled = async () => true;
-const companyName = async () => "Meatify Shop";
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
 
 /**
  * LoyaltyTransactionStateService handles state transitions and side effects for loyalty points.
@@ -59,7 +53,8 @@ class LoyaltyTransactionStateService {
   ) {
     const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
 
-    const loyaltyEnabled = await loyaltyPointsEnabled();
+    // ✅ Use system settings instead of hardcoded values
+    const loyaltyEnabled = await system.loyaltyPointsEnabled();
     if (!loyaltyEnabled) {
       logger.info(`[LoyaltyState] Loyalty points disabled, skipping earn for customer #${customerId}`);
       return { customer: null, transaction: null, pointsEarned: 0 };
@@ -78,7 +73,8 @@ class LoyaltyTransactionStateService {
       return { customer, transaction: null, pointsEarned: 0 };
     }
 
-    const rate = await getLoyaltyPointRate();
+    // ✅ Use system for point rate
+    const rate = await system.getLoyaltyPointRate();
     const pointsEarned = Math.floor(amountSpent / rate);
 
     if (pointsEarned <= 0) {
@@ -178,7 +174,8 @@ class LoyaltyTransactionStateService {
   ) {
     const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
 
-    const loyaltyEnabled = await loyaltyPointsEnabled();
+    // ✅ Use system setting
+    const loyaltyEnabled = await system.loyaltyPointsEnabled();
     if (!loyaltyEnabled) {
       throw new Error("Loyalty points are disabled");
     }
@@ -281,7 +278,8 @@ class LoyaltyTransactionStateService {
   ) {
     const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
 
-    const loyaltyEnabled = await loyaltyPointsEnabled();
+    // ✅ Use system setting
+    const loyaltyEnabled = await system.loyaltyPointsEnabled();
     if (!loyaltyEnabled) {
       throw new Error("Loyalty points are disabled");
     }
@@ -569,7 +567,10 @@ class LoyaltyTransactionStateService {
    * @private
    */
   _determineStatus(lifetimePoints) {
-    // Thresholds can be made configurable via system settings
+    // ✅ Can be made configurable via system settings
+    // For now, use hardcoded thresholds or fetch from system:
+    // const vipThreshold = await system.loyaltyVipThreshold();
+    // const eliteThreshold = await system.loyaltyEliteThreshold();
     if (lifetimePoints >= 5000) return "elite";
     if (lifetimePoints >= 1000) return "vip";
     return "regular";
@@ -580,7 +581,10 @@ class LoyaltyTransactionStateService {
    * @private
    */
   async _notifyStatusChange(customer, oldStatus, newStatus, user, queryRunner) {
-    const company = await companyName();
+    // ✅ Use system settings
+    const company = await system.companyName();
+    const canSendEmail = await system.emailEnabled();
+    const canSendSms = await system.smsEnabled();
 
     // In-app notification for admin
     try {
@@ -605,7 +609,6 @@ class LoyaltyTransactionStateService {
     }
 
     // Email to customer
-    const canSendEmail = await emailEnabled();
     if (canSendEmail && customer.email) {
       const subject = `Congratulations! You've reached ${newStatus} status!`;
       const textBody = `Dear ${customer.name},\n\nCongratulations! You have reached ${newStatus} status at ${company}.\n\nWe appreciate your continued patronage and look forward to serving you with exclusive benefits.\n\nThank you for being a valued customer!\n\nBest regards,\n${company}`;
@@ -620,7 +623,6 @@ class LoyaltyTransactionStateService {
     }
 
     // SMS to customer
-    const canSendSms = await smsEnabled();
     if (canSendSms && customer.phone) {
       try {
         const smsMessage = `Congratulations! You've reached ${newStatus} status at ${company}. Thank you for your loyalty!`;

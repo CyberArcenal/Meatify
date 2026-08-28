@@ -2,11 +2,11 @@
 import React from "react";
 import { Eye, RotateCcw, Package, Beef } from "lucide-react";
 import Decimal from "decimal.js";
-import type { ReturnRefund } from "../../../../api/core/returnRefund";
+import type { ReturnRefundReport } from "../../../../api/analytics/returnRefundReports";
 
 interface ReturnsTableProps {
-  returns: ReturnRefund[];
-  onView: (returnRefund: ReturnRefund) => void;
+  returns: ReturnRefundReport[];
+  onView: (returnRefund: ReturnRefundReport) => void;
 }
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
@@ -82,7 +82,7 @@ export const ReturnsTable: React.FC<ReturnsTableProps> = ({ returns, onView }) =
                   {new Date(item.createdAt).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
-                  {item.customer?.name || "—"}
+                  {item.customer?.name || item.customerName || "—"}
                 </td>
                 <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
                   <div className="flex items-center gap-1">

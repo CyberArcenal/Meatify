@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Download } from 'lucide-react';
-import returnRefundAPI from '../../../../api/analytics/return_refund_reports';
+import returnRefundReportsAPI from '../../../../api/analytics/returnRefundReports';
 
 interface Props {
   customerId?: number;
@@ -28,19 +28,28 @@ const ExportButton: React.FC<Props> = ({
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await returnRefundAPI.exportCSV({
+      const res = await returnRefundReportsAPI.getData({
         customerId,
         status: status || undefined,
         refundMethod: refundMethod || undefined,
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        minAmount,
-        maxAmount,
-        searchTerm: searchTerm || undefined,
+        limit: 10000,
       });
-      if (res.status && res.data.length) {
-        const headers = Object.keys(res.data[0]).join(',');
-        const csv = res.data.map(row => Object.values(row).join(',')).join('\n');
+      if (res.status) {
+        const rows = res.data.returns.map(item => ({
+          ID: item.id,
+          Reference: item.referenceNo || item.id,
+          Date: item.createdAt,
+          Customer: item.customer?.name || item.customerName || '',
+          Method: item.refundMethod,
+          Status: item.status,
+          TotalAmount: item.totalAmount,
+          Reason: item.reason || '',
+          ItemsCount: item.items?.length || 0,
+        }));
+        const headers = Object.keys(rows[0]).join(',');
+        const csv = rows.map(row => Object.values(row).join(',')).join('\n');
         const blob = new Blob([headers + '\n' + csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

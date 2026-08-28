@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Eye } from 'lucide-react';
-import type { SaleEntry } from '../../../../api/analytics/sales_reports';
-import salesReportAPI from '../../../../api/analytics/sales_reports';
 
 interface Props {
   data: SaleEntry[];
@@ -12,6 +10,24 @@ interface Props {
   onPageChange: (page: number) => void;
 }
 
+type SaleEntry = {
+  id: number;
+  timestamp: string;
+  customer?: { name: string } | null;
+  paymentMethod: string;
+  totalAmount: number;
+  status: string;
+  notes?: string | null;
+  saleItems?: Array<{
+    id: number;
+    productId: number;
+    product?: { name: string } | null;
+    quantity: number;
+    unitPrice: number;
+    lineTotal: number;
+  }>;
+};
+
 const SalesTable: React.FC<Props> = ({
   data,
   loading,
@@ -21,25 +37,10 @@ const SalesTable: React.FC<Props> = ({
   onPageChange,
 }) => {
   const [selectedSale, setSelectedSale] = useState<SaleEntry | null>(null);
-  const [loadingDetails, setLoadingDetails] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val);
-
-  const handleViewDetails = async (id: number) => {
-    setLoadingDetails(true);
-    setShowModal(true);
-    try {
-      const res = await salesReportAPI.getById(id);
-      if (res.status) setSelectedSale(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      alert('Failed to load details: ' + err.message);
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -55,6 +56,11 @@ const SalesTable: React.FC<Props> = ({
       default:
         return 'bg-[var(--border-light)] text-[var(--text-secondary)]';
     }
+  };
+
+  const handleViewDetails = (sale: SaleEntry) => {
+    setSelectedSale(sale);
+    setShowModal(true);
   };
 
   return (
@@ -96,7 +102,7 @@ const SalesTable: React.FC<Props> = ({
                     </td>
                     <td className="py-3 px-5">
                       <button
-                        onClick={() => handleViewDetails(item.id)}
+                        onClick={() => handleViewDetails(item)}
                         className="p-1 text-[var(--text-secondary)] hover:text-[var(--accent-blue)] transition-colors"
                         title="View details"
                       >
@@ -145,9 +151,7 @@ const SalesTable: React.FC<Props> = ({
               <button onClick={() => setShowModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">✕</button>
             </div>
             <div className="overflow-y-auto p-5">
-              {loadingDetails ? (
-                <div className="text-center py-8 text-[var(--text-secondary)]">Loading details...</div>
-              ) : selectedSale ? (
+              {selectedSale ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>

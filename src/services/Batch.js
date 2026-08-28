@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -76,6 +79,93 @@ class BatchService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[Batch] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get allowed batch statuses from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string[]>}
+   */
+  async _getAllowedStatuses(qr = null) {
+    try {
+      return await system.getArray("allowed_batch_statuses", SettingType.INVENTORY, [
+        "active", "depleted", "expired", "on_hold"
+      ]);
+    } catch (error) {
+      logger.warn(`[Batch] Failed to get allowed statuses: ${error.message}, using defaults`);
+      return ["active", "depleted", "expired", "on_hold"];
+    }
+  }
+
+  /**
+   * ✅ NEW: Get low stock threshold from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getLowStockThreshold(qr = null) {
+    try {
+      return await system.lowStockThreshold();
+    } catch (error) {
+      logger.warn(`[Batch] Failed to get low stock threshold: ${error.message}, defaulting to 5`);
+      return 5;
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if FIFO is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isFifoEnabled(qr = null) {
+    try {
+      return await system.fifoEnabled();
+    } catch (error) {
+      logger.warn(`[Batch] Failed to check FIFO enabled: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if negative stock is allowed
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isNegativeStockAllowed(qr = null) {
+    try {
+      return await system.allowNegativeStock();
+    } catch (error) {
+      logger.warn(`[Batch] Failed to check negative stock allowed: ${error.message}, defaulting to false`);
+      return false;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get company name for batch code prefix
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string>}
+   */
+  async _getCompanyPrefix(qr = null) {
+    try {
+      const company = await system.companyName();
+      return company.substring(0, 4).toUpperCase();
+    } catch (error) {
+      logger.warn(`[Batch] Failed to get company name: ${error.message}, defaulting to "BATCH"`);
+      return "BATCH";
+    }
+  }
+
+  /**
    * Create a new batch
    * @param {Object} data - { meatId, quantity, unitCost, expiryDate, supplierId?, note?, batchCode? }
    * @param {string} user - User performing the action
@@ -111,10 +201,19 @@ class BatchService {
         }
       }
 
+      // ✅ Validate status if provided
+      if (data.status) {
+        const allowedStatuses = await this._getAllowedStatuses(qr);
+        if (!allowedStatuses.includes(data.status)) {
+          throw new Error(`Invalid batch status: ${data.status}. Allowed: ${allowedStatuses.join(", ")}`);
+        }
+      }
+
       // Auto-generate batch code if not provided
       let batchCode = data.batchCode;
       if (!batchCode) {
-        batchCode = await this.generateBatchCode(batchRepo);
+        const prefix = await this._getCompanyPrefix(qr);
+        batchCode = await this.generateBatchCode(batchRepo, prefix);
       } else {
         const existing = await batchRepo.findOne({ where: { batchCode } });
         if (existing) {
@@ -134,7 +233,7 @@ class BatchService {
         unitCost: data.unitCost,
         expiryDate,
         receivedDate: new Date(),
-        status: "active",
+        status: data.status || "active",
         note: data.note || null,
         meat: meat,
         supplier: supplier || null,
@@ -143,7 +242,21 @@ class BatchService {
       });
 
       const saved = await saveDb(batchRepo, batch, { queryRunner: qr });
-      await auditLogger.logCreate("Batch", saved.id, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Batch", saved.id, saved, user);
+      }
+
+      // ✅ Check if batch is below threshold and notify
+      const threshold = await this._getLowStockThreshold(qr);
+      if (saved.remainingQuantity <= threshold) {
+        logger.warn(`[Batch] Batch #${saved.id} (${saved.batchCode}) is at or below low stock threshold (${saved.remainingQuantity}kg <= ${threshold}kg)`);
+        // TODO: Send low stock notification
+        // await notificationService.create({ ... });
+      }
+
       logger.debug(`Batch created: #${saved.id} - ${saved.batchCode}`);
       return saved;
     } catch (error) {
@@ -188,11 +301,28 @@ class BatchService {
         }
       }
 
+      // ✅ Validate unitCost if provided
+      if (data.unitCost !== undefined && data.unitCost < 0) {
+        throw new Error("unitCost must be non-negative");
+      }
+
       Object.assign(existing, data);
       existing.updatedAt = new Date();
 
       const saved = await updateDb(batchRepo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("Batch", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Batch", id, oldData, saved, user);
+      }
+
+      // ✅ Check if batch is below threshold and notify
+      const threshold = await this._getLowStockThreshold(qr);
+      if (saved.remainingQuantity <= threshold && saved.status === "active") {
+        logger.warn(`[Batch] Batch #${saved.id} (${saved.batchCode}) is at or below low stock threshold`);
+      }
+
       logger.debug(`Batch updated: #${id}`);
       return saved;
     } catch (error) {
@@ -235,7 +365,12 @@ class BatchService {
       batch.updatedAt = new Date();
 
       const saved = await updateDb(batchRepo, batch, { queryRunner: qr });
-      await auditLogger.debugDelete("Batch", id, oldData, user);
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugDelete("Batch", id, oldData, user);
+      }
+
       logger.debug(`Batch #${id} soft deleted (depleted)`);
       return saved;
     } catch (error) {
@@ -275,7 +410,12 @@ class BatchService {
       batch.updatedAt = new Date();
 
       const saved = await updateDb(batchRepo, batch, { queryRunner: qr });
-      await auditLogger.logUpdate("Batch", id, oldData, saved, user);
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Batch", id, oldData, saved, user);
+      }
+
       logger.debug(`Batch #${id} restored to active`);
       return saved;
     } catch (error) {
@@ -304,7 +444,12 @@ class BatchService {
     // You can add a check here if needed (e.g., count sale items referencing this batch)
 
     await removeDb(batchRepo, batch, { queryRunner: qr });
-    await auditLogger.debugDelete("Batch", id, batch, user);
+
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("Batch", id, batch, user);
+    }
+
     logger.debug(`Batch #${id} permanently deleted`);
   }
 
@@ -359,6 +504,12 @@ class BatchService {
     }
     if (options.status) {
       const statuses = Array.isArray(options.status) ? options.status : [options.status];
+      // ✅ Validate statuses against allowed list
+      const allowedStatuses = await this._getAllowedStatuses(qr);
+      const invalidStatuses = statuses.filter(s => !allowedStatuses.includes(s));
+      if (invalidStatuses.length > 0) {
+        logger.warn(`[Batch] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`);
+      }
       qb.andWhere("batch.status IN (:...statuses)", { statuses });
     }
     if (options.expiryDateFrom) {
@@ -420,6 +571,9 @@ class BatchService {
     const Batch = require("../entities/Batch");
     const batchRepo = this._getRepo(qr, Batch);
 
+    // ✅ Get threshold from settings
+    const threshold = await this._getLowStockThreshold(qr);
+
     // Count by status
     const byStatus = await batchRepo
       .createQueryBuilder("batch")
@@ -453,6 +607,14 @@ class BatchService {
       .andWhere("batch.status IN ('active', 'on_hold')")
       .getCount();
 
+    // ✅ Low stock batches (remaining <= threshold)
+    const lowStockBatches = await batchRepo
+      .createQueryBuilder("batch")
+      .where("batch.remainingQuantity <= :threshold", { threshold })
+      .andWhere("batch.remainingQuantity > 0")
+      .andWhere("batch.status IN ('active', 'on_hold')")
+      .getMany();
+
     return {
       byStatus: byStatus.reduce((acc, row) => {
         acc[row.status] = parseInt(row.count, 10);
@@ -461,6 +623,14 @@ class BatchService {
       totalRemaining,
       expiringSoon,
       expired,
+      lowStockBatches: lowStockBatches.length,
+      lowStockThreshold: threshold,
+      lowStockDetails: lowStockBatches.map(b => ({
+        id: b.id,
+        batchCode: b.batchCode,
+        meatName: b.meat?.name,
+        remainingQuantity: b.remainingQuantity,
+      })),
     };
   }
 
@@ -520,7 +690,11 @@ class BatchService {
         };
       }
 
-      await auditLogger.debugExport("Batch", format, filters, user);
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("Batch", format, filters, user);
+      }
+
       logger.debug(`Exported ${batches.length} batches in ${format} format`);
       return exportData;
     } catch (error) {
@@ -608,26 +782,112 @@ class BatchService {
   }
 
   /**
+   * ✅ NEW: Clean up expired batches (soft delete)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanExpiredBatches(user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Batch = require("../entities/Batch");
+    const batchRepo = this._getRepo(qr, Batch);
+
+    const today = new Date();
+    const expiredBatches = await batchRepo
+      .createQueryBuilder("batch")
+      .where("batch.expiryDate < :today", { today })
+      .andWhere("batch.status IN ('active', 'on_hold')")
+      .getMany();
+
+    if (expiredBatches.length === 0) {
+      logger.info("[Batch] No expired batches to clean up");
+      return { count: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const batch of expiredBatches) {
+      try {
+        batch.status = "expired";
+        batch.updatedAt = new Date();
+        await updateDb(batchRepo, batch, { queryRunner: qr, skipSignal: true });
+
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.logUpdate("Batch", batch.id, { status: "active" }, { status: "expired" }, user);
+        }
+
+        updatedCount++;
+        logger.info(`[Batch] Batch #${batch.id} (${batch.batchCode}) marked as expired`);
+      } catch (err) {
+        logger.error(`[Batch] Failed to mark batch #${batch.id} as expired:`, err);
+      }
+    }
+
+    logger.info(`[Batch] Cleaned up ${updatedCount} expired batches`);
+    return { count: updatedCount };
+  }
+
+  /**
+   * ✅ NEW: Get batch health summary
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getHealthSummary(qr = null) {
+    const Batch = require("../entities/Batch");
+    const batchRepo = this._getRepo(qr, Batch);
+    const threshold = await this._getLowStockThreshold(qr);
+
+    const total = await batchRepo.count({ where: { status: "active" } });
+    const expired = await batchRepo.count({
+      where: { expiryDate: { $lt: new Date() }, status: "active" },
+    });
+    const expiringSoon = await batchRepo
+      .createQueryBuilder("batch")
+      .where("batch.expiryDate <= :soon", { soon: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) })
+      .andWhere("batch.expiryDate >= :today", { today: new Date() })
+      .andWhere("batch.status = 'active'")
+      .getCount();
+
+    const lowStock = await batchRepo
+      .createQueryBuilder("batch")
+      .where("batch.remainingQuantity <= :threshold", { threshold })
+      .andWhere("batch.remainingQuantity > 0")
+      .andWhere("batch.status = 'active'")
+      .getCount();
+
+    const depleted = await batchRepo.count({ where: { status: "depleted" } });
+
+    return {
+      totalActive: total,
+      expired,
+      expiringSoon,
+      lowStock,
+      depleted,
+      lowStockThreshold: threshold,
+      healthScore: total > 0 ? Math.round(((total - expired - expiringSoon - lowStock) / total) * 100) : 100,
+    };
+  }
+
+  /**
    * Generate a unique batch code
    * @param {import("typeorm").Repository<any>} repo
+   * @param {string} prefix - Optional prefix (defaults to "BATCH")
    * @returns {Promise<string>}
    */
-  async generateBatchCode(repo) {
+  async generateBatchCode(repo, prefix = "BATCH") {
     const now = new Date();
     const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
     const randomPart = Math.floor(1000 + Math.random() * 9000);
-    let code = `BATCH-${datePart}-${randomPart}`;
+    let code = `${prefix}-${datePart}-${randomPart}`;
 
     let attempts = 0;
     let existing = await repo.findOne({ where: { batchCode: code } });
     while (existing && attempts < 5) {
       const newRandom = Math.floor(1000 + Math.random() * 9000);
-      code = `BATCH-${datePart}-${newRandom}`;
+      code = `${prefix}-${datePart}-${newRandom}`;
       existing = await repo.findOne({ where: { batchCode: code } });
       attempts++;
     }
     if (existing) {
-      code = `BATCH-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+      code = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     }
     return code;
   }

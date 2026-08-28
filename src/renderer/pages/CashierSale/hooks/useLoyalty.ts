@@ -1,18 +1,21 @@
 import { useState, useEffect } from "react";
-import loyaltyAPI from "../../../api/core/loyalty";
+import customerAPI from "../../../api/core/customer";
 
 export const useLoyalty = (customerId?: number) => {
   const [loyaltyPointsAvailable, setLoyaltyPointsAvailable] = useState(0);
   const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState(0);
   const [useLoyalty, setUseLoyalty] = useState(false);
 
-  // Fetch points when customer changes
   useEffect(() => {
     if (customerId) {
-      loyaltyAPI
-        .getCustomerSummary(customerId)
+      customerAPI
+        .getLoyaltySummary(customerId)
         .then((res) => {
-          setLoyaltyPointsAvailable(res.data.customer.loyaltyPointsBalance);
+          if (res.status) {
+            setLoyaltyPointsAvailable(res.data.customer.loyaltyPointsBalance);
+          } else {
+            setLoyaltyPointsAvailable(0);
+          }
         })
         .catch((err) => {
           console.error("Failed to fetch loyalty points", err);

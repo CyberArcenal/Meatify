@@ -1,11 +1,12 @@
 // src/utils/system.js
+// Refactored for Meatify POS - Meat Shop Management
 const path = require("path");
 const Decimal = require("decimal.js");
 const { logger } = require("./logger");
 const { SystemSetting, SettingType } = require("../entities/systemSettings");
 
 // ============================================================
-// 📊 CORE GETTER FUNCTIONS
+// 📊 CORE GETTER FUNCTIONS (No changes needed)
 // ============================================================
 
 /**
@@ -81,6 +82,21 @@ async function getInt(key, settingType, defaultValue = 0) {
 }
 
 /**
+ * Get decimal/float setting
+ */
+async function getDecimal(key, settingType, defaultValue = 0) {
+  try {
+    const raw = await getValue(key, settingType, defaultValue.toString());
+    if (raw === null) return defaultValue;
+    const result = parseFloat(String(raw).trim());
+    return isNaN(result) ? defaultValue : result;
+  } catch (error) {
+    logger.warn(`Invalid decimal for key='${key}': ${error.message} – using default=${defaultValue}`);
+    return defaultValue;
+  }
+}
+
+/**
  * Get array setting
  */
 async function getArray(key, settingType, defaultValue = []) {
@@ -103,11 +119,15 @@ async function getArray(key, settingType, defaultValue = []) {
 // ============================================================
 
 async function companyName() {
-  return getValue("company_name", SettingType.GENERAL, "Collectly");
+  return getValue("company_name", SettingType.GENERAL, "Meatify");
 }
 
 async function branchLocation() {
   return getValue("branch_location", SettingType.GENERAL, "");
+}
+// Alias for PrinterService compatibility
+async function companyLocation() {
+  return branchLocation();
 }
 
 async function defaultTimezone() {
@@ -122,8 +142,8 @@ async function currency() {
   return getValue("currency", SettingType.GENERAL, "PHP");
 }
 
-async function receiptFooterMessage() {
-  return getValue("receipt_footer_message", SettingType.GENERAL, "");
+async function decimalPlaces() {
+  return getInt("decimal_places", SettingType.GENERAL, 2);
 }
 
 async function autoLogoutMinutes() {
@@ -135,79 +155,171 @@ async function dateFormat() {
 }
 
 // ============================================================
-// 📋 COLLECTIONS SETTINGS
+// 📦 INVENTORY SETTINGS
 // ============================================================
 
-async function defaultInterestRate() {
-  return getInt("default_interest_rate", SettingType.COLLECTIONS, 10);
+async function lowStockThreshold() {
+  return getDecimal("low_stock_threshold", SettingType.INVENTORY, 5);
 }
 
-async function defaultPenaltyRate() {
-  return parseFloat(await getInt("default_penalty_rate", SettingType.COLLECTIONS, 2));
+async function enableAutoReorder() {
+  return getBool("enable_auto_reorder", SettingType.INVENTORY, false);
 }
 
-async function penaltyCalculationMethod() {
-  return getValue("penalty_calculation_method", SettingType.COLLECTIONS, "percentage");
+async function autoReorderQuantity() {
+  return getDecimal("auto_reorder_quantity", SettingType.INVENTORY, 10);
 }
 
-async function enableAutoPenalty() {
-  return getBool("enable_auto_penalty", SettingType.COLLECTIONS, true);
+async function allowNegativeStock() {
+  return getBool("allow_negative_stock", SettingType.INVENTORY, false);
 }
 
-async function penaltyGraceDays() {
-  return getInt("penalty_grace_days", SettingType.COLLECTIONS, 0);
+async function fifoEnabled() {
+  return getBool("fifo_enabled", SettingType.INVENTORY, true);
 }
 
-async function overdueReminderDays() {
-  return getArray("overdue_reminder_days", SettingType.COLLECTIONS, [7, 3, 1]);
-}
-
-async function maxLoanAmount() {
-  return getInt("max_loan_amount", SettingType.COLLECTIONS, 0);
-}
-
-async function minLoanAmount() {
-  return getInt("min_loan_amount", SettingType.COLLECTIONS, 0);
-}
-
-async function enforceCreditCheck() {
-  return getBool("enforce_credit_check", SettingType.COLLECTIONS, false);
+async function inventorySyncEnabled() {
+  return getBool("inventory_sync_enabled", SettingType.INVENTORY, true);
 }
 
 // ============================================================
-// 💰 LOANS SETTINGS
+// 💰 SALES & PRICING SETTINGS
 // ============================================================
 
-async function allowedLoanStatuses() {
-  return getArray("allowed_loan_statuses", SettingType.LOANS, ["active", "paid", "overdue", "defaulted"]);
+async function taxRate() {
+  return getDecimal("tax_rate", SettingType.SALES, 0);
 }
 
-async function enablePartialPayment() {
-  return getBool("enable_partial_payment", SettingType.LOANS, true);
+async function defaultDiscountRate() {
+  return getDecimal("default_discount_rate", SettingType.SALES, 0);
 }
 
-async function enableEarlyPaymentDiscount() {
-  return getBool("enable_early_payment_discount", SettingType.LOANS, false);
+async function maxDiscountPercent() {
+  return getDecimal("max_discount_percent", SettingType.SALES, 20);
 }
 
-async function earlyPaymentDiscountRate() {
-  return getInt("early_payment_discount_rate", SettingType.LOANS, 0);
+async function enableDiscounts() {
+  return getBool("enable_discounts", SettingType.SALES, true);
 }
 
-async function requireLoanAgreement() {
-  return getBool("require_loan_agreement", SettingType.LOANS, false);
+async function defaultPaymentMethod() {
+  return getValue("default_payment_method", SettingType.SALES, "cash");
 }
 
-async function loanAgreementTemplate() {
-  return getValue("loan_agreement_template", SettingType.LOANS, "");
+async function enableCashPayment() {
+  return getBool("enable_cash_payment", SettingType.SALES, true);
 }
 
-async function amortizationType() {
-  return getValue("amortization_type", SettingType.LOANS, "flat");
+async function enableCardPayment() {
+  return getBool("enable_card_payment", SettingType.SALES, true);
 }
 
-async function defaultLoanTermMonths() {
-  return getInt("default_loan_term_months", SettingType.LOANS, 12);
+async function enableWalletPayment() {
+  return getBool("enable_wallet_payment", SettingType.SALES, true);
+}
+
+async function priceRounding() {
+  return getValue("price_rounding", SettingType.SALES, "nearest");
+}
+
+// ============================================================
+// 🎯 LOYALTY SETTINGS
+// ============================================================
+
+async function enableLoyaltyPoints() {
+  return getBool("enable_loyalty_points", SettingType.SALES, true);
+}
+// Alias for CustomerStateService compatibility
+async function loyaltyPointsEnabled() {
+  return enableLoyaltyPoints();
+}
+
+async function loyaltyPointRate() {
+  return getDecimal("loyalty_point_rate", SettingType.SALES, 100);
+}
+// Alias for CustomerStateService compatibility
+async function getLoyaltyPointRate() {
+  return loyaltyPointRate();
+}
+
+async function loyaltyVipThreshold() {
+  return getDecimal("loyalty_vip_threshold", SettingType.SALES, 1000);
+}
+
+async function loyaltyEliteThreshold() {
+  return getDecimal("loyalty_elite_threshold", SettingType.SALES, 5000);
+}
+
+// ============================================================
+// 🖨️ HARDWARE / PERIPHERALS (Printer & Cash Drawer)
+// ============================================================
+
+async function enableReceiptPrinting() {
+  return getBool("enable_receipt_printing", SettingType.CASHIER, true);
+}
+
+async function receiptPrinterType() {
+  return getValue("receipt_printer_type", SettingType.CASHIER, "thermal");
+}
+
+async function receiptHeaderMessage() {
+  return getValue("receipt_header_message", SettingType.CASHIER, "");
+}
+
+async function receiptFooterMessage() {
+  return getValue("receipt_footer_message", SettingType.CASHIER, "Thank you for shopping at Meatify!");
+}
+
+async function receiptShowLogo() {
+  return getBool("receipt_show_logo", SettingType.CASHIER, true);
+}
+
+async function receiptShowTax() {
+  return getBool("receipt_show_tax", SettingType.CASHIER, true);
+}
+
+async function receiptShowDiscount() {
+  return getBool("receipt_show_discount", SettingType.CASHIER, true);
+}
+
+async function receiptShowLoyalty() {
+  return getBool("receipt_show_loyalty", SettingType.CASHIER, true);
+}
+
+// ============================================================
+// 💵 CASH DRAWER SETTINGS
+// ============================================================
+
+async function enableCashDrawer() {
+  return getBool("enable_cash_drawer", SettingType.CASHIER, true);
+}
+
+async function drawerOpenCode() {
+  return getValue("drawer_open_code", SettingType.CASHIER, "0");
+}
+
+async function cashDrawerConnectionType() {
+  return getValue("cash_drawer_connection_type", SettingType.CASHIER, "printer");
+}
+
+// ============================================================
+// 🔄 REFUNDS & RETURNS SETTINGS
+// ============================================================
+
+async function enableRefunds() {
+  return getBool("enable_refunds", SettingType.SALES, true);
+}
+
+async function refundWindowDays() {
+  return getInt("refund_window_days", SettingType.SALES, 7);
+}
+
+async function requireReceiptForRefund() {
+  return getBool("require_receipt_for_refund", SettingType.SALES, true);
+}
+
+async function refundRestockEnabled() {
+  return getBool("refund_restock_enabled", SettingType.SALES, true);
 }
 
 // ============================================================
@@ -222,24 +334,28 @@ async function smsEnabled() {
   return getBool("sms_enabled", SettingType.NOTIFICATIONS, false);
 }
 
+async function inAppNotificationsEnabled() {
+  return getBool("in_app_notifications_enabled", SettingType.NOTIFICATIONS, true);
+}
+
+async function notifyLowStock() {
+  return getBool("notify_low_stock", SettingType.NOTIFICATIONS, true);
+}
+
+async function notifyExpiringBatches() {
+  return getBool("notify_expiring_batches", SettingType.NOTIFICATIONS, true);
+}
+
+async function notifyRefundProcessed() {
+  return getBool("notify_refund_processed", SettingType.NOTIFICATIONS, true);
+}
+
+async function notifyPurchaseCompleted() {
+  return getBool("notify_purchase_completed", SettingType.NOTIFICATIONS, true);
+}
+
 async function smsProvider() {
   return getValue("sms_provider", SettingType.NOTIFICATIONS, "twilio");
-}
-
-async function reminderDaysBeforeDue() {
-  return getArray("reminder_days_before_due", SettingType.NOTIFICATIONS, [7, 3, 1]);
-}
-
-async function overdueNotificationFrequency() {
-  return getValue("overdue_notification_frequency", SettingType.NOTIFICATIONS, "daily");
-}
-
-async function notifyOnPayment() {
-  return getBool("notify_on_payment", SettingType.NOTIFICATIONS, true);
-}
-
-async function notifyOnPenalty() {
-  return getBool("notify_on_penalty", SettingType.NOTIFICATIONS, true);
 }
 
 // SMTP Settings
@@ -264,7 +380,7 @@ async function smtpFromEmail() {
 }
 
 async function smtpFromName() {
-  return getValue("email_from_name", SettingType.NOTIFICATIONS, "");
+  return getValue("email_from_name", SettingType.NOTIFICATIONS, "Meatify POS");
 }
 
 async function getSmtpConfig() {
@@ -307,64 +423,40 @@ async function getTwilioConfig() {
 }
 
 // ============================================================
-// 📊 REPORTS SETTINGS
+// 📊 REPORTS & BACKUP SETTINGS
 // ============================================================
 
 async function exportFormats() {
-  return getArray("export_formats", SettingType.REPORTS, ["CSV", "Excel", "PDF"]);
+  return getArray("export_formats", SettingType.DATA_REPORTS, ["CSV", "Excel", "PDF"]);
 }
 
 async function defaultExportFormat() {
-  return getValue("default_export_format", SettingType.REPORTS, "CSV");
+  return getValue("default_export_format", SettingType.DATA_REPORTS, "CSV");
 }
 
 async function autoBackupEnabled() {
-  return getBool("auto_backup_enabled", SettingType.REPORTS, false);
+  return getBool("auto_backup_enabled", SettingType.DATA_REPORTS, false);
 }
 
 async function backupSchedule() {
-  return getValue("backup_schedule", SettingType.REPORTS, "0 2 * * *");
+  return getValue("backup_schedule", SettingType.DATA_REPORTS, "0 2 * * *");
 }
 
 async function backupLocation() {
-  return getValue("backup_location", SettingType.REPORTS, "./backups");
+  return getValue("backup_location", SettingType.DATA_REPORTS, "./backups");
 }
 
 async function dataRetentionDays() {
-  return getInt("data_retention_days", SettingType.REPORTS, 365);
+  return getInt("data_retention_days", SettingType.DATA_REPORTS, 365);
 }
 
 async function includeAuditInBackup() {
-  return getBool("include_audit_in_backup", SettingType.REPORTS, false);
+  return getBool("include_audit_in_backup", SettingType.DATA_REPORTS, false);
 }
 
 // ============================================================
 // 🔗 INTEGRATIONS SETTINGS
 // ============================================================
-
-async function accountingIntegrationEnabled() {
-  return getBool("accounting_integration_enabled", SettingType.INTEGRATIONS, false);
-}
-
-async function accountingApiUrl() {
-  return getValue("accounting_api_url", SettingType.INTEGRATIONS, "");
-}
-
-async function accountingApiKey() {
-  return getValue("accounting_api_key", SettingType.INTEGRATIONS, "");
-}
-
-async function creditBureauApiEnabled() {
-  return getBool("credit_bureau_api_enabled", SettingType.INTEGRATIONS, false);
-}
-
-async function creditBureauApiKey() {
-  return getValue("credit_bureau_api_key", SettingType.INTEGRATIONS, "");
-}
-
-async function creditBureauEndpoint() {
-  return getValue("credit_bureau_endpoint", SettingType.INTEGRATIONS, "");
-}
 
 async function webhooksEnabled() {
   return getBool("webhooks_enabled", SettingType.INTEGRATIONS, false);
@@ -411,59 +503,95 @@ async function requireMfaForAdmin() {
 // ============================================================
 
 async function getGeneralSettings() {
-  const [company_name, branch_location, default_timezone, currency_val, language_val, receipt_footer_message, auto_logout_minutes, date_format] = await Promise.all([
+  const [company_name, branch_location, default_timezone, currency_val, language_val, decimal_places, auto_logout_minutes, date_format] = await Promise.all([
     companyName(),
     branchLocation(),
     defaultTimezone(),
     currency(),
     language(),
-    receiptFooterMessage(),
+    decimalPlaces(),
     autoLogoutMinutes(),
     dateFormat(),
   ]);
-  return { company_name, branch_location, default_timezone, currency: currency_val, language: language_val, receipt_footer_message, auto_logout_minutes, date_format };
+  return { company_name, branch_location, default_timezone, currency: currency_val, language: language_val, decimal_places, auto_logout_minutes, date_format };
 }
 
-async function getCollectionsSettings() {
-  const [default_interest_rate, default_penalty_rate, penalty_calculation_method, enable_auto_penalty, penalty_grace_days, overdue_reminder_days, max_loan_amount, min_loan_amount, enforce_credit_check] = await Promise.all([
-    defaultInterestRate(),
-    defaultPenaltyRate(),
-    penaltyCalculationMethod(),
-    enableAutoPenalty(),
-    penaltyGraceDays(),
-    overdueReminderDays(),
-    maxLoanAmount(),
-    minLoanAmount(),
-    enforceCreditCheck(),
+async function getInventorySettings() {
+  const [low_stock_threshold, enable_auto_reorder, auto_reorder_quantity, allow_negative_stock, fifo_enabled, inventory_sync_enabled] = await Promise.all([
+    lowStockThreshold(),
+    enableAutoReorder(),
+    autoReorderQuantity(),
+    allowNegativeStock(),
+    fifoEnabled(),
+    inventorySyncEnabled(),
   ]);
-  return { default_interest_rate, default_penalty_rate, penalty_calculation_method, enable_auto_penalty, penalty_grace_days, overdue_reminder_days, max_loan_amount, min_loan_amount, enforce_credit_check };
+  return { low_stock_threshold, enable_auto_reorder, auto_reorder_quantity, allow_negative_stock, fifo_enabled, inventory_sync_enabled };
 }
 
-async function getLoansSettings() {
-  const [allowed_loan_statuses, enable_partial_payment, enable_early_payment_discount, early_payment_discount_rate, require_loan_agreement, loan_agreement_template, amortization_type, default_loan_term_months] = await Promise.all([
-    allowedLoanStatuses(),
-    enablePartialPayment(),
-    enableEarlyPaymentDiscount(),
-    earlyPaymentDiscountRate(),
-    requireLoanAgreement(),
-    loanAgreementTemplate(),
-    amortizationType(),
-    defaultLoanTermMonths(),
+async function getSalesSettings() {
+  const [tax_rate, default_discount_rate, max_discount_percent, enable_discounts, default_payment_method, enable_cash_payment, enable_card_payment, enable_wallet_payment, price_rounding] = await Promise.all([
+    taxRate(),
+    defaultDiscountRate(),
+    maxDiscountPercent(),
+    enableDiscounts(),
+    defaultPaymentMethod(),
+    enableCashPayment(),
+    enableCardPayment(),
+    enableWalletPayment(),
+    priceRounding(),
   ]);
-  return { allowed_loan_statuses, enable_partial_payment, enable_early_payment_discount, early_payment_discount_rate, require_loan_agreement, loan_agreement_template, amortization_type, default_loan_term_months };
+  return { tax_rate, default_discount_rate, max_discount_percent, enable_discounts, default_payment_method, enable_cash_payment, enable_card_payment, enable_wallet_payment, price_rounding };
+}
+
+async function getLoyaltySettings() {
+  const [enable_loyalty_points, loyalty_point_rate, loyalty_vip_threshold, loyalty_elite_threshold] = await Promise.all([
+    enableLoyaltyPoints(),
+    loyaltyPointRate(),
+    loyaltyVipThreshold(),
+    loyaltyEliteThreshold(),
+  ]);
+  return { enable_loyalty_points, loyalty_point_rate, loyalty_vip_threshold, loyalty_elite_threshold };
+}
+
+async function getHardwareSettings() {
+  const [enable_receipt_printing, receipt_printer_type, receipt_header_message, receipt_footer_message, receipt_show_logo, receipt_show_tax, receipt_show_discount, receipt_show_loyalty, enable_cash_drawer, drawer_open_code, cash_drawer_connection_type] = await Promise.all([
+    enableReceiptPrinting(),
+    receiptPrinterType(),
+    receiptHeaderMessage(),
+    receiptFooterMessage(),
+    receiptShowLogo(),
+    receiptShowTax(),
+    receiptShowDiscount(),
+    receiptShowLoyalty(),
+    enableCashDrawer(),
+    drawerOpenCode(),
+    cashDrawerConnectionType(),
+  ]);
+  return { enable_receipt_printing, receipt_printer_type, receipt_header_message, receipt_footer_message, receipt_show_logo, receipt_show_tax, receipt_show_discount, receipt_show_loyalty, enable_cash_drawer, drawer_open_code, cash_drawer_connection_type };
+}
+
+async function getRefundSettings() {
+  const [enable_refunds, refund_window_days, require_receipt_for_refund, refund_restock_enabled] = await Promise.all([
+    enableRefunds(),
+    refundWindowDays(),
+    requireReceiptForRefund(),
+    refundRestockEnabled(),
+  ]);
+  return { enable_refunds, refund_window_days, require_receipt_for_refund, refund_restock_enabled };
 }
 
 async function getNotificationsSettings() {
-  const [email_enabled, sms_enabled, sms_provider, reminder_days_before_due, overdue_notification_frequency, notify_on_payment, notify_on_penalty] = await Promise.all([
+  const [email_enabled, sms_enabled, in_app_notifications_enabled, notify_low_stock, notify_expiring_batches, notify_refund_processed, notify_purchase_completed, sms_provider] = await Promise.all([
     emailEnabled(),
     smsEnabled(),
+    inAppNotificationsEnabled(),
+    notifyLowStock(),
+    notifyExpiringBatches(),
+    notifyRefundProcessed(),
+    notifyPurchaseCompleted(),
     smsProvider(),
-    reminderDaysBeforeDue(),
-    overdueNotificationFrequency(),
-    notifyOnPayment(),
-    notifyOnPenalty(),
   ]);
-  return { email_enabled, sms_enabled, sms_provider, reminder_days_before_due, overdue_notification_frequency, notify_on_payment, notify_on_penalty };
+  return { email_enabled, sms_enabled, in_app_notifications_enabled, notify_low_stock, notify_expiring_batches, notify_refund_processed, notify_purchase_completed, sms_provider };
 }
 
 async function getReportsSettings() {
@@ -480,17 +608,11 @@ async function getReportsSettings() {
 }
 
 async function getIntegrationsSettings() {
-  const [accounting_integration_enabled, accounting_api_url, accounting_api_key, credit_bureau_api_enabled, credit_bureau_api_key, credit_bureau_endpoint, webhooks_enabled, webhooks_array] = await Promise.all([
-    accountingIntegrationEnabled(),
-    accountingApiUrl(),
-    accountingApiKey(),
-    creditBureauApiEnabled(),
-    creditBureauApiKey(),
-    creditBureauEndpoint(),
+  const [webhooks_enabled, webhooks_array] = await Promise.all([
     webhooksEnabled(),
     webhooks(),
   ]);
-  return { accounting_integration_enabled, accounting_api_url, accounting_api_key, credit_bureau_api_enabled, credit_bureau_api_key, credit_bureau_endpoint, webhooks_enabled, webhooks: webhooks_array };
+  return { webhooks_enabled, webhooks: webhooks_array };
 }
 
 async function getAuditSecuritySettings() {
@@ -505,7 +627,6 @@ async function getAuditSecuritySettings() {
   ]);
   return { audit_log_enabled, log_retention_days, log_events, force_https, session_encryption_enabled, gdpr_compliance_enabled, require_mfa_for_admin };
 }
-
 
 // ============================================================
 // 🔄 SYNC SETTINGS (hybrid mode)
@@ -584,29 +705,9 @@ async function setSyncSettings(mode, url = "") {
   }
 }
 
-async function creditCheckValidityDays() {
-  return getInt("credit_check_validity_days", SettingType.COLLECTIONS, 30);
-}
-
-async function minCreditScoreForApproval() {
-  return getInt("min_credit_score_for_approval", SettingType.COLLECTIONS, 0); // 0 = disabled
-}
-
-/**
- * Get interest calculation period
- * @returns {Promise<string>} "per_annum" or "per_month"
- */
-
-async function defaultInterestCalculationPeriod() {
-  return getValue("interest_calculation_period", SettingType.COLLECTIONS, "per_annum");
-}
-
-
-
 // ============================================================
 // 📤 EXPORT ALL FUNCTIONS
 // ============================================================
-// src/utils/system.js
 
 /**
  * Get a system setting by key (any category)
@@ -619,61 +720,80 @@ async function getSystemSetting(key, fallback = null) {
 }
 
 module.exports = {
+  // Core
   getSystemSetting,
-  creditCheckValidityDays,
-  minCreditScoreForApproval,
-
-  syncMode,
-  serverUrl,
-  setSyncSettings,
-
-
-  // Core getters
   getValue,
   getBool,
   getInt,
+  getDecimal,
   getArray,
 
   // General
   companyName,
   branchLocation,
+  companyLocation, // Alias for PrinterService
   defaultTimezone,
   language,
   currency,
-  receiptFooterMessage,
+  decimalPlaces,
   autoLogoutMinutes,
   dateFormat,
 
-  // Collections
-  defaultInterestRate,
-  defaultPenaltyRate,
-  penaltyCalculationMethod,
-  enableAutoPenalty,
-  penaltyGraceDays,
-  overdueReminderDays,
-  maxLoanAmount,
-  minLoanAmount,
-  enforceCreditCheck,
- defaultInterestCalculationPeriod, 
+  // Inventory
+  lowStockThreshold,
+  enableAutoReorder,
+  autoReorderQuantity,
+  allowNegativeStock,
+  fifoEnabled,
+  inventorySyncEnabled,
 
-  // Loans
-  allowedLoanStatuses,
-  enablePartialPayment,
-  enableEarlyPaymentDiscount,
-  earlyPaymentDiscountRate,
-  requireLoanAgreement,
-  loanAgreementTemplate,
-  amortizationType,
-  defaultLoanTermMonths,
+  // Sales & Pricing
+  taxRate,
+  defaultDiscountRate,
+  maxDiscountPercent,
+  enableDiscounts,
+  defaultPaymentMethod,
+  enableCashPayment,
+  enableCardPayment,
+  enableWalletPayment,
+  priceRounding,
+
+  // Loyalty
+  enableLoyaltyPoints,
+  loyaltyPointsEnabled, // Alias for State Services
+  loyaltyPointRate,
+  getLoyaltyPointRate,  // Alias for State Services
+  loyaltyVipThreshold,
+  loyaltyEliteThreshold,
+
+  // Hardware (Printer & Cash Drawer)
+  enableReceiptPrinting,
+  receiptPrinterType,
+  receiptHeaderMessage,
+  receiptFooterMessage,
+  receiptShowLogo,
+  receiptShowTax,
+  receiptShowDiscount,
+  receiptShowLoyalty,
+  enableCashDrawer,
+  drawerOpenCode,
+  cashDrawerConnectionType,
+
+  // Refunds
+  enableRefunds,
+  refundWindowDays,
+  requireReceiptForRefund,
+  refundRestockEnabled,
 
   // Notifications
   emailEnabled,
   smsEnabled,
+  inAppNotificationsEnabled,
+  notifyLowStock,
+  notifyExpiringBatches,
+  notifyRefundProcessed,
+  notifyPurchaseCompleted,
   smsProvider,
-  reminderDaysBeforeDue,
-  overdueNotificationFrequency,
-  notifyOnPayment,
-  notifyOnPenalty,
   smtpHost,
   smtpPort,
   smtpUsername,
@@ -697,12 +817,6 @@ module.exports = {
   includeAuditInBackup,
 
   // Integrations
-  accountingIntegrationEnabled,
-  accountingApiUrl,
-  accountingApiKey,
-  creditBureauApiEnabled,
-  creditBureauApiKey,
-  creditBureauEndpoint,
   webhooksEnabled,
   webhooks,
 
@@ -717,10 +831,18 @@ module.exports = {
 
   // Category groups
   getGeneralSettings,
-  getCollectionsSettings,
-  getLoansSettings,
+  getInventorySettings,
+  getSalesSettings,
+  getLoyaltySettings,
+  getHardwareSettings,
+  getRefundSettings,
   getNotificationsSettings,
   getReportsSettings,
   getIntegrationsSettings,
   getAuditSecuritySettings,
+
+  // Sync
+  syncMode,
+  serverUrl,
+  setSyncSettings,
 };

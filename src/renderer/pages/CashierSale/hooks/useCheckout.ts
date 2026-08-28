@@ -20,13 +20,13 @@ export const useCheckout = () => {
     setIsProcessing(true);
     showLoading("Processing Checkout..");
     try {
-      const items = cart.map((item) => ({
-        productId: item.id,
-        quantity: item.cartQuantity,
-        unitPrice: item.price,
-        discount: item.lineDiscount,
-        tax: item.lineTax,
-      }));
+const items = cart.map((item) => ({
+  meatId: item.id,
+  weightKg: item.weightKg,
+  unitPrice: item.pricePerKg,
+  discount: item.lineDiscount,
+  tax: item.lineTax,
+}));
 
       const response = await saleAPI.create(
         {
@@ -36,7 +36,6 @@ export const useCheckout = () => {
           notes,
           loyaltyRedeemed,
         },
-        "cashier",
       );
 
       if (response.status) {

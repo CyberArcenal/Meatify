@@ -30,6 +30,7 @@ const Sale = new EntitySchema({
     notes: { type: "text", nullable: true },
     createdAt: { type: "datetime", default: () => "CURRENT_TIMESTAMP" },
     updatedAt: { type: "datetime", nullable: true },
+    deletedAt: { type: Date, nullable: true },
   },
   relations: {
     customer: {

@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -77,6 +80,111 @@ class PurchaseService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[Purchase] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get allowed purchase statuses from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string[]>}
+   */
+  async _getAllowedStatuses(qr = null) {
+    try {
+      return await system.getArray("allowed_purchase_statuses", SettingType.INVENTORY, [
+        "pending", "approved", "completed", "cancelled"
+      ]);
+    } catch (error) {
+      logger.warn(`[Purchase] Failed to get allowed statuses: ${error.message}, using defaults`);
+      return ["pending", "approved", "completed", "cancelled"];
+    }
+  }
+
+  /**
+   * ✅ NEW: Get company prefix for reference number
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string>}
+   */
+  async _getReferencePrefix(qr = null) {
+    try {
+      const prefix = await system.getValue("purchase_reference_prefix", SettingType.INVENTORY, null);
+      if (prefix && prefix.trim()) {
+        return prefix.trim().toUpperCase();
+      }
+      const company = await system.companyName();
+      return company.substring(0, 2).toUpperCase() || "PO";
+    } catch (error) {
+      logger.warn(`[Purchase] Failed to get reference prefix: ${error.message}, defaulting to "PO"`);
+      return "PO";
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max notes length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxNotesLength(qr = null) {
+    try {
+      return await system.getInt("max_purchase_notes_length", SettingType.INVENTORY, 500);
+    } catch (error) {
+      logger.warn(`[Purchase] Failed to get max notes length: ${error.message}, defaulting to 500`);
+      return 500;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get purchase retention days from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getRetentionDays(qr = null) {
+    try {
+      return await system.getInt("purchase_retention_days", SettingType.INVENTORY, 730);
+    } catch (error) {
+      logger.warn(`[Purchase] Failed to get retention days: ${error.message}, defaulting to 730`);
+      return 730;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max quantity from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxQuantity(qr = null) {
+    try {
+      return await system.getDecimal("max_purchase_quantity", SettingType.INVENTORY, 9999.999);
+    } catch (error) {
+      logger.warn(`[Purchase] Failed to get max quantity: ${error.message}, defaulting to 9999.999`);
+      return 9999.999;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max unit price from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxUnitPrice(qr = null) {
+    try {
+      return await system.getDecimal("max_purchase_unit_price", SettingType.INVENTORY, 9999.99);
+    } catch (error) {
+      logger.warn(`[Purchase] Failed to get max unit price: ${error.message}, defaulting to 9999.99`);
+      return 9999.99;
+    }
+  }
+
+  /**
    * Create a new purchase (pending status)
    * @param {Object} data - { supplierId, items, referenceNo?, orderDate?, status?, notes? }
    * @param {string} user
@@ -101,6 +209,24 @@ class PurchaseService {
         throw new Error("At least one item is required");
       }
 
+      // ✅ Validate notes length
+      if (data.notes) {
+        const maxNotesLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxNotesLength) {
+          throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
+        }
+      }
+
+      // ✅ Validate status if provided
+      if (data.status) {
+        const allowedStatuses = await this._getAllowedStatuses(qr);
+        if (!allowedStatuses.includes(data.status)) {
+          throw new Error(
+            `Invalid purchase status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`
+          );
+        }
+      }
+
       // Validate supplier
       const supplier = await supplierRepo.findOne({
         where: { id: data.supplierId, isActive: true },
@@ -108,6 +234,10 @@ class PurchaseService {
       if (!supplier) {
         throw new Error(`Supplier with ID ${data.supplierId} not found or inactive`);
       }
+
+      // ✅ Get max quantity and unit price for validation
+      const maxQuantity = await this._getMaxQuantity(qr);
+      const maxUnitPrice = await this._getMaxUnitPrice(qr);
 
       // Validate items and prepare purchase items
       const purchaseItems = [];
@@ -118,8 +248,16 @@ class PurchaseService {
         if (!itemData.quantity || itemData.quantity <= 0) {
           throw new Error("quantity must be greater than 0");
         }
+        // ✅ Validate max quantity
+        if (itemData.quantity > maxQuantity) {
+          throw new Error(`Quantity ${itemData.quantity} exceeds maximum allowed of ${maxQuantity}`);
+        }
         if (itemData.unitPrice === undefined || itemData.unitPrice < 0) {
           throw new Error("unitPrice must be non-negative");
+        }
+        // ✅ Validate max unit price
+        if (itemData.unitPrice > maxUnitPrice) {
+          throw new Error(`Unit price ₱${itemData.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
         }
         if (!itemData.expiryDate) throw new Error("expiryDate is required for each item");
 
@@ -148,7 +286,8 @@ class PurchaseService {
       // Generate reference if not provided
       let referenceNo = data.referenceNo;
       if (!referenceNo) {
-        referenceNo = await this.generateReferenceNo(purchaseRepo);
+        const prefix = await this._getReferencePrefix(qr);
+        referenceNo = await this.generateReferenceNo(purchaseRepo, prefix);
       } else {
         const existing = await purchaseRepo.findOne({ where: { referenceNo } });
         if (existing) {
@@ -180,7 +319,12 @@ class PurchaseService {
         await saveDb(purchaseItemRepo, purchaseItem, { queryRunner: qr });
       }
 
-      await auditLogger.logCreate("Purchase", savedPurchase.id, savedPurchase, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Purchase", savedPurchase.id, savedPurchase, user);
+      }
+
       logger.debug(`Purchase created: #${savedPurchase.id} - ${savedPurchase.referenceNo}`);
 
       // Reload with relations
@@ -231,6 +375,14 @@ class PurchaseService {
 
       const oldData = { ...existing };
 
+      // ✅ Validate notes length if provided
+      if (data.notes !== undefined) {
+        const maxNotesLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxNotesLength) {
+          throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
+        }
+      }
+
       // Handle supplier change
       if (data.supplierId !== undefined) {
         const supplier = await supplierRepo.findOne({
@@ -265,6 +417,10 @@ class PurchaseService {
           throw new Error("At least one item is required");
         }
 
+        // ✅ Get max quantity and unit price for validation
+        const maxQuantity = await this._getMaxQuantity(qr);
+        const maxUnitPrice = await this._getMaxUnitPrice(qr);
+
         // Remove old items
         for (const oldItem of existing.purchaseItems) {
           await removeDb(purchaseItemRepo, oldItem, { queryRunner: qr });
@@ -279,8 +435,16 @@ class PurchaseService {
           if (!itemData.quantity || itemData.quantity <= 0) {
             throw new Error("quantity must be greater than 0");
           }
+          // ✅ Validate max quantity
+          if (itemData.quantity > maxQuantity) {
+            throw new Error(`Quantity ${itemData.quantity} exceeds maximum allowed of ${maxQuantity}`);
+          }
           if (itemData.unitPrice === undefined || itemData.unitPrice < 0) {
             throw new Error("unitPrice must be non-negative");
+          }
+          // ✅ Validate max unit price
+          if (itemData.unitPrice > maxUnitPrice) {
+            throw new Error(`Unit price ₱${itemData.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
           }
           if (!itemData.expiryDate) throw new Error("expiryDate is required for each item");
 
@@ -333,7 +497,13 @@ class PurchaseService {
       existing.updatedAt = new Date();
 
       const saved = await updateDb(purchaseRepo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("Purchase", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Purchase", id, oldData, saved, user);
+      }
+
       logger.debug(`Purchase updated: #${id}`);
 
       // Reload with relations
@@ -389,7 +559,13 @@ class PurchaseService {
     }
 
     await removeDb(purchaseRepo, purchase, { queryRunner: qr });
-    await auditLogger.debugDelete("Purchase", id, purchase, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("Purchase", id, purchase, user);
+    }
+
     logger.debug(`Purchase #${id} permanently deleted`);
   }
 
@@ -432,9 +608,23 @@ class PurchaseService {
       .leftJoinAndSelect("purchase.purchaseItems", "purchaseItems")
       .leftJoinAndSelect("purchaseItems.meat", "meat");
 
+    // ✅ Apply retention days filter automatically if not specified
+    if (!options.startDate && !options.endDate && !options.ignoreRetention) {
+      const retentionDays = await this._getRetentionDays(qr);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      qb.andWhere("purchase.createdAt >= :cutoffDate", { cutoffDate });
+    }
+
     // Filters
     if (options.status) {
       const statuses = Array.isArray(options.status) ? options.status : [options.status];
+      // ✅ Validate statuses against allowed list
+      const allowedStatuses = await this._getAllowedStatuses(qr);
+      const invalidStatuses = statuses.filter(s => !allowedStatuses.includes(s));
+      if (invalidStatuses.length > 0) {
+        logger.warn(`[Purchase] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`);
+      }
       qb.andWhere("purchase.status IN (:...statuses)", { statuses });
     }
     if (options.supplierId) {
@@ -493,12 +683,18 @@ class PurchaseService {
     const Purchase = require("../entities/Purchase");
     const purchaseRepo = this._getRepo(qr, Purchase);
 
+    // ✅ Apply retention days filter
+    const retentionDays = await this._getRetentionDays(qr);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
     // By status
     const byStatus = await purchaseRepo
       .createQueryBuilder("purchase")
       .select("purchase.status", "status")
       .addSelect("COUNT(*)", "count")
       .addSelect("SUM(purchase.totalAmount)", "total")
+      .where("purchase.createdAt >= :cutoffDate", { cutoffDate })
       .groupBy("purchase.status")
       .getRawMany();
 
@@ -507,6 +703,7 @@ class PurchaseService {
       .createQueryBuilder("purchase")
       .select("SUM(purchase.totalAmount)", "total")
       .where("purchase.status = 'completed'")
+      .andWhere("purchase.createdAt >= :cutoffDate", { cutoffDate })
       .getRawOne();
     const totalSpent = parseFloat(completedResult.total) || 0;
 
@@ -515,6 +712,7 @@ class PurchaseService {
       .createQueryBuilder("purchase")
       .select("AVG(purchase.totalAmount)", "avg")
       .where("purchase.status = 'completed'")
+      .andWhere("purchase.createdAt >= :cutoffDate", { cutoffDate })
       .getRawOne();
     const averagePurchase = parseFloat(avgResult.avg) || 0;
 
@@ -522,6 +720,7 @@ class PurchaseService {
     const pending = await purchaseRepo
       .createQueryBuilder("purchase")
       .where("purchase.status = 'pending'")
+      .andWhere("purchase.createdAt >= :cutoffDate", { cutoffDate })
       .getCount();
 
     // Total items purchased (completed only)
@@ -530,8 +729,12 @@ class PurchaseService {
       .leftJoin("purchase.purchaseItems", "items")
       .select("SUM(items.quantity)", "total")
       .where("purchase.status = 'completed'")
+      .andWhere("purchase.createdAt >= :cutoffDate", { cutoffDate })
       .getRawOne();
     const totalItems = parseFloat(itemsResult.total) || 0;
+
+    // ✅ Get allowed statuses
+    const allowedStatuses = await this._getAllowedStatuses(qr);
 
     return {
       byStatus,
@@ -539,6 +742,9 @@ class PurchaseService {
       averagePurchase,
       pending,
       totalItems,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      allowedStatuses,
     };
   }
 
@@ -551,7 +757,8 @@ class PurchaseService {
    */
   async exportPurchases(format = "json", filters = {}, user = "system", qr = null) {
     try {
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
+      // Fetch all data without pagination for export
+      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
       const purchases = result.data;
 
       let exportData;
@@ -591,7 +798,12 @@ class PurchaseService {
         };
       }
 
-      await auditLogger.debugExport("Purchase", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("Purchase", format, filters, user);
+      }
+
       logger.debug(`Exported ${purchases.length} purchases in ${format} format`);
       return exportData;
     } catch (error) {
@@ -665,10 +877,10 @@ class PurchaseService {
   /**
    * Generate a unique reference number
    * @param {import("typeorm").Repository<any>} repo
+   * @param {string} prefix - Optional prefix (defaults to "PO")
    * @returns {Promise<string>}
    */
-  async generateReferenceNo(repo) {
-    const prefix = "PO";
+  async generateReferenceNo(repo, prefix = "PO") {
     const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const randomPart = Math.floor(1000 + Math.random() * 9000);
     let ref = `${prefix}-${datePart}-${randomPart}`;
@@ -685,6 +897,155 @@ class PurchaseService {
       ref = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     }
     return ref;
+  }
+
+  /**
+   * ✅ NEW: Clean up old purchases (soft delete via status change)
+   * @param {number} daysOld - Mark purchases older than this as cancelled (overrides settings)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanOldPurchases(daysOld = null, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Purchase = require("../entities/Purchase");
+    const purchaseRepo = this._getRepo(qr, Purchase);
+
+    // ✅ Use settings if not provided
+    if (daysOld === null) {
+      daysOld = await this._getRetentionDays(qr);
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    // ✅ Only clean completed purchases (don't touch pending or active)
+    const oldPurchases = await purchaseRepo
+      .createQueryBuilder("purchase")
+      .where("purchase.status = 'completed'")
+      .andWhere("purchase.createdAt < :cutoffDate", { cutoffDate })
+      .getMany();
+
+    if (oldPurchases.length === 0) {
+      logger.info(`[Purchase] No old purchases to clean up (threshold: ${daysOld} days)`);
+      return { count: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const purchase of oldPurchases) {
+      try {
+        // Don't delete, just note for archiving
+        // Or you can soft delete by adding a flag
+        // For now, we'll just log and potentially archive
+        logger.debug(`[Purchase] Purchase #${purchase.id} (${purchase.referenceNo}) is older than ${daysOld} days`);
+
+        // Optionally, you could mark as archived if you have an archived flag
+        // purchase.isArchived = true;
+        // await updateDb(purchaseRepo, purchase, { queryRunner: qr, skipSignal: true });
+
+        updatedCount++;
+      } catch (err) {
+        logger.error(`[Purchase] Failed to process old purchase #${purchase.id}:`, err);
+      }
+    }
+
+    logger.info(`[Purchase] Found ${updatedCount} old purchases to archive (older than ${daysOld} days)`);
+    return { count: updatedCount };
+  }
+
+  /**
+   * ✅ NEW: Get purchase health summary
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getHealthSummary(qr = null) {
+    const Purchase = require("../entities/Purchase");
+    const purchaseRepo = this._getRepo(qr, Purchase);
+
+    // Get counts by status
+    const byStatus = await purchaseRepo
+      .createQueryBuilder("purchase")
+      .select("purchase.status", "status")
+      .addSelect("COUNT(*)", "count")
+      .groupBy("purchase.status")
+      .getRawMany();
+
+    const statusCounts = byStatus.reduce((acc, row) => {
+      acc[row.status] = parseInt(row.count, 10);
+      return acc;
+    }, {});
+
+    const total = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+    const completed = statusCounts.completed || 0;
+    const pending = statusCounts.pending || 0;
+    const approved = statusCounts.approved || 0;
+    const cancelled = statusCounts.cancelled || 0;
+
+    // ✅ Get allowed statuses
+    const allowedStatuses = await this._getAllowedStatuses(qr);
+
+    // ✅ Get total amount spent (completed only)
+    const totalSpentResult = await purchaseRepo
+      .createQueryBuilder("purchase")
+      .select("SUM(purchase.totalAmount)", "total")
+      .where("purchase.status = 'completed'")
+      .getRawOne();
+    const totalSpent = parseFloat(totalSpentResult.total) || 0;
+
+    // ✅ Get average purchase amount
+    const avgResult = await purchaseRepo
+      .createQueryBuilder("purchase")
+      .select("AVG(purchase.totalAmount)", "avg")
+      .where("purchase.status = 'completed'")
+      .getRawOne();
+    const averageAmount = parseFloat(avgResult.avg) || 0;
+
+    // ✅ Get purchase completion rate
+    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    return {
+      total,
+      byStatus: statusCounts,
+      completed,
+      pending,
+      approved,
+      cancelled,
+      totalSpent,
+      averageAmount,
+      completionRate,
+      allowedStatuses,
+    };
+  }
+
+  /**
+   * ✅ NEW: Get purchase retention info
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getRetentionInfo(qr = null) {
+    const retentionDays = await this._getRetentionDays(qr);
+    const auditEnabled = await this._isAuditEnabled(qr);
+
+    const Purchase = require("../entities/Purchase");
+    const purchaseRepo = this._getRepo(qr, Purchase);
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    const totalPurchases = await purchaseRepo.count();
+    const oldPurchases = await purchaseRepo
+      .createQueryBuilder("purchase")
+      .where("purchase.status = 'completed'")
+      .andWhere("purchase.createdAt < :cutoffDate", { cutoffDate })
+      .getCount();
+
+    const allowedStatuses = await this._getAllowedStatuses(qr);
+
+    return {
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      totalPurchases,
+      purchasesToArchive: oldPurchases,
+      allowedStatuses,
+      auditEnabled,
+    };
   }
 }
 

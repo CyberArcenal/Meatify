@@ -8,13 +8,14 @@ const Customer = require("../entities/Customer");
 const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const notificationService = require("../services/Notification");
 const { BatchStateService } = require("./Batch");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
 
-// Settings getters (you can implement these as async functions)
-const getLoyaltyPointRate = async () => 100; // points per peso spent
-const loyaltyPointsEnabled = async () => true;
-const enableReceiptPrinting = async () => true;
-const enableCashDrawer = async () => true;
-const companyName = async () => "Meatify Shop";
+// ❌ REMOVED hardcoded functions:
+// const getLoyaltyPointRate = async () => 100;
+// const loyaltyPointsEnabled = async () => true;
+// const enableReceiptPrinting = async () => true;
+// const enableCashDrawer = async () => true;
+// const companyName = async () => "Meatify Shop";
 
 /**
  * SaleStateService handles state transitions for sales.
@@ -133,10 +134,11 @@ class SaleStateService {
     sale.saleItems = newSaleItems;
 
     // --- STEP 4: Loyalty Points (Earn) ---
-    const loyaltyEnabled = await loyaltyPointsEnabled();
+    // ✅ Use system settings instead of hardcoded values
+    const loyaltyEnabled = await system.loyaltyPointsEnabled();
     let pointsEarned = 0;
     if (loyaltyEnabled && sale.customer) {
-      const rate = await getLoyaltyPointRate();
+      const rate = await system.getLoyaltyPointRate();
       const netSpend = sale.totalAmount - (sale.loyaltyRedeemed || 0);
       pointsEarned = Math.floor(netSpend / rate);
       sale.pointsEarn = pointsEarned;
@@ -215,16 +217,16 @@ class SaleStateService {
         await this._checkLoyaltyMilestone(sale.customer, user, queryRunner);
       }
 
-      // Receipt printing
-      const printEnabled = await enableReceiptPrinting();
+      // Receipt printing - ✅ Use system setting
+      const printEnabled = await system.enableReceiptPrinting();
       if (printEnabled) {
         // This would call PrinterService – we'll just log
         logger.info(`[SaleState] Would print receipt for sale #${saleId}`);
         // await printerService.printReceipt(saleId, queryRunner);
       }
 
-      // Cash drawer
-      const drawerEnabled = await enableCashDrawer();
+      // Cash drawer - ✅ Use system setting
+      const drawerEnabled = await system.enableCashDrawer();
       if (drawerEnabled && sale.paymentMethod === "cash") {
         logger.info(`[SaleState] Would open cash drawer for sale #${saleId}`);
         // await cashDrawerService.openDrawer("sale", queryRunner);
@@ -409,11 +411,13 @@ class SaleStateService {
    * @private
    */
   async _checkLoyaltyMilestone(customer, user, queryRunner) {
-    // Simple check: if lifetime points reach thresholds
+    // ✅ Optionally use system thresholds for flexibility
+    // const vipThreshold = await system.loyaltyVipThreshold();
+    // const eliteThreshold = await system.loyaltyEliteThreshold();
+    // For now, keep simple check for demonstration
     const thresholds = [100, 500, 1000, 5000];
     const current = customer.lifetimePointsEarned || 0;
-    // We would need previous value to detect crossing, but we'll just check if it's exactly at threshold
-    // For simplicity, we'll just send a generic message if points > 0
+    
     try {
       await notificationService.create(
         {

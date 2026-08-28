@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -63,6 +66,112 @@ class NotificationService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[Notification] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if in-app notifications are enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isInAppNotificationsEnabled(qr = null) {
+    try {
+      return await system.inAppNotificationsEnabled();
+    } catch (error) {
+      logger.warn(`[Notification] Failed to check in-app notifications enabled: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get allowed notification types from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string[]>}
+   */
+  async _getAllowedNotificationTypes(qr = null) {
+    try {
+      return await system.getArray("allowed_notification_types", SettingType.NOTIFICATIONS, [
+        "info", "success", "warning", "error", "purchase", "sale"
+      ]);
+    } catch (error) {
+      logger.warn(`[Notification] Failed to get allowed notification types: ${error.message}, using defaults`);
+      return ["info", "success", "warning", "error", "purchase", "sale"];
+    }
+  }
+
+  /**
+   * ✅ NEW: Get default notification type from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string>}
+   */
+  async _getDefaultNotificationType(qr = null) {
+    try {
+      const defaultType = await system.getValue("default_notification_type", SettingType.NOTIFICATIONS, "info");
+      const allowedTypes = await this._getAllowedNotificationTypes(qr);
+      if (!allowedTypes.includes(defaultType)) {
+        logger.warn(`[Notification] Invalid default type "${defaultType}", defaulting to "info"`);
+        return "info";
+      }
+      return defaultType;
+    } catch (error) {
+      logger.warn(`[Notification] Failed to get default notification type: ${error.message}, defaulting to "info"`);
+      return "info";
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max title length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxTitleLength(qr = null) {
+    try {
+      return await system.getInt("max_notification_title_length", SettingType.NOTIFICATIONS, 255);
+    } catch (error) {
+      logger.warn(`[Notification] Failed to get max title length: ${error.message}, defaulting to 255`);
+      return 255;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max message length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxMessageLength(qr = null) {
+    try {
+      return await system.getInt("max_notification_message_length", SettingType.NOTIFICATIONS, 1000);
+    } catch (error) {
+      logger.warn(`[Notification] Failed to get max message length: ${error.message}, defaulting to 1000`);
+      return 1000;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get notification retention days from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getNotificationRetentionDays(qr = null) {
+    try {
+      return await system.getInt("notification_retention_days", SettingType.NOTIFICATIONS, 90);
+    } catch (error) {
+      logger.warn(`[Notification] Failed to get notification retention days: ${error.message}, defaulting to 90`);
+      return 90;
+    }
+  }
+
+  /**
    * Create a new notification
    * @param {Object} data - { userId, title, message, type?, metadata? }
    * @param {string} user - User performing the action
@@ -74,24 +183,68 @@ class NotificationService {
     const repo = this._getRepo(qr, Notification);
 
     try {
+      // ✅ Check if in-app notifications are enabled
+      const inAppEnabled = await this._isInAppNotificationsEnabled(qr);
+      if (!inAppEnabled) {
+        logger.debug("[Notification] In-app notifications are disabled, skipping creation");
+        return null;
+      }
+
       // Validate required fields
       if (!data.title) throw new Error("title is required");
       if (!data.message) throw new Error("message is required");
       if (!data.userId) throw new Error("userId is required");
 
+      // ✅ Validate title length
+      const maxTitleLength = await this._getMaxTitleLength(qr);
+      if (data.title.length > maxTitleLength) {
+        throw new Error(`Title cannot exceed ${maxTitleLength} characters`);
+      }
+
+      // ✅ Validate message length
+      const maxMessageLength = await this._getMaxMessageLength(qr);
+      if (data.message.length > maxMessageLength) {
+        throw new Error(`Message cannot exceed ${maxMessageLength} characters`);
+      }
+
+      // ✅ Validate and set notification type
+      const allowedTypes = await this._getAllowedNotificationTypes(qr);
+      let notificationType = data.type || await this._getDefaultNotificationType(qr);
+      if (!allowedTypes.includes(notificationType)) {
+        logger.warn(`[Notification] Invalid type "${notificationType}", defaulting to "info"`);
+        notificationType = "info";
+      }
+
+      // ✅ Validate metadata is valid JSON if provided
+      let metadata = data.metadata || null;
+      if (metadata && typeof metadata === "object") {
+        try {
+          metadata = JSON.stringify(metadata);
+        } catch {
+          logger.warn("[Notification] Failed to stringify metadata, using null");
+          metadata = null;
+        }
+      }
+
       const notification = repo.create({
         userId: data.userId,
         title: data.title,
         message: data.message,
-        type: data.type || "info",
+        type: notificationType,
         isRead: false,
-        metadata: data.metadata || null,
+        metadata: metadata,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
 
       const saved = await saveDb(repo, notification, { queryRunner: qr });
-      await auditLogger.logCreate("Notification", saved.id, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Notification", saved.id, saved, user);
+      }
+
       logger.debug(`Notification created: #${saved.id} - ${saved.title}`);
       return saved;
     } catch (error) {
@@ -130,11 +283,55 @@ class NotificationService {
         throw new Error("Cannot update userId");
       }
 
+      // ✅ Validate title length if provided
+      if (data.title) {
+        const maxTitleLength = await this._getMaxTitleLength(qr);
+        if (data.title.length > maxTitleLength) {
+          throw new Error(`Title cannot exceed ${maxTitleLength} characters`);
+        }
+      }
+
+      // ✅ Validate message length if provided
+      if (data.message) {
+        const maxMessageLength = await this._getMaxMessageLength(qr);
+        if (data.message.length > maxMessageLength) {
+          throw new Error(`Message cannot exceed ${maxMessageLength} characters`);
+        }
+      }
+
+      // ✅ Validate notification type if provided
+      if (data.type) {
+        const allowedTypes = await this._getAllowedNotificationTypes(qr);
+        if (!allowedTypes.includes(data.type)) {
+          throw new Error(
+            `Invalid notification type: "${data.type}". Allowed: ${allowedTypes.join(", ")}`
+          );
+        }
+      }
+
+      // ✅ Validate metadata if provided
+      if (data.metadata !== undefined) {
+        if (data.metadata && typeof data.metadata === "object") {
+          try {
+            data.metadata = JSON.stringify(data.metadata);
+          } catch {
+            logger.warn("[Notification] Failed to stringify metadata, setting to null");
+            data.metadata = null;
+          }
+        }
+      }
+
       Object.assign(existing, data);
       existing.updatedAt = new Date();
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("Notification", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Notification", id, oldData, saved, user);
+      }
+
       logger.debug(`Notification updated: #${id}`);
       return saved;
     } catch (error) {
@@ -169,7 +366,13 @@ class NotificationService {
       notification.updatedAt = new Date();
 
       const saved = await updateDb(repo, notification, { queryRunner: qr });
-      await auditLogger.debugDelete("Notification", id, oldData, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugDelete("Notification", id, oldData, user);
+      }
+
       logger.debug(`Notification soft deleted: #${id}`);
       return saved;
     } catch (error) {
@@ -204,7 +407,13 @@ class NotificationService {
       notification.updatedAt = new Date();
 
       const saved = await updateDb(repo, notification, { queryRunner: qr });
-      await auditLogger.logUpdate("Notification", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Notification", id, oldData, saved, user);
+      }
+
       logger.debug(`Notification restored: #${id}`);
       return saved;
     } catch (error) {
@@ -230,7 +439,13 @@ class NotificationService {
     }
 
     await removeDb(repo, notification, { queryRunner: qr });
-    await auditLogger.debugDelete("Notification", id, notification, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("Notification", id, notification, user);
+    }
+
     logger.debug(`Notification #${id} permanently deleted`);
   }
 
@@ -276,6 +491,14 @@ class NotificationService {
       qb.andWhere("notification.deletedAt IS NULL");
     }
 
+    // ✅ Apply retention days filter automatically if not specified
+    if (!options.startDate && !options.endDate && !options.ignoreRetention) {
+      const retentionDays = await this._getNotificationRetentionDays(qr);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      qb.andWhere("notification.createdAt >= :cutoffDate", { cutoffDate });
+    }
+
     // Filters
     if (options.userId) {
       qb.andWhere("notification.userId = :userId", { userId: options.userId });
@@ -285,6 +508,12 @@ class NotificationService {
     }
     if (options.type) {
       const types = Array.isArray(options.type) ? options.type : [options.type];
+      // ✅ Validate notification types against allowed list
+      const allowedTypes = await this._getAllowedNotificationTypes(qr);
+      const invalidTypes = types.filter(t => !allowedTypes.includes(t));
+      if (invalidTypes.length > 0) {
+        logger.warn(`[Notification] Invalid types: ${invalidTypes.join(", ")}. Allowed: ${allowedTypes.join(", ")}`);
+      }
       qb.andWhere("notification.type IN (:...types)", { types });
     }
     if (options.startDate) {
@@ -329,9 +558,15 @@ class NotificationService {
     const Notification = require("../entities/Notification");
     const repo = this._getRepo(qr, Notification);
 
+    // ✅ Apply retention days filter
+    const retentionDays = await this._getNotificationRetentionDays(qr);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
     const qb = repo
       .createQueryBuilder("notification")
-      .where("notification.deletedAt IS NULL");
+      .where("notification.deletedAt IS NULL")
+      .andWhere("notification.createdAt >= :cutoffDate", { cutoffDate });
 
     // By type
     const byType = await qb
@@ -380,6 +615,11 @@ class NotificationService {
       .limit(5)
       .getRawMany();
 
+    // ✅ Get allowed types and max lengths
+    const allowedTypes = await this._getAllowedNotificationTypes(qr);
+    const maxTitleLength = await this._getMaxTitleLength(qr);
+    const maxMessageLength = await this._getMaxMessageLength(qr);
+
     return {
       total,
       read: readCount,
@@ -391,6 +631,11 @@ class NotificationService {
       last7Days,
       last24Hours,
       topUsers: byUser,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      allowedTypes,
+      maxTitleLength,
+      maxMessageLength,
     };
   }
 
@@ -403,7 +648,8 @@ class NotificationService {
    */
   async exportNotifications(format = "json", filters = {}, user = "system", qr = null) {
     try {
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
+      // Fetch all data without pagination for export
+      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
       const notifications = result.data;
 
       let exportData;
@@ -443,7 +689,12 @@ class NotificationService {
         };
       }
 
-      await auditLogger.debugExport("Notification", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("Notification", format, filters, user);
+      }
+
       logger.debug(`Exported ${notifications.length} notifications in ${format} format`);
       return exportData;
     } catch (error) {
@@ -463,7 +714,9 @@ class NotificationService {
     for (const data of notificationsArray) {
       try {
         const saved = await this.create(data, user, qr);
-        results.created.push(saved);
+        if (saved) {
+          results.created.push(saved);
+        }
       } catch (err) {
         results.errors.push({ notification: data, error: err.message });
       }
@@ -501,12 +754,156 @@ class NotificationService {
           throw new Error("userId, title, and message are required");
         }
         const saved = await this.create(data, user, qr);
-        results.imported.push(saved);
+        if (saved) {
+          results.imported.push(saved);
+        }
       } catch (err) {
         results.errors.push({ row: record, error: err.message });
       }
     }
     return results;
+  }
+
+  /**
+   * ✅ NEW: Clean up old notifications (soft delete)
+   * @param {number} daysOld - Delete notifications older than this (overrides settings)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanOldNotifications(daysOld = null, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Notification = require("../entities/Notification");
+    const repo = this._getRepo(qr, Notification);
+
+    // ✅ Use settings if not provided
+    if (daysOld === null) {
+      daysOld = await this._getNotificationRetentionDays(qr);
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    // ✅ Only delete read notifications older than cutoff
+    const oldNotifications = await repo
+      .createQueryBuilder("notification")
+      .where("notification.createdAt < :cutoffDate", { cutoffDate })
+      .andWhere("notification.isRead = true")
+      .andWhere("notification.deletedAt IS NULL")
+      .getMany();
+
+    if (oldNotifications.length === 0) {
+      logger.info(`[Notification] No old notifications to clean up (threshold: ${daysOld} days)`);
+      return { count: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const notification of oldNotifications) {
+      try {
+        const oldData = { ...notification };
+        notification.deletedAt = new Date();
+        notification.updatedAt = new Date();
+        await updateDb(repo, notification, { queryRunner: qr, skipSignal: true });
+
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.debugDelete("Notification", notification.id, oldData, user);
+        }
+
+        updatedCount++;
+        logger.debug(`[Notification] Soft deleted notification #${notification.id} (older than ${daysOld} days)`);
+      } catch (err) {
+        logger.error(`[Notification] Failed to clean notification #${notification.id}:`, err);
+      }
+    }
+
+    logger.info(`[Notification] Cleaned up ${updatedCount} old notifications (older than ${daysOld} days)`);
+    return { count: updatedCount };
+  }
+
+  /**
+   * ✅ NEW: Get notification retention info
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getRetentionInfo(qr = null) {
+    const retentionDays = await this._getNotificationRetentionDays(qr);
+    const inAppEnabled = await this._isInAppNotificationsEnabled(qr);
+    const auditEnabled = await this._isAuditEnabled(qr);
+
+    const Notification = require("../entities/Notification");
+    const repo = this._getRepo(qr, Notification);
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    const totalNotifications = await repo.count({ where: { deletedAt: null } });
+    const oldNotifications = await repo
+      .createQueryBuilder("notification")
+      .where("notification.createdAt < :cutoffDate", { cutoffDate })
+      .andWhere("notification.isRead = true")
+      .andWhere("notification.deletedAt IS NULL")
+      .getCount();
+
+    const allowedTypes = await this._getAllowedNotificationTypes(qr);
+    const maxTitleLength = await this._getMaxTitleLength(qr);
+    const maxMessageLength = await this._getMaxMessageLength(qr);
+
+    return {
+      inAppEnabled,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      totalNotifications,
+      notificationsToDelete: oldNotifications,
+      allowedTypes,
+      maxTitleLength,
+      maxMessageLength,
+      auditEnabled,
+    };
+  }
+
+  /**
+   * ✅ NEW: Get notifications by user with summary
+   * @param {number} userId
+   * @param {Object} options
+   * @param {number} [options.limit] - Max number of notifications to return
+   * @param {boolean} [options.includeRead] - Include read notifications
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getByUser(userId, options = {}, qr = null) {
+    const Notification = require("../entities/Notification");
+    const repo = this._getRepo(qr, Notification);
+
+    const { limit = 50, includeRead = false } = options;
+
+    const queryBuilder = repo
+      .createQueryBuilder("notification")
+      .where("notification.userId = :userId", { userId })
+      .andWhere("notification.deletedAt IS NULL")
+      .orderBy("notification.createdAt", "DESC")
+      .limit(limit);
+
+    if (!includeRead) {
+      queryBuilder.andWhere("notification.isRead = false");
+    }
+
+    const notifications = await queryBuilder.getMany();
+
+    // Get counts
+    const totalCount = await repo.count({
+      where: { userId, deletedAt: null },
+    });
+
+    const unreadCount = await repo.count({
+      where: { userId, isRead: false, deletedAt: null },
+    });
+
+    return {
+      notifications,
+      summary: {
+        total: totalCount,
+        unread: unreadCount,
+        read: totalCount - unreadCount,
+      },
+    };
   }
 }
 

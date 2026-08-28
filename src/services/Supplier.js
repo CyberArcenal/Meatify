@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -78,6 +81,96 @@ class SupplierService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[Supplier] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get default active status from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _getDefaultActiveStatus(qr = null) {
+    try {
+      return await system.getBool("default_supplier_active", SettingType.INVENTORY, true);
+    } catch (error) {
+      logger.warn(`[Supplier] Failed to get default active status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max name length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxNameLength(qr = null) {
+    try {
+      return await system.getInt("max_supplier_name_length", SettingType.INVENTORY, 100);
+    } catch (error) {
+      logger.warn(`[Supplier] Failed to get max name length: ${error.message}, defaulting to 100`);
+      return 100;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max contact info length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxContactInfoLength(qr = null) {
+    try {
+      return await system.getInt("max_supplier_contact_length", SettingType.INVENTORY, 255);
+    } catch (error) {
+      logger.warn(`[Supplier] Failed to get max contact info length: ${error.message}, defaulting to 255`);
+      return 255;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max notes length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxNotesLength(qr = null) {
+    try {
+      return await system.getInt("max_supplier_notes_length", SettingType.INVENTORY, 500);
+    } catch (error) {
+      logger.warn(`[Supplier] Failed to get max notes length: ${error.message}, defaulting to 500`);
+      return 500;
+    }
+  }
+
+  /**
+   * ✅ NEW: Validate email format
+   * @param {string} email
+   * @returns {boolean}
+   */
+  _isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  /**
+   * ✅ NEW: Validate phone format
+   * @param {string} phone
+   * @returns {boolean}
+   */
+  _isValidPhone(phone) {
+    const phoneRegex = /^[\d\+\-\(\)\s]+$/;
+    return phoneRegex.test(phone);
+  }
+
+  /**
    * Create a new supplier
    * @param {Object} data - { name, contactInfo?, email?, phone?, address?, notes?, isActive? }
    * @param {string} user
@@ -91,6 +184,38 @@ class SupplierService {
     try {
       // Validate required fields
       if (!data.name) throw new Error("name is required");
+
+      // ✅ Validate name length
+      const maxNameLength = await this._getMaxNameLength(qr);
+      if (data.name.length > maxNameLength) {
+        throw new Error(`Supplier name cannot exceed ${maxNameLength} characters`);
+      }
+
+      // ✅ Validate email format if provided
+      if (data.email && !this._isValidEmail(data.email)) {
+        throw new Error(`Invalid email format: "${data.email}"`);
+      }
+
+      // ✅ Validate phone format if provided
+      if (data.phone && !this._isValidPhone(data.phone)) {
+        throw new Error(`Invalid phone format: "${data.phone}"`);
+      }
+
+      // ✅ Validate contact info length
+      if (data.contactInfo) {
+        const maxContactLength = await this._getMaxContactInfoLength(qr);
+        if (data.contactInfo.length > maxContactLength) {
+          throw new Error(`Contact info cannot exceed ${maxContactLength} characters`);
+        }
+      }
+
+      // ✅ Validate notes length
+      if (data.notes) {
+        const maxNotesLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxNotesLength) {
+          throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
+        }
+      }
 
       // Check name uniqueness
       const existing = await repo.findOne({ where: { name: data.name } });
@@ -114,6 +239,10 @@ class SupplierService {
         }
       }
 
+      // ✅ Use system setting for default active status
+      const defaultActive = await this._getDefaultActiveStatus(qr);
+      const isActive = data.isActive !== undefined ? data.isActive : defaultActive;
+
       const supplier = repo.create({
         name: data.name,
         contactInfo: data.contactInfo || null,
@@ -121,13 +250,19 @@ class SupplierService {
         phone: data.phone || null,
         address: data.address || null,
         notes: data.notes || null,
-        isActive: data.isActive !== undefined ? data.isActive : true,
+        isActive: isActive,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
 
       const saved = await saveDb(repo, supplier, { queryRunner: qr });
-      await auditLogger.logCreate("Supplier", saved.id, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Supplier", saved.id, saved, user);
+      }
+
       logger.debug(`Supplier created: #${saved.id} - ${saved.name}`);
       return saved;
     } catch (error) {
@@ -156,27 +291,53 @@ class SupplierService {
 
       const oldData = { ...existing };
 
-      // Check name uniqueness if changed
-      if (data.name && data.name !== existing.name) {
+      // ✅ Validate name length if changed
+      if (data.name) {
+        const maxNameLength = await this._getMaxNameLength(qr);
+        if (data.name.length > maxNameLength) {
+          throw new Error(`Supplier name cannot exceed ${maxNameLength} characters`);
+        }
         const duplicate = await repo.findOne({ where: { name: data.name } });
         if (duplicate && duplicate.id !== id) {
           throw new Error(`Supplier with name "${data.name}" already exists`);
         }
       }
 
-      // Check email uniqueness if changed
+      // ✅ Validate email format if changed
       if (data.email && data.email !== existing.email) {
+        if (!this._isValidEmail(data.email)) {
+          throw new Error(`Invalid email format: "${data.email}"`);
+        }
         const duplicate = await repo.findOne({ where: { email: data.email } });
         if (duplicate && duplicate.id !== id) {
           throw new Error(`Email "${data.email}" already exists`);
         }
       }
 
-      // Check phone uniqueness if changed
+      // ✅ Validate phone format if changed
       if (data.phone && data.phone !== existing.phone) {
+        if (!this._isValidPhone(data.phone)) {
+          throw new Error(`Invalid phone format: "${data.phone}"`);
+        }
         const duplicate = await repo.findOne({ where: { phone: data.phone } });
         if (duplicate && duplicate.id !== id) {
           throw new Error(`Phone "${data.phone}" already exists`);
+        }
+      }
+
+      // ✅ Validate contact info length if changed
+      if (data.contactInfo) {
+        const maxContactLength = await this._getMaxContactInfoLength(qr);
+        if (data.contactInfo.length > maxContactLength) {
+          throw new Error(`Contact info cannot exceed ${maxContactLength} characters`);
+        }
+      }
+
+      // ✅ Validate notes length if changed
+      if (data.notes) {
+        const maxNotesLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxNotesLength) {
+          throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
         }
       }
 
@@ -189,7 +350,13 @@ class SupplierService {
       existing.updatedAt = new Date();
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("Supplier", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Supplier", id, oldData, saved, user);
+      }
+
       logger.debug(`Supplier updated: #${id}`);
       return saved;
     } catch (error) {
@@ -246,7 +413,13 @@ class SupplierService {
       supplier.updatedAt = new Date();
 
       const saved = await updateDb(repo, supplier, { queryRunner: qr });
-      await auditLogger.debugDelete("Supplier", id, oldData, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugDelete("Supplier", id, oldData, user);
+      }
+
       logger.debug(`Supplier deactivated: #${id}`);
       return saved;
     } catch (error) {
@@ -281,7 +454,13 @@ class SupplierService {
       supplier.updatedAt = new Date();
 
       const saved = await updateDb(repo, supplier, { queryRunner: qr });
-      await auditLogger.logUpdate("Supplier", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Supplier", id, oldData, saved, user);
+      }
+
       logger.debug(`Supplier restored: #${id}`);
       return saved;
     } catch (error) {
@@ -344,7 +523,13 @@ class SupplierService {
     }
 
     await removeDb(supplierRepo, supplier, { queryRunner: qr });
-    await auditLogger.debugDelete("Supplier", id, supplier, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("Supplier", id, supplier, user);
+    }
+
     logger.debug(`Supplier #${id} permanently deleted`);
   }
 
@@ -472,12 +657,20 @@ class SupplierService {
       .groupBy("supplier.id")
       .getRawMany();
 
+    // ✅ Get default active status from settings
+    const defaultActive = await this._getDefaultActiveStatus(qr);
+
+    // ✅ Get max name length from settings
+    const maxNameLength = await this._getMaxNameLength(qr);
+
     return {
       totalActive,
       totalInactive,
       suppliersWithMeats,
       topSuppliersBySpend: supplierPurchases.slice(0, 5),
       supplierBatches,
+      defaultActive,
+      maxNameLength,
     };
   }
 
@@ -532,7 +725,12 @@ class SupplierService {
         };
       }
 
-      await auditLogger.debugExport("Supplier", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("Supplier", format, filters, user);
+      }
+
       logger.debug(`Exported ${suppliers.length} suppliers in ${format} format`);
       return exportData;
     } catch (error) {
@@ -617,6 +815,114 @@ class SupplierService {
       }
     }
     return results;
+  }
+
+  /**
+   * ✅ NEW: Get supplier health summary
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getHealthSummary(qr = null) {
+    const Supplier = require("../entities/Supplier");
+    const supplierRepo = this._getRepo(qr, Supplier);
+
+    const totalActive = await supplierRepo.count({ where: { isActive: true } });
+    const totalInactive = await supplierRepo.count({ where: { isActive: false } });
+
+    // ✅ Get default active status from settings
+    const defaultActive = await this._getDefaultActiveStatus(qr);
+
+    // ✅ Count suppliers with no email
+    const noEmail = await supplierRepo
+      .createQueryBuilder("supplier")
+      .where("supplier.email IS NULL")
+      .andWhere("supplier.isActive = true")
+      .getCount();
+
+    // ✅ Count suppliers with no phone
+    const noPhone = await supplierRepo
+      .createQueryBuilder("supplier")
+      .where("supplier.phone IS NULL")
+      .andWhere("supplier.isActive = true")
+      .getCount();
+
+    // ✅ Count suppliers with no address
+    const noAddress = await supplierRepo
+      .createQueryBuilder("supplier")
+      .where("supplier.address IS NULL")
+      .andWhere("supplier.isActive = true")
+      .getCount();
+
+    const healthScore = totalActive > 0
+      ? Math.round(((totalActive - noEmail - noPhone - noAddress) / totalActive) * 100)
+      : 100;
+
+    return {
+      totalActive,
+      totalInactive,
+      noEmail,
+      noPhone,
+      noAddress,
+      defaultActive,
+      healthScore,
+    };
+  }
+
+  /**
+   * ✅ NEW: Get supplier by email
+   * @param {string} email
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async findByEmail(email, qr = null) {
+    const Supplier = require("../entities/Supplier");
+    const repo = this._getRepo(qr, Supplier);
+
+    const supplier = await repo.findOne({
+      where: { email, isActive: true },
+    });
+
+    return supplier;
+  }
+
+  /**
+   * ✅ NEW: Get supplier by phone
+   * @param {string} phone
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async findByPhone(phone, qr = null) {
+    const Supplier = require("../entities/Supplier");
+    const repo = this._getRepo(qr, Supplier);
+
+    const supplier = await repo.findOne({
+      where: { phone, isActive: true },
+    });
+
+    return supplier;
+  }
+
+  /**
+   * ✅ NEW: Get top suppliers by purchase amount
+   * @param {number} limit
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getTopSuppliers(limit = 10, qr = null) {
+    const Purchase = require("../entities/Purchase");
+    const purchaseRepo = this._getRepo(qr, Purchase);
+
+    const topSuppliers = await purchaseRepo
+      .createQueryBuilder("purchase")
+      .leftJoin("purchase.supplier", "supplier")
+      .select("supplier.id", "supplierId")
+      .addSelect("supplier.name", "supplierName")
+      .addSelect("COUNT(purchase.id)", "purchaseCount")
+      .addSelect("SUM(purchase.totalAmount)", "totalSpent")
+      .where("purchase.status = 'completed'")
+      .andWhere("supplier.isActive = true")
+      .groupBy("supplier.id")
+      .orderBy("totalSpent", "DESC")
+      .limit(limit)
+      .getRawMany();
+
+    return topSuppliers;
   }
 }
 

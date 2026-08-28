@@ -1,8 +1,7 @@
 // src/renderer/pages/analytics/returns/hooks/useReturnRefunds.ts
 import { useState, useEffect, useCallback } from "react";
-import type { ReturnRefund, ReturnStatistics } from "../../../../api/core/returnRefund";
-import returnRefundAPI from "../../../../api/core/returnRefund";
-
+import type { ReturnRefundReport, ReturnSummaryData } from "../../../../api/analytics/returnRefundReports";
+import returnRefundReportsAPI from "../../../../api/analytics/returnRefundReports";
 
 export interface ReturnFilters {
   search: string;
@@ -24,13 +23,20 @@ export interface ReturnSummary {
   avgAmount: number;
 }
 
+export interface ReturnStats {
+  statusCounts: Array<{ status: string; count: number; total: number }>;
+  topCustomers: Array<{ customerId: number; customerName: string; count: number; totalAmount: number }>;
+  totalProcessedAmount: number;
+  averageProcessedAmount: number;
+}
+
 export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
-  const [returns, setReturns] = useState<ReturnRefund[]>([]);
+  const [returns, setReturns] = useState<ReturnRefundReport[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalItems, setTotalItems] = useState(0);
   const [summary, setSummary] = useState<ReturnSummary | null>(null);
-  const [stats, setStats] = useState<ReturnStatistics | null>(null);
+  const [stats, setStats] = useState<ReturnStats | null>(null);
   const [filters, setFilters] = useState<ReturnFilters>({
     search: "",
     status: "",
@@ -52,7 +58,7 @@ export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
       setError(null);
 
       try {
-        const response = await returnRefundAPI.getAll({
+        const response = await returnRefundReportsAPI.getData({
           page,
           limit,
           status: filters.status || undefined,
@@ -60,15 +66,16 @@ export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
           customerId: filters.customerId,
           startDate: filters.startDate,
           endDate: filters.endDate,
-          search: filters.search || undefined,
           sortBy: filters.sortBy,
           sortOrder: filters.sortOrder,
+          // Note: search is not directly supported by getData; we can filter client-side if needed.
+          // Alternatively, we could add a search param in the backend, but for now we pass undefined.
         });
 
         if (response.status) {
           const data = response.data;
-          setReturns(data.items || []);
-          setTotalItems(data.total || 0);
+          setReturns(data.returns || []);
+          setTotalItems(data.pagination.total || 0);
         } else {
           throw new Error(response.message || "Failed to fetch returns");
         }
@@ -84,46 +91,64 @@ export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
     [filters]
   );
 
-  const fetchSummary = useCallback(async () => {
+  const fetchSummaryAndStats = useCallback(async () => {
     try {
-      const statsResponse = await returnRefundAPI.getStatistics();
-      if (statsResponse.status) {
-        const statsData = statsResponse.data;
-        setStats(statsData);
+      const summaryResponse = await returnRefundReportsAPI.getSummary({
+        period: "month", // You may want to make this dynamic based on filters
+        status: filters.status || undefined,
+      });
 
-        // Compute summary from stats
-        const statusCounts = statsData.statusCounts || [];
-        const pending = statusCounts.find((s) => s.status === "pending")?.count || 0;
-        const processed = statusCounts.find((s) => s.status === "processed")?.count || 0;
-        const cancelled = statusCounts.find((s) => s.status === "cancelled")?.count || 0;
-        const totalCount = pending + processed + cancelled;
-        const totalAmount = statusCounts.reduce((sum, s) => sum + (s.total || 0), 0);
+      if (summaryResponse.status) {
+        const data = summaryResponse.data as ReturnSummaryData;
+        const summaryData = data.summary;
+
+        // Compute summary fields
+        const statusBreakdown = summaryData.statusBreakdown || {};
+        const processedCount = statusBreakdown.processed || 0;
+        const pendingCount = statusBreakdown.pending || 0;
+        const cancelledCount = statusBreakdown.cancelled || 0;
 
         setSummary({
-          totalCount,
-          totalAmount,
-          processedCount: processed,
-          pendingCount: pending,
-          cancelledCount: cancelled,
-          avgAmount: totalCount > 0 ? totalAmount / totalCount : 0,
+          totalCount: summaryData.totalReturns,
+          totalAmount: summaryData.totalReturnsAmount,
+          processedCount,
+          pendingCount,
+          cancelledCount,
+          avgAmount: summaryData.avgRefund,
+        });
+
+        // Compute stats fields
+        const statusCounts = Object.entries(statusBreakdown).map(([status, count]) => ({
+          status,
+          count: count as number,
+          total: status === "processed" ? summaryData.totalReturnsAmount : 0, // approximate
+        }));
+
+        const processedAmount = statusBreakdown.processed ? summaryData.totalReturnsAmount * (processedCount / summaryData.totalReturns) : 0;
+
+        setStats({
+          statusCounts,
+          topCustomers: summaryData.topCustomers || [],
+          totalProcessedAmount: processedAmount,
+          averageProcessedAmount: summaryData.avgRefund,
         });
       }
     } catch (err) {
       console.error("Failed to fetch summary:", err);
     }
-  }, []);
+  }, [filters.status]);
 
   useEffect(() => {
     fetchReturns({ page: 1, limit: 10 });
-    fetchSummary();
-  }, [fetchReturns, fetchSummary]);
+    fetchSummaryAndStats();
+  }, [fetchReturns, fetchSummaryAndStats]);
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
       fetchReturns(options);
-      fetchSummary();
+      fetchSummaryAndStats();
     },
-    [fetchReturns, fetchSummary]
+    [fetchReturns, fetchSummaryAndStats]
   );
 
   return {

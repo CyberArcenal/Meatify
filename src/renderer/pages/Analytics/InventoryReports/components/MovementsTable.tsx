@@ -1,22 +1,14 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight, ArrowUpRight, ArrowDownRight, RefreshCw, Repeat } from 'lucide-react';
-import type { InventoryMovement } from '../../../../api/analytics/inventory_reports';
+import { ArrowUpRight, ArrowDownRight, RefreshCw, Repeat } from 'lucide-react';
+import type { InventoryMovement } from '../../../../api/core/inventoryMovement';
+
 
 interface Props {
   data: InventoryMovement[];
   loading: boolean;
-  page: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
 }
 
-const MovementsTable: React.FC<Props> = ({
-  data,
-  loading,
-  page,
-  totalPages,
-  onPageChange,
-}) => {
+const MovementsTable: React.FC<Props> = ({ data, loading }) => {
   const getMovementIcon = (type: string) => {
     switch (type) {
       case 'sale': return <ArrowDownRight className="w-4 h-4 text-[var(--status-completed)]" />;
@@ -45,27 +37,26 @@ const MovementsTable: React.FC<Props> = ({
           <thead className="sticky top-0 bg-[var(--card-bg)]">
             <tr className="border-b border-[var(--border-color)]">
               <th className="text-left py-3 px-5 text-[var(--text-secondary)] font-medium">Time</th>
-              <th className="text-left py-3 px-5 text-[var(--text-secondary)] font-medium">Product</th>
+              <th className="text-left py-3 px-5 text-[var(--text-secondary)] font-medium">Meat</th>
               <th className="text-left py-3 px-5 text-[var(--text-secondary)] font-medium">Type</th>
-              <th className="text-left py-3 px-5 text-[var(--text-secondary)] font-medium">Change</th>
+              <th className="text-left py-3 px-5 text-[var(--text-secondary)] font-medium">Qty Change</th>
               <th className="text-left py-3 px-5 text-[var(--text-secondary)] font-medium">New Stock</th>
-              <th className="text-left py-3 px-5 text-[var(--text-secondary)] font-medium">Reason</th>
             </tr>
           </thead>
           <tbody>
             {data.length === 0 ? (
-              <tr><td colSpan={6} className="py-8 text-center text-[var(--text-secondary)]">No movements found.</td></tr>
+              <tr><td colSpan={5} className="py-8 text-center text-[var(--text-secondary)]">No movements found.</td></tr>
             ) : (
               data.map(movement => (
                 <tr key={movement.id} className="border-b border-[var(--border-light)] hover:bg-[var(--card-hover-bg)]">
                   <td className="py-3 px-5 text-[var(--text-primary)]">{new Date(movement.timestamp).toLocaleString()}</td>
                   <td className="py-3 px-5 text-[var(--text-primary)] font-medium">
-                    {movement.product?.name || `Product #${movement.productId}`}
+                    {movement.meat?.name || `Meat #${movement.meatId}`}
                   </td>
                   <td className="py-3 px-5">
                     <div className="flex items-center gap-1">
-                      {getMovementIcon(movement.movementType)}
-                      <span className="capitalize">{movement.movementType}</span>
+                      {getMovementIcon(movement.type)}
+                      <span className="capitalize">{movement.type}</span>
                     </div>
                   </td>
                   <td className="py-3 px-5">
@@ -74,35 +65,12 @@ const MovementsTable: React.FC<Props> = ({
                     </span>
                   </td>
                   <td className="py-3 px-5 text-[var(--text-primary)]">{movement.newStockQty}</td>
-                  <td className="py-3 px-5 text-[var(--text-secondary)]">{movement.reason || '-'}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
-        <div className="px-5 py-3 border-t border-[var(--border-color)] flex items-center justify-between">
-          <div></div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onPageChange(page - 1)}
-              disabled={page === 1}
-              className="p-2 bg-[var(--card-secondary-bg)] text-[var(--text-secondary)] rounded-lg hover:bg-[var(--card-hover-bg)] disabled:opacity-50"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm text-[var(--text-primary)]">Page {page} of {totalPages}</span>
-            <button
-              onClick={() => onPageChange(page + 1)}
-              disabled={page === totalPages}
-              className="p-2 bg-[var(--card-secondary-bg)] text-[var(--text-secondary)] rounded-lg hover:bg-[var(--card-hover-bg)] disabled:opacity-50"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

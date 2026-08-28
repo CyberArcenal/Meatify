@@ -2,10 +2,10 @@
 import React from "react";
 import { BarChart2, Users, Calendar, PieChart } from "lucide-react";
 import Decimal from "decimal.js";
-import type { ReturnStatistics } from "../../../../api/core/returnRefund";
+import type { ReturnStats } from "../hooks/useReturnRefunds";
 
 interface StatsCardsProps {
-  stats: ReturnStatistics | null;
+  stats: ReturnStats | null;
   loading?: boolean;
 }
 
@@ -28,11 +28,11 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, loading }) => {
           <BarChart2 className="w-5 h-5 text-[var(--accent-amber)]" />
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">By Status</h3>
         </div>
-        {stats.statusCounts?.length === 0 ? (
+        {stats.statusCounts.length === 0 ? (
           <p className="text-sm text-[var(--text-tertiary)]">No data</p>
         ) : (
           <div className="space-y-2">
-            {stats.statusCounts?.map((item) => (
+            {stats.statusCounts.map((item) => (
               <div key={item.status} className="flex justify-between text-sm">
                 <span className="text-[var(--text-secondary)] capitalize">{item.status}</span>
                 <span className="text-[var(--text-primary)] font-medium">
@@ -50,17 +50,17 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, loading }) => {
           <Users className="w-5 h-5 text-[var(--accent-purple)]" />
           <h3 className="text-sm font-semibold text-[var(--text-primary)]">Top Returning Customers</h3>
         </div>
-        {stats.topCustomers?.length === 0 ? (
+        {stats.topCustomers.length === 0 ? (
           <p className="text-sm text-[var(--text-tertiary)]">No data</p>
         ) : (
           <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
-            {stats.topCustomers?.map((item) => (
+            {stats.topCustomers.map((item) => (
               <div key={item.customerId} className="flex justify-between text-sm">
                 <span className="text-[var(--text-secondary)] truncate max-w-[120px]">
                   {item.customerName}
                 </span>
                 <span className="text-[var(--accent-gold)] font-medium">
-                  {item.returnCount} ({item.totalRefunded ? `₱${new Decimal(item.totalRefunded).toFixed(2)}` : "0"})
+                  {item.count} ({item.totalAmount ? `₱${new Decimal(item.totalAmount).toFixed(2)}` : "0"})
                 </span>
               </div>
             ))}

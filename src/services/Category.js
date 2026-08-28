@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -67,6 +70,50 @@ class CategoryService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[Category] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get default active status from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _getDefaultActiveStatus(qr = null) {
+    try {
+      // ✅ Check if there's a setting for default category active status
+      // If not, default to true
+      return await system.getBool("default_category_active", SettingType.INVENTORY, true);
+    } catch (error) {
+      logger.warn(`[Category] Failed to get default active status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max category name length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxNameLength(qr = null) {
+    try {
+      return await system.getInt("max_category_name_length", SettingType.INVENTORY, 100);
+    } catch (error) {
+      logger.warn(`[Category] Failed to get max name length: ${error.message}, defaulting to 100`);
+      return 100;
+    }
+  }
+
+  /**
    * Create a new category
    * @param {Object} data - { name, description?, isActive? }
    * @param {string} user
@@ -81,22 +128,38 @@ class CategoryService {
       // Validate required fields
       if (!data.name) throw new Error("name is required");
 
+      // ✅ Validate name length
+      const maxLength = await this._getMaxNameLength(qr);
+      if (data.name.length > maxLength) {
+        throw new Error(`Category name cannot exceed ${maxLength} characters`);
+      }
+
       // Check name uniqueness
       const existing = await repo.findOne({ where: { name: data.name } });
       if (existing) {
         throw new Error(`Category with name "${data.name}" already exists`);
       }
 
+      // ✅ Use system setting for default active status
+      const defaultActive = await this._getDefaultActiveStatus(qr);
+      const isActive = data.isActive !== undefined ? data.isActive : defaultActive;
+
       const category = repo.create({
         name: data.name,
         description: data.description || null,
-        isActive: data.isActive !== undefined ? data.isActive : true,
+        isActive: isActive,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
 
       const saved = await saveDb(repo, category, { queryRunner: qr });
-      await auditLogger.logCreate("Category", saved.id, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Category", saved.id, saved, user);
+      }
+
       logger.debug(`Category created: #${saved.id} - ${saved.name}`);
       return saved;
     } catch (error) {
@@ -127,6 +190,12 @@ class CategoryService {
 
       // Check name uniqueness if changed
       if (data.name && data.name !== existing.name) {
+        // ✅ Validate name length
+        const maxLength = await this._getMaxNameLength(qr);
+        if (data.name.length > maxLength) {
+          throw new Error(`Category name cannot exceed ${maxLength} characters`);
+        }
+
         const duplicate = await repo.findOne({ where: { name: data.name } });
         if (duplicate && duplicate.id !== id) {
           throw new Error(`Category with name "${data.name}" already exists`);
@@ -142,7 +211,13 @@ class CategoryService {
       existing.updatedAt = new Date();
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("Category", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Category", id, oldData, saved, user);
+      }
+
       logger.debug(`Category updated: #${id}`);
       return saved;
     } catch (error) {
@@ -188,7 +263,13 @@ class CategoryService {
       category.updatedAt = new Date();
 
       const saved = await updateDb(repo, category, { queryRunner: qr });
-      await auditLogger.debugDelete("Category", id, oldData, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugDelete("Category", id, oldData, user);
+      }
+
       logger.debug(`Category deactivated: #${id}`);
       return saved;
     } catch (error) {
@@ -223,7 +304,13 @@ class CategoryService {
       category.updatedAt = new Date();
 
       const saved = await updateDb(repo, category, { queryRunner: qr });
-      await auditLogger.logUpdate("Category", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Category", id, oldData, saved, user);
+      }
+
       logger.debug(`Category restored: #${id}`);
       return saved;
     } catch (error) {
@@ -262,7 +349,13 @@ class CategoryService {
     }
 
     await removeDb(categoryRepo, category, { queryRunner: qr });
-    await auditLogger.debugDelete("Category", id, category, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("Category", id, category, user);
+    }
+
     logger.debug(`Category #${id} permanently deleted`);
   }
 
@@ -364,11 +457,36 @@ class CategoryService {
       where: { isActive: true },
     });
 
+    // ✅ Get threshold for empty categories
+    const emptyCategoryThreshold = await system.getInt(
+      "empty_category_threshold",
+      SettingType.INVENTORY,
+      30
+    );
+
+    // ✅ Find categories with no meats (active only)
+    const emptyCategories = await categoryRepo
+      .createQueryBuilder("category")
+      .leftJoin("category.meats", "meat")
+      .select("category.id", "id")
+      .addSelect("category.name", "name")
+      .addSelect("COUNT(meat.id)", "meatCount")
+      .where("category.isActive = true")
+      .groupBy("category.id")
+      .having("COUNT(meat.id) = 0")
+      .getRawMany();
+
     return {
       totalActive,
       totalInactive,
       totalMeats,
       categoriesWithMeats,
+      emptyCategories: emptyCategories.map(c => ({
+        id: c.id,
+        name: c.name,
+      })),
+      emptyCategoryCount: emptyCategories.length,
+      emptyCategoryThreshold,
     };
   }
 
@@ -415,7 +533,12 @@ class CategoryService {
         };
       }
 
-      await auditLogger.debugExport("Category", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("Category", format, filters, user);
+      }
+
       logger.debug(`Exported ${categories.length} categories in ${format} format`);
       return exportData;
     } catch (error) {
@@ -496,6 +619,80 @@ class CategoryService {
       }
     }
     return results;
+  }
+
+  /**
+   * ✅ NEW: Clean up empty categories (soft delete)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanEmptyCategories(user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Category = require("../entities/Category");
+    const Meat = require("../entities/Meat");
+
+    const categoryRepo = this._getRepo(qr, Category);
+    const meatRepo = this._getRepo(qr, Meat);
+
+    // ✅ Get threshold for empty categories
+    const threshold = await system.getInt(
+      "empty_category_threshold",
+      SettingType.INVENTORY,
+      30
+    );
+
+    // Find categories with no meats that are older than threshold days
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - threshold);
+
+    const emptyCategories = await categoryRepo
+      .createQueryBuilder("category")
+      .leftJoin("category.meats", "meat")
+      .select("category.id", "id")
+      .addSelect("category.name", "name")
+      .addSelect("category.createdAt", "createdAt")
+      .addSelect("COUNT(meat.id)", "meatCount")
+      .where("category.isActive = true")
+      .andWhere("category.createdAt < :cutoffDate", { cutoffDate })
+      .groupBy("category.id")
+      .having("COUNT(meat.id) = 0")
+      .getRawMany();
+
+    if (emptyCategories.length === 0) {
+      logger.info("[Category] No empty categories to clean up");
+      return { count: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const raw of emptyCategories) {
+      try {
+        const category = await categoryRepo.findOne({ where: { id: raw.id } });
+        if (category) {
+          category.isActive = false;
+          category.updatedAt = new Date();
+          await updateDb(categoryRepo, category, { queryRunner: qr, skipSignal: true });
+
+          const auditEnabled = await this._isAuditEnabled(qr);
+          if (auditEnabled) {
+            await auditLogger.logUpdate(
+              "Category",
+              category.id,
+              { isActive: true },
+              { isActive: false },
+              user
+            );
+          }
+
+          updatedCount++;
+          logger.info(`[Category] Category #${category.id} (${category.name}) deactivated (empty)`);
+        }
+      } catch (err) {
+        logger.error(`[Category] Failed to clean empty category #${raw.id}:`, err);
+      }
+    }
+
+    logger.info(`[Category] Cleaned up ${updatedCount} empty categories (older than ${threshold} days)`);
+    return { count: updatedCount };
   }
 }
 

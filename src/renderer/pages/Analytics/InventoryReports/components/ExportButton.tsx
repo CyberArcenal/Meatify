@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Download } from 'lucide-react';
-import inventoryReportsAPI from '../../../../api/analytics/inventory_reports';
+import inventoryReportsAPI from '../../../../api/analytics/inventoryReports';
 
 interface Props {
   categoryId?: number;
@@ -15,16 +15,27 @@ const ExportButton: React.FC<Props> = ({ categoryId, supplierId, startDate, endD
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await inventoryReportsAPI.exportCSV({
+      // Fetch data and generate CSV from meats list
+      const res = await inventoryReportsAPI.getData({
         categoryId,
         supplierId,
-        // Note: exportCSV doesn't accept date range per API spec, but we can add if needed.
-        // If date range needed, we may need to call generateReport and convert.
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        limit: 10000,
       });
-      if (res.status && res.data.length) {
-        const headers = Object.keys(res.data[0]).join(',');
-        const csv = res.data.map(row => Object.values(row).join(',')).join('\n');
-        const blob = new Blob([headers + '\n' + csv], { type: 'text/csv' });
+      if (res.status) {
+        const meats = res.data.meats;
+        const headers = ['ID', 'Name', 'SKU', 'Price/kg', 'Total Stock', 'Total Value'];
+        const rows = meats.map(m => [
+          m.id,
+          m.name,
+          m.sku,
+          m.pricePerKg,
+          m.inventory.totalStock,
+          m.inventory.totalValue,
+        ]);
+        const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;

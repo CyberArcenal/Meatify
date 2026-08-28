@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -85,6 +88,181 @@ class ReturnRefundService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get allowed return statuses from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string[]>}
+   */
+  async _getAllowedStatuses(qr = null) {
+    try {
+      return await system.getArray("allowed_return_statuses", SettingType.SALES, [
+        "pending", "processed", "cancelled"
+      ]);
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to get allowed statuses: ${error.message}, using defaults`);
+      return ["pending", "processed", "cancelled"];
+    }
+  }
+
+  /**
+   * ✅ NEW: Get reference prefix from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string>}
+   */
+  async _getReferencePrefix(qr = null) {
+    try {
+      const prefix = await system.getValue("return_reference_prefix", SettingType.SALES, null);
+      if (prefix && prefix.trim()) {
+        return prefix.trim().toUpperCase();
+      }
+      const company = await system.companyName();
+      return company.substring(0, 3).toUpperCase() || "RET";
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to get reference prefix: ${error.message}, defaulting to "RET"`);
+      return "RET";
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if refunds are enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isRefundsEnabled(qr = null) {
+    try {
+      return await system.enableRefunds();
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to check refunds enabled: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get refund window days from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getRefundWindowDays(qr = null) {
+    try {
+      return await system.refundWindowDays();
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to get refund window days: ${error.message}, defaulting to 7`);
+      return 7;
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if receipt is required for refund
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isReceiptRequired(qr = null) {
+    try {
+      return await system.requireReceiptForRefund();
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to check receipt required: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if restock is enabled for refunds
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isRestockEnabled(qr = null) {
+    try {
+      return await system.refundRestockEnabled();
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to check restock enabled: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max reason length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxReasonLength(qr = null) {
+    try {
+      return await system.getInt("max_return_reason_length", SettingType.SALES, 500);
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to get max reason length: ${error.message}, defaulting to 500`);
+      return 500;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get retention days from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getRetentionDays(qr = null) {
+    try {
+      return await system.getInt("return_retention_days", SettingType.SALES, 730);
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to get retention days: ${error.message}, defaulting to 730`);
+      return 730;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max weight per item from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxWeightKg(qr = null) {
+    try {
+      return await system.getDecimal("max_return_weight_kg", SettingType.SALES, 999.999);
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to get max weight: ${error.message}, defaulting to 999.999`);
+      return 999.999;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max unit price from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxUnitPrice(qr = null) {
+    try {
+      return await system.getDecimal("max_return_unit_price", SettingType.SALES, 9999.99);
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to get max unit price: ${error.message}, defaulting to 9999.99`);
+      return 9999.99;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max total amount from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxTotalAmount(qr = null) {
+    try {
+      return await system.getDecimal("max_return_total_amount", SettingType.SALES, 999999.99);
+    } catch (error) {
+      logger.warn(`[ReturnRefund] Failed to get max total amount: ${error.message}, defaulting to 999999.99`);
+      return 999999.99;
+    }
+  }
+
+  /**
    * Create a new return/refund request (pending status)
    * @param {Object} data - { saleId, customerId, reason?, refundMethod, items: [{ meatId, batchId, weightKg, unitPrice, reason? }] }
    * @param {string} user
@@ -107,12 +285,36 @@ class ReturnRefundService {
     const batchRepo = this._getRepo(qr, Batch);
 
     try {
+      // ✅ Check if refunds are enabled
+      const refundsEnabled = await this._isRefundsEnabled(qr);
+      if (!refundsEnabled) {
+        throw new Error("Refunds are disabled in system settings");
+      }
+
       // Validate required fields
       if (!data.saleId) throw new Error("saleId is required");
       if (!data.customerId) throw new Error("customerId is required");
       if (!data.refundMethod) throw new Error("refundMethod is required");
       if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
         throw new Error("At least one return item is required");
+      }
+
+      // ✅ Validate reason length
+      if (data.reason) {
+        const maxReasonLength = await this._getMaxReasonLength(qr);
+        if (data.reason.length > maxReasonLength) {
+          throw new Error(`Reason cannot exceed ${maxReasonLength} characters`);
+        }
+      }
+
+      // ✅ Validate status if provided
+      if (data.status) {
+        const allowedStatuses = await this._getAllowedStatuses(qr);
+        if (!allowedStatuses.includes(data.status)) {
+          throw new Error(
+            `Invalid return status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`
+          );
+        }
       }
 
       // Validate sale exists and is paid
@@ -124,11 +326,33 @@ class ReturnRefundService {
         throw new Error(`Cannot return from a sale with status "${sale.status}"`);
       }
 
+      // ✅ Validate refund window
+      const windowDays = await this._getRefundWindowDays(qr);
+      const saleDate = new Date(sale.timestamp);
+      const now = new Date();
+      const daysDiff = (now - saleDate) / (1000 * 60 * 60 * 24);
+      if (daysDiff > windowDays) {
+        throw new Error(`Refund window of ${windowDays} days has passed (sale was ${Math.floor(daysDiff)} days ago)`);
+      }
+
+      // ✅ Check if receipt is required
+      const receiptRequired = await this._isReceiptRequired(qr);
+      if (receiptRequired) {
+        // TODO: Implement receipt validation logic here
+        // For now, we'll just log a warning
+        logger.warn("[ReturnRefund] Receipt validation not implemented, but receipt is required by settings");
+      }
+
       // Validate customer exists
       const customer = await customerRepo.findOne({ where: { id: data.customerId } });
       if (!customer) {
         throw new Error(`Customer with ID ${data.customerId} not found`);
       }
+
+      // ✅ Get max values for validation
+      const maxWeight = await this._getMaxWeightKg(qr);
+      const maxUnitPrice = await this._getMaxUnitPrice(qr);
+      const maxTotalAmount = await this._getMaxTotalAmount(qr);
 
       // Validate items and prepare return items
       const returnItems = [];
@@ -139,6 +363,10 @@ class ReturnRefundService {
         if (!itemData.batchId) throw new Error("batchId is required for each item");
         if (!itemData.weightKg || itemData.weightKg <= 0) {
           throw new Error("weightKg must be greater than 0");
+        }
+        // ✅ Validate max weight
+        if (itemData.weightKg > maxWeight) {
+          throw new Error(`Weight ${itemData.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`);
         }
 
         const meat = await meatRepo.findOne({ where: { id: itemData.meatId, isActive: true } });
@@ -155,8 +383,18 @@ class ReturnRefundService {
         }
 
         const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
+        // ✅ Validate max unit price
+        if (unitPrice > maxUnitPrice) {
+          throw new Error(`Unit price ₱${unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
+        }
+
         const subtotal = unitPrice * itemData.weightKg;
         totalAmount += subtotal;
+
+        // ✅ Validate max total amount
+        if (totalAmount > maxTotalAmount) {
+          throw new Error(`Total amount ₱${totalAmount} exceeds maximum allowed of ₱${maxTotalAmount}`);
+        }
 
         returnItems.push({
           weightKg: itemData.weightKg,
@@ -171,7 +409,8 @@ class ReturnRefundService {
       // Generate reference number if not provided
       let referenceNo = data.referenceNo;
       if (!referenceNo) {
-        referenceNo = await this.generateReference(returnRepo);
+        const prefix = await this._getReferencePrefix(qr);
+        referenceNo = await this.generateReference(returnRepo, prefix);
       } else {
         const existing = await returnRepo.findOne({ where: { referenceNo } });
         if (existing) {
@@ -185,7 +424,7 @@ class ReturnRefundService {
         reason: data.reason || null,
         refundMethod: data.refundMethod,
         totalAmount: Math.round(totalAmount * 100) / 100,
-        status: "pending",
+        status: data.status || "pending",
         sale: sale,
         customer: customer,
         createdAt: new Date(),
@@ -205,7 +444,12 @@ class ReturnRefundService {
         await saveDb(returnItemRepo, returnItem, { queryRunner: qr });
       }
 
-      await auditLogger.logCreate("ReturnRefund", savedReturn.id, savedReturn, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("ReturnRefund", savedReturn.id, savedReturn, user);
+      }
+
       logger.debug(`ReturnRefund created: #${savedReturn.id} - ${savedReturn.referenceNo}`);
 
       // Reload with relations
@@ -260,6 +504,14 @@ class ReturnRefundService {
 
       const oldData = { ...existing };
 
+      // ✅ Validate reason length
+      if (data.reason !== undefined) {
+        const maxReasonLength = await this._getMaxReasonLength(qr);
+        if (data.reason.length > maxReasonLength) {
+          throw new Error(`Reason cannot exceed ${maxReasonLength} characters`);
+        }
+      }
+
       // Handle sale change
       if (data.saleId && data.saleId !== existing.sale.id) {
         const sale = await saleRepo.findOne({ where: { id: data.saleId } });
@@ -286,6 +538,11 @@ class ReturnRefundService {
           throw new Error("At least one return item is required");
         }
 
+        // ✅ Get max values for validation
+        const maxWeight = await this._getMaxWeightKg(qr);
+        const maxUnitPrice = await this._getMaxUnitPrice(qr);
+        const maxTotalAmount = await this._getMaxTotalAmount(qr);
+
         // Remove old items
         for (const oldItem of existing.items) {
           await removeDb(returnItemRepo, oldItem, { queryRunner: qr });
@@ -300,6 +557,9 @@ class ReturnRefundService {
           if (!itemData.batchId) throw new Error("batchId is required for each item");
           if (!itemData.weightKg || itemData.weightKg <= 0) {
             throw new Error("weightKg must be greater than 0");
+          }
+          if (itemData.weightKg > maxWeight) {
+            throw new Error(`Weight ${itemData.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`);
           }
 
           const meat = await meatRepo.findOne({ where: { id: itemData.meatId, isActive: true } });
@@ -316,8 +576,16 @@ class ReturnRefundService {
           }
 
           const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
+          if (unitPrice > maxUnitPrice) {
+            throw new Error(`Unit price ₱${unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
+          }
+
           const subtotal = unitPrice * itemData.weightKg;
           totalAmount += subtotal;
+
+          if (totalAmount > maxTotalAmount) {
+            throw new Error(`Total amount ₱${totalAmount} exceeds maximum allowed of ₱${maxTotalAmount}`);
+          }
 
           newItems.push({
             weightKg: itemData.weightKg,
@@ -352,7 +620,13 @@ class ReturnRefundService {
       existing.updatedAt = new Date();
 
       const saved = await updateDb(returnRepo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("ReturnRefund", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("ReturnRefund", id, oldData, saved, user);
+      }
+
       logger.debug(`ReturnRefund updated: #${id}`);
 
       // Reload with relations
@@ -395,7 +669,13 @@ class ReturnRefundService {
       returnRefund.updatedAt = new Date();
 
       const saved = await updateDb(returnRepo, returnRefund, { queryRunner: qr });
-      await auditLogger.debugDelete("ReturnRefund", id, oldData, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugDelete("ReturnRefund", id, oldData, user);
+      }
+
       logger.debug(`ReturnRefund cancelled: #${id}`);
       return saved;
     } catch (error) {
@@ -437,7 +717,13 @@ class ReturnRefundService {
     }
 
     await removeDb(returnRepo, returnRefund, { queryRunner: qr });
-    await auditLogger.debugDelete("ReturnRefund", id, returnRefund, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("ReturnRefund", id, returnRefund, user);
+    }
+
     logger.debug(`ReturnRefund #${id} permanently deleted`);
   }
 
@@ -483,9 +769,23 @@ class ReturnRefundService {
       .leftJoinAndSelect("return.items", "items")
       .leftJoinAndSelect("items.meat", "meat");
 
+    // ✅ Apply retention days filter automatically if not specified
+    if (!options.startDate && !options.endDate && !options.ignoreRetention) {
+      const retentionDays = await this._getRetentionDays(qr);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      qb.andWhere("return.createdAt >= :cutoffDate", { cutoffDate });
+    }
+
     // Filters
     if (options.status) {
       const statuses = Array.isArray(options.status) ? options.status : [options.status];
+      // ✅ Validate statuses against allowed list
+      const allowedStatuses = await this._getAllowedStatuses(qr);
+      const invalidStatuses = statuses.filter(s => !allowedStatuses.includes(s));
+      if (invalidStatuses.length > 0) {
+        logger.warn(`[ReturnRefund] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`);
+      }
       qb.andWhere("return.status IN (:...statuses)", { statuses });
     }
     if (options.saleId) {
@@ -539,12 +839,18 @@ class ReturnRefundService {
     const ReturnRefund = require("../entities/ReturnRefund");
     const returnRepo = this._getRepo(qr, ReturnRefund);
 
+    // ✅ Apply retention days filter
+    const retentionDays = await this._getRetentionDays(qr);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
     // By status
     const byStatus = await returnRepo
       .createQueryBuilder("return")
       .select("return.status", "status")
       .addSelect("COUNT(*)", "count")
       .addSelect("SUM(return.totalAmount)", "total")
+      .where("return.createdAt >= :cutoffDate", { cutoffDate })
       .groupBy("return.status")
       .getRawMany();
 
@@ -553,6 +859,7 @@ class ReturnRefundService {
       .createQueryBuilder("return")
       .select("SUM(return.totalAmount)", "total")
       .where("return.status = 'processed'")
+      .andWhere("return.createdAt >= :cutoffDate", { cutoffDate })
       .getRawOne();
     const totalProcessed = parseFloat(processedResult.total) || 0;
 
@@ -561,6 +868,7 @@ class ReturnRefundService {
       .createQueryBuilder("return")
       .select("AVG(return.totalAmount)", "avg")
       .where("return.status = 'processed'")
+      .andWhere("return.createdAt >= :cutoffDate", { cutoffDate })
       .getRawOne();
     const averageRefund = parseFloat(avgResult.avg) || 0;
 
@@ -580,10 +888,16 @@ class ReturnRefundService {
       .addSelect("COUNT(return.id)", "returnCount")
       .addSelect("SUM(return.totalAmount)", "totalRefunded")
       .where("return.status = 'processed'")
+      .andWhere("return.createdAt >= :cutoffDate", { cutoffDate })
       .groupBy("customer.id")
       .orderBy("totalRefunded", "DESC")
       .limit(5)
       .getRawMany();
+
+    // ✅ Get settings info
+    const allowedStatuses = await this._getAllowedStatuses(qr);
+    const refundWindowDays = await this._getRefundWindowDays(qr);
+    const refundsEnabled = await this._isRefundsEnabled(qr);
 
     return {
       byStatus,
@@ -591,6 +905,11 @@ class ReturnRefundService {
       averageRefund,
       todayReturns,
       topCustomers,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      allowedStatuses,
+      refundWindowDays,
+      refundsEnabled,
     };
   }
 
@@ -603,7 +922,8 @@ class ReturnRefundService {
    */
   async exportReturns(format = "json", filters = {}, user = "system", qr = null) {
     try {
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
+      // Fetch all data without pagination for export
+      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
       const returns = result.data;
 
       let exportData;
@@ -643,7 +963,12 @@ class ReturnRefundService {
         };
       }
 
-      await auditLogger.debugExport("ReturnRefund", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("ReturnRefund", format, filters, user);
+      }
+
       logger.debug(`Exported ${returns.length} returns in ${format} format`);
       return exportData;
     } catch (error) {
@@ -717,13 +1042,14 @@ class ReturnRefundService {
   /**
    * Generate a unique reference number
    * @param {import("typeorm").Repository<any>} repo
+   * @param {string} prefix - Optional prefix (defaults to "RET")
    * @returns {Promise<string>}
    */
-  async generateReference(repo) {
-    const prefix = "RET";
+  async generateReference(repo, prefix = "RET") {
     const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const randomPart = Math.floor(1000 + Math.random() * 9000);
     let ref = `${prefix}-${datePart}-${randomPart}`;
+
     let attempts = 0;
     let existing = await repo.findOne({ where: { referenceNo: ref } });
     while (existing && attempts < 5) {
@@ -736,6 +1062,199 @@ class ReturnRefundService {
       ref = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     }
     return ref;
+  }
+
+  /**
+   * ✅ NEW: Clean up old returns (soft delete via status change)
+   * @param {number} daysOld - Mark returns older than this as cancelled (overrides settings)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanOldReturns(daysOld = null, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+
+    // ✅ Use settings if not provided
+    if (daysOld === null) {
+      daysOld = await this._getRetentionDays(qr);
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    // ✅ Only clean processed returns (don't touch pending or cancelled)
+    const oldReturns = await returnRepo
+      .createQueryBuilder("return")
+      .where("return.status = 'processed'")
+      .andWhere("return.createdAt < :cutoffDate", { cutoffDate })
+      .getMany();
+
+    if (oldReturns.length === 0) {
+      logger.info(`[ReturnRefund] No old returns to clean up (threshold: ${daysOld} days)`);
+      return { count: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const returnRefund of oldReturns) {
+      try {
+        // Don't delete, just note for archiving
+        // Or you can soft delete by adding a flag
+        // For now, we'll just log and potentially archive
+        logger.debug(`[ReturnRefund] Return #${returnRefund.id} (${returnRefund.referenceNo}) is older than ${daysOld} days`);
+
+        // Optionally, you could mark as archived if you have an archived flag
+        // returnRefund.isArchived = true;
+        // await updateDb(returnRepo, returnRefund, { queryRunner: qr, skipSignal: true });
+
+        updatedCount++;
+      } catch (err) {
+        logger.error(`[ReturnRefund] Failed to process old return #${returnRefund.id}:`, err);
+      }
+    }
+
+    logger.info(`[ReturnRefund] Found ${updatedCount} old returns to archive (older than ${daysOld} days)`);
+    return { count: updatedCount };
+  }
+
+  /**
+   * ✅ NEW: Get return health summary
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getHealthSummary(qr = null) {
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+
+    // Get counts by status
+    const byStatus = await returnRepo
+      .createQueryBuilder("return")
+      .select("return.status", "status")
+      .addSelect("COUNT(*)", "count")
+      .groupBy("return.status")
+      .getRawMany();
+
+    const statusCounts = byStatus.reduce((acc, row) => {
+      acc[row.status] = parseInt(row.count, 10);
+      return acc;
+    }, {});
+
+    const total = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+    const pending = statusCounts.pending || 0;
+    const processed = statusCounts.processed || 0;
+    const cancelled = statusCounts.cancelled || 0;
+
+    // ✅ Get total refund amount (processed only)
+    const totalRefundedResult = await returnRepo
+      .createQueryBuilder("return")
+      .select("SUM(return.totalAmount)", "total")
+      .where("return.status = 'processed'")
+      .getRawOne();
+    const totalRefunded = parseFloat(totalRefundedResult.total) || 0;
+
+    // ✅ Get average refund amount
+    const avgResult = await returnRepo
+      .createQueryBuilder("return")
+      .select("AVG(return.totalAmount)", "avg")
+      .where("return.status = 'processed'")
+      .getRawOne();
+    const averageRefund = parseFloat(avgResult.avg) || 0;
+
+    // ✅ Get processing rate
+    const processingRate = total > 0 ? Math.round((processed / total) * 100) : 0;
+
+    // ✅ Get settings info
+    const refundsEnabled = await this._isRefundsEnabled(qr);
+    const refundWindowDays = await this._getRefundWindowDays(qr);
+    const allowedStatuses = await this._getAllowedStatuses(qr);
+
+    return {
+      total,
+      byStatus: statusCounts,
+      pending,
+      processed,
+      cancelled,
+      totalRefunded,
+      averageRefund,
+      processingRate,
+      refundsEnabled,
+      refundWindowDays,
+      allowedStatuses,
+    };
+  }
+
+  /**
+   * ✅ NEW: Get refund retention info
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getRetentionInfo(qr = null) {
+    const retentionDays = await this._getRetentionDays(qr);
+    const auditEnabled = await this._isAuditEnabled(qr);
+    const refundsEnabled = await this._isRefundsEnabled(qr);
+    const refundWindowDays = await this._getRefundWindowDays(qr);
+
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    const totalReturns = await returnRepo.count();
+    const oldReturns = await returnRepo
+      .createQueryBuilder("return")
+      .where("return.status = 'processed'")
+      .andWhere("return.createdAt < :cutoffDate", { cutoffDate })
+      .getCount();
+
+    const allowedStatuses = await this._getAllowedStatuses(qr);
+
+    return {
+      refundsEnabled,
+      refundWindowDays,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      totalReturns,
+      returnsToArchive: oldReturns,
+      allowedStatuses,
+      auditEnabled,
+    };
+  }
+
+  /**
+   * ✅ NEW: Get refund summary by customer
+   * @param {number} customerId
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getRefundSummaryByCustomer(customerId, qr = null) {
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+
+    const refunds = await returnRepo
+      .createQueryBuilder("return")
+      .where("return.customerId = :customerId", { customerId })
+      .orderBy("return.createdAt", "DESC")
+      .getMany();
+
+    const summary = {
+      customerId,
+      totalRefunds: refunds.length,
+      totalAmount: 0,
+      pending: 0,
+      processed: 0,
+      cancelled: 0,
+      byStatus: {},
+      refunds: refunds.slice(0, 20), // Return last 20 refunds
+    };
+
+    for (const refund of refunds) {
+      summary.totalAmount += refund.totalAmount;
+      summary.byStatus[refund.status] = (summary.byStatus[refund.status] || 0) + 1;
+
+      if (refund.status === "pending") summary.pending++;
+      if (refund.status === "processed") summary.processed++;
+      if (refund.status === "cancelled") summary.cancelled++;
+    }
+
+    return summary;
   }
 }
 

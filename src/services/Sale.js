@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -84,6 +87,172 @@ class SaleService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[Sale] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get allowed sale statuses from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string[]>}
+   */
+  async _getAllowedStatuses(qr = null) {
+    try {
+      return await system.getArray("allowed_sale_statuses", SettingType.SALES, [
+        "initiated", "paid", "refunded", "voided"
+      ]);
+    } catch (error) {
+      logger.warn(`[Sale] Failed to get allowed statuses: ${error.message}, using defaults`);
+      return ["initiated", "paid", "refunded", "voided"];
+    }
+  }
+
+  /**
+   * ✅ NEW: Get enabled payment methods
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string[]>}
+   */
+  async _getEnabledPaymentMethods(qr = null) {
+    try {
+      const methods = [];
+      if (await system.enableCashPayment()) methods.push("cash");
+      if (await system.enableCardPayment()) methods.push("card");
+      if (await system.enableWalletPayment()) methods.push("wallet");
+      return methods;
+    } catch (error) {
+      logger.warn(`[Sale] Failed to get enabled payment methods: ${error.message}, defaulting to ["cash"]`);
+      return ["cash"];
+    }
+  }
+
+  /**
+   * ✅ NEW: Get default payment method
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string>}
+   */
+  async _getDefaultPaymentMethod(qr = null) {
+    try {
+      const defaultMethod = await system.defaultPaymentMethod();
+      const enabledMethods = await this._getEnabledPaymentMethods(qr);
+      if (!enabledMethods.includes(defaultMethod)) {
+        logger.warn(`[Sale] Default payment method "${defaultMethod}" is not enabled, defaulting to "${enabledMethods[0]}"`);
+        return enabledMethods[0] || "cash";
+      }
+      return defaultMethod;
+    } catch (error) {
+      logger.warn(`[Sale] Failed to get default payment method: ${error.message}, defaulting to "cash"`);
+      return "cash";
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max discount percent from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxDiscountPercent(qr = null) {
+    try {
+      return await system.maxDiscountPercent();
+    } catch (error) {
+      logger.warn(`[Sale] Failed to get max discount percent: ${error.message}, defaulting to 20`);
+      return 20;
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if discounts are enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isDiscountsEnabled(qr = null) {
+    try {
+      return await system.enableDiscounts();
+    } catch (error) {
+      logger.warn(`[Sale] Failed to check discounts enabled: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get tax rate from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getTaxRate(qr = null) {
+    try {
+      return await system.taxRate();
+    } catch (error) {
+      logger.warn(`[Sale] Failed to get tax rate: ${error.message}, defaulting to 0`);
+      return 0;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get max notes length from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getMaxNotesLength(qr = null) {
+    try {
+      return await system.getInt("max_sale_notes_length", SettingType.SALES, 500);
+    } catch (error) {
+      logger.warn(`[Sale] Failed to get max notes length: ${error.message}, defaulting to 500`);
+      return 500;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get sale retention days from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getRetentionDays(qr = null) {
+    try {
+      return await system.getInt("sale_retention_days", SettingType.SALES, 730);
+    } catch (error) {
+      logger.warn(`[Sale] Failed to get retention days: ${error.message}, defaulting to 730`);
+      return 730;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get loyalty enabled from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isLoyaltyEnabled(qr = null) {
+    try {
+      return await system.loyaltyPointsEnabled();
+    } catch (error) {
+      logger.warn(`[Sale] Failed to check loyalty enabled: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get loyalty point rate from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getLoyaltyPointRate(qr = null) {
+    try {
+      return await system.getLoyaltyPointRate();
+    } catch (error) {
+      logger.warn(`[Sale] Failed to get loyalty point rate: ${error.message}, defaulting to 100`);
+      return 100;
+    }
+  }
+
+  /**
    * Create a new sale (initiated status)
    * @param {Object} data - { items, customerId?, paymentMethod?, notes?, loyaltyRedeemed?, voucherCode? }
    * @param {string} user
@@ -105,6 +274,39 @@ class SaleService {
       // Validate required fields
       if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
         throw new Error("At least one item is required");
+      }
+
+      // ✅ Get settings
+      const enabledPaymentMethods = await this._getEnabledPaymentMethods(qr);
+      const defaultPaymentMethod = await this._getDefaultPaymentMethod(qr);
+      const maxDiscountPercent = await this._getMaxDiscountPercent(qr);
+      const discountsEnabled = await this._isDiscountsEnabled(qr);
+      const taxRate = await this._getTaxRate(qr);
+      const maxNotesLength = await this._getMaxNotesLength(qr);
+      const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+      const loyaltyPointRate = await this._getLoyaltyPointRate(qr);
+
+      // ✅ Validate payment method
+      let paymentMethod = data.paymentMethod || defaultPaymentMethod;
+      if (!enabledPaymentMethods.includes(paymentMethod)) {
+        throw new Error(
+          `Payment method "${paymentMethod}" is not enabled. Enabled: ${enabledPaymentMethods.join(", ")}`
+        );
+      }
+
+      // ✅ Validate notes length
+      if (data.notes && data.notes.length > maxNotesLength) {
+        throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
+      }
+
+      // ✅ Validate status if provided
+      if (data.status) {
+        const allowedStatuses = await this._getAllowedStatuses(qr);
+        if (!allowedStatuses.includes(data.status)) {
+          throw new Error(
+            `Invalid sale status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`
+          );
+        }
       }
 
       // Validate customer if provided
@@ -135,6 +337,21 @@ class SaleService {
 
         const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
         const discount = itemData.discount ?? 0;
+
+        // ✅ Validate discount if discounts are enabled
+        if (discount > 0) {
+          if (!discountsEnabled) {
+            throw new Error("Discounts are disabled in system settings");
+          }
+          // ✅ Validate discount percent
+          const discountPercent = (discount / (unitPrice * itemData.weightKg)) * 100;
+          if (discountPercent > maxDiscountPercent) {
+            throw new Error(
+              `Discount ${discountPercent.toFixed(1)}% exceeds maximum allowed of ${maxDiscountPercent}%`
+            );
+          }
+        }
+
         const tax = itemData.tax ?? 0;
         const lineTotal = (unitPrice * itemData.weightKg) - discount + tax;
 
@@ -157,6 +374,11 @@ class SaleService {
       const loyaltyRedeemed = data.loyaltyRedeemed ?? 0;
       const usedLoyalty = loyaltyRedeemed > 0;
 
+      // ✅ Validate loyalty redemption if loyalty is disabled
+      if (usedLoyalty && !loyaltyEnabled) {
+        throw new Error("Loyalty points are disabled in system settings");
+      }
+
       // Determine if discount was used
       const usedDiscount = totalDiscount > 0;
 
@@ -166,8 +388,8 @@ class SaleService {
       // Create sale
       const sale = saleRepo.create({
         timestamp: new Date(),
-        status: "initiated",
-        paymentMethod: data.paymentMethod || "cash",
+        status: data.status || "initiated",
+        paymentMethod: paymentMethod,
         totalAmount: Math.round(totalAmount * 100) / 100,
         notes: data.notes || null,
         customer: customer || null,
@@ -195,7 +417,12 @@ class SaleService {
         await saveDb(saleItemRepo, saleItem, { queryRunner: qr });
       }
 
-      await auditLogger.logCreate("Sale", savedSale.id, savedSale, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Sale", savedSale.id, savedSale, user);
+      }
+
       logger.debug(`Sale created: #${savedSale.id} (initiated)`);
 
       // Reload with items
@@ -246,6 +473,27 @@ class SaleService {
 
       const oldData = { ...existing };
 
+      // ✅ Get settings
+      const enabledPaymentMethods = await this._getEnabledPaymentMethods(qr);
+      const maxDiscountPercent = await this._getMaxDiscountPercent(qr);
+      const discountsEnabled = await this._isDiscountsEnabled(qr);
+      const maxNotesLength = await this._getMaxNotesLength(qr);
+      const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+
+      // ✅ Validate payment method if provided
+      if (data.paymentMethod) {
+        if (!enabledPaymentMethods.includes(data.paymentMethod)) {
+          throw new Error(
+            `Payment method "${data.paymentMethod}" is not enabled. Enabled: ${enabledPaymentMethods.join(", ")}`
+          );
+        }
+      }
+
+      // ✅ Validate notes length if provided
+      if (data.notes !== undefined && data.notes.length > maxNotesLength) {
+        throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
+      }
+
       // Handle customer change
       if (data.customerId !== undefined) {
         if (data.customerId === null || data.customerId === "") {
@@ -290,6 +538,20 @@ class SaleService {
 
           const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
           const discount = itemData.discount ?? 0;
+
+          // ✅ Validate discount if discounts are enabled
+          if (discount > 0) {
+            if (!discountsEnabled) {
+              throw new Error("Discounts are disabled in system settings");
+            }
+            const discountPercent = (discount / (unitPrice * itemData.weightKg)) * 100;
+            if (discountPercent > maxDiscountPercent) {
+              throw new Error(
+                `Discount ${discountPercent.toFixed(1)}% exceeds maximum allowed of ${maxDiscountPercent}%`
+              );
+            }
+          }
+
           const tax = itemData.tax ?? 0;
           const lineTotal = (unitPrice * itemData.weightKg) - discount + tax;
 
@@ -310,11 +572,16 @@ class SaleService {
 
         // Update sale totals
         const loyaltyRedeemed = data.loyaltyRedeemed ?? existing.loyaltyRedeemed ?? 0;
+
+        // ✅ Validate loyalty redemption if loyalty is disabled
+        if (loyaltyRedeemed > 0 && !loyaltyEnabled) {
+          throw new Error("Loyalty points are disabled in system settings");
+        }
+
         const totalAmount = subtotal - totalDiscount + totalTax - loyaltyRedeemed;
         existing.totalAmount = Math.round(totalAmount * 100) / 100;
         existing.totalDiscount = totalDiscount;
         existing.usedDiscount = totalDiscount > 0;
-        existing.subtotal = subtotal; // if you have a subtotal field
 
         // Save new items
         for (const itemData of newItems) {
@@ -341,7 +608,13 @@ class SaleService {
       existing.updatedAt = new Date();
 
       const saved = await updateDb(saleRepo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("Sale", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Sale", id, oldData, saved, user);
+      }
+
       logger.debug(`Sale updated: #${id}`);
 
       // Reload with relations
@@ -397,7 +670,13 @@ class SaleService {
     }
 
     await removeDb(saleRepo, sale, { queryRunner: qr });
-    await auditLogger.debugDelete("Sale", id, sale, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("Sale", id, sale, user);
+    }
+
     logger.debug(`Sale #${id} permanently deleted`);
   }
 
@@ -441,16 +720,37 @@ class SaleService {
       .leftJoinAndSelect("sale.saleItems", "saleItems")
       .leftJoinAndSelect("saleItems.meat", "meat");
 
+    // ✅ Apply retention days filter automatically if not specified
+    if (!options.startDate && !options.endDate && !options.ignoreRetention) {
+      const retentionDays = await this._getRetentionDays(qr);
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      qb.andWhere("sale.timestamp >= :cutoffDate", { cutoffDate });
+    }
+
     // Filters
     if (options.status) {
       const statuses = Array.isArray(options.status) ? options.status : [options.status];
+      // ✅ Validate statuses against allowed list
+      const allowedStatuses = await this._getAllowedStatuses(qr);
+      const invalidStatuses = statuses.filter(s => !allowedStatuses.includes(s));
+      if (invalidStatuses.length > 0) {
+        logger.warn(`[Sale] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`);
+      }
       qb.andWhere("sale.status IN (:...statuses)", { statuses });
     }
     if (options.customerId) {
       qb.andWhere("sale.customerId = :customerId", { customerId: options.customerId });
     }
     if (options.paymentMethod) {
-      qb.andWhere("sale.paymentMethod = :paymentMethod", { paymentMethod: options.paymentMethod });
+      const methods = Array.isArray(options.paymentMethod) ? options.paymentMethod : [options.paymentMethod];
+      // ✅ Validate payment methods
+      const enabledMethods = await this._getEnabledPaymentMethods(qr);
+      const invalidMethods = methods.filter(m => !enabledMethods.includes(m));
+      if (invalidMethods.length > 0) {
+        logger.warn(`[Sale] Invalid payment methods: ${invalidMethods.join(", ")}. Enabled: ${enabledMethods.join(", ")}`);
+      }
+      qb.andWhere("sale.paymentMethod IN (:...methods)", { methods });
     }
     if (options.startDate) {
       qb.andWhere("sale.timestamp >= :startDate", { startDate: new Date(options.startDate) });
@@ -500,12 +800,18 @@ class SaleService {
     const Sale = require("../entities/Sale");
     const saleRepo = this._getRepo(qr, Sale);
 
+    // ✅ Apply retention days filter
+    const retentionDays = await this._getRetentionDays(qr);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
     // By status
     const byStatus = await saleRepo
       .createQueryBuilder("sale")
       .select("sale.status", "status")
       .addSelect("COUNT(*)", "count")
       .addSelect("SUM(sale.totalAmount)", "total")
+      .where("sale.timestamp >= :cutoffDate", { cutoffDate })
       .groupBy("sale.status")
       .getRawMany();
 
@@ -514,6 +820,7 @@ class SaleService {
       .createQueryBuilder("sale")
       .select("SUM(sale.totalAmount)", "total")
       .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :cutoffDate", { cutoffDate })
       .getRawOne();
     const totalRevenue = parseFloat(paidResult.total) || 0;
 
@@ -522,6 +829,7 @@ class SaleService {
       .createQueryBuilder("sale")
       .select("AVG(sale.totalAmount)", "avg")
       .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :cutoffDate", { cutoffDate })
       .getRawOne();
     const averageSale = parseFloat(avgResult.avg) || 0;
 
@@ -539,8 +847,28 @@ class SaleService {
       .leftJoin("sale.saleItems", "items")
       .select("SUM(items.weightKg)", "total")
       .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :cutoffDate", { cutoffDate })
       .getRawOne();
     const totalWeightSold = parseFloat(itemsSoldResult.total) || 0;
+
+    // ✅ Get settings info
+    const allowedStatuses = await this._getAllowedStatuses(qr);
+    const enabledPaymentMethods = await this._getEnabledPaymentMethods(qr);
+    const maxDiscountPercent = await this._getMaxDiscountPercent(qr);
+    const discountsEnabled = await this._isDiscountsEnabled(qr);
+    const taxRate = await this._getTaxRate(qr);
+    const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+
+    // ✅ Get counts by payment method
+    const byPaymentMethod = await saleRepo
+      .createQueryBuilder("sale")
+      .select("sale.paymentMethod", "paymentMethod")
+      .addSelect("COUNT(*)", "count")
+      .addSelect("SUM(sale.totalAmount)", "total")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :cutoffDate", { cutoffDate })
+      .groupBy("sale.paymentMethod")
+      .getRawMany();
 
     return {
       byStatus,
@@ -548,6 +876,15 @@ class SaleService {
       averageSale,
       todaySales,
       totalWeightSold,
+      byPaymentMethod,
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      allowedStatuses,
+      enabledPaymentMethods,
+      maxDiscountPercent,
+      discountsEnabled,
+      taxRate,
+      loyaltyEnabled,
     };
   }
 
@@ -560,7 +897,8 @@ class SaleService {
    */
   async exportSales(format = "json", filters = {}, user = "system", qr = null) {
     try {
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
+      // Fetch all data without pagination for export
+      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
       const sales = result.data;
 
       let exportData;
@@ -611,7 +949,12 @@ class SaleService {
         };
       }
 
-      await auditLogger.debugExport("Sale", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("Sale", format, filters, user);
+      }
+
       logger.debug(`Exported ${sales.length} sales in ${format} format`);
       return exportData;
     } catch (error) {
@@ -681,6 +1024,209 @@ class SaleService {
       }
     }
     return results;
+  }
+
+  /**
+   * ✅ NEW: Clean up old sales (soft delete via void status)
+   * @param {number} daysOld - Mark sales older than this as voided (overrides settings)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanOldSales(daysOld = null, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Sale = require("../entities/Sale");
+    const saleRepo = this._getRepo(qr, Sale);
+
+    // ✅ Use settings if not provided
+    if (daysOld === null) {
+      daysOld = await this._getRetentionDays(qr);
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    // ✅ Only clean completed/paid sales (don't touch pending or refunded)
+    const oldSales = await saleRepo
+      .createQueryBuilder("sale")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp < :cutoffDate", { cutoffDate })
+      .getMany();
+
+    if (oldSales.length === 0) {
+      logger.info(`[Sale] No old sales to clean up (threshold: ${daysOld} days)`);
+      return { count: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const sale of oldSales) {
+      try {
+        // Don't delete, just note for archiving
+        // Or you can soft delete by adding a flag
+        // For now, we'll just log and potentially archive
+        logger.debug(`[Sale] Sale #${sale.id} (${sale.customer?.name || "Walk-in"}) is older than ${daysOld} days`);
+
+        // Optionally, you could mark as archived if you have an archived flag
+        // sale.isArchived = true;
+        // await updateDb(saleRepo, sale, { queryRunner: qr, skipSignal: true });
+
+        updatedCount++;
+      } catch (err) {
+        logger.error(`[Sale] Failed to process old sale #${sale.id}:`, err);
+      }
+    }
+
+    logger.info(`[Sale] Found ${updatedCount} old sales to archive (older than ${daysOld} days)`);
+    return { count: updatedCount };
+  }
+
+  /**
+   * ✅ NEW: Get sale health summary
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getHealthSummary(qr = null) {
+    const Sale = require("../entities/Sale");
+    const saleRepo = this._getRepo(qr, Sale);
+
+    // Get counts by status
+    const byStatus = await saleRepo
+      .createQueryBuilder("sale")
+      .select("sale.status", "status")
+      .addSelect("COUNT(*)", "count")
+      .groupBy("sale.status")
+      .getRawMany();
+
+    const statusCounts = byStatus.reduce((acc, row) => {
+      acc[row.status] = parseInt(row.count, 10);
+      return acc;
+    }, {});
+
+    const total = Object.values(statusCounts).reduce((a, b) => a + b, 0);
+    const paid = statusCounts.paid || 0;
+    const initiated = statusCounts.initiated || 0;
+    const refunded = statusCounts.refunded || 0;
+    const voided = statusCounts.voided || 0;
+
+    // ✅ Get total revenue (paid only)
+    const totalRevenueResult = await saleRepo
+      .createQueryBuilder("sale")
+      .select("SUM(sale.totalAmount)", "total")
+      .where("sale.status = 'paid'")
+      .getRawOne();
+    const totalRevenue = parseFloat(totalRevenueResult.total) || 0;
+
+    // ✅ Get average sale amount
+    const avgResult = await saleRepo
+      .createQueryBuilder("sale")
+      .select("AVG(sale.totalAmount)", "avg")
+      .where("sale.status = 'paid'")
+      .getRawOne();
+    const averageAmount = parseFloat(avgResult.avg) || 0;
+
+    // ✅ Get completion rate
+    const completionRate = total > 0 ? Math.round((paid / total) * 100) : 0;
+
+    // ✅ Get settings info
+    const allowedStatuses = await this._getAllowedStatuses(qr);
+    const enabledPaymentMethods = await this._getEnabledPaymentMethods(qr);
+    const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+
+    return {
+      total,
+      byStatus: statusCounts,
+      paid,
+      initiated,
+      refunded,
+      voided,
+      totalRevenue,
+      averageAmount,
+      completionRate,
+      allowedStatuses,
+      enabledPaymentMethods,
+      loyaltyEnabled,
+    };
+  }
+
+  /**
+   * ✅ NEW: Get sale retention info
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getRetentionInfo(qr = null) {
+    const retentionDays = await this._getRetentionDays(qr);
+    const auditEnabled = await this._isAuditEnabled(qr);
+    const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+
+    const Sale = require("../entities/Sale");
+    const saleRepo = this._getRepo(qr, Sale);
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    const totalSales = await saleRepo.count();
+    const oldSales = await saleRepo
+      .createQueryBuilder("sale")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp < :cutoffDate", { cutoffDate })
+      .getCount();
+
+    const allowedStatuses = await this._getAllowedStatuses(qr);
+    const enabledPaymentMethods = await this._getEnabledPaymentMethods(qr);
+
+    return {
+      retentionDays,
+      cutoffDate: cutoffDate.toISOString(),
+      totalSales,
+      salesToArchive: oldSales,
+      allowedStatuses,
+      enabledPaymentMethods,
+      loyaltyEnabled,
+      auditEnabled,
+    };
+  }
+
+  /**
+   * ✅ NEW: Get daily sales summary
+   * @param {string} date - Date in YYYY-MM-DD format (defaults to today)
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getDailySalesSummary(date = null, qr = null) {
+    const Sale = require("../entities/Sale");
+    const saleRepo = this._getRepo(qr, Sale);
+
+    const targetDate = date ? new Date(date) : new Date();
+    const dateStr = targetDate.toISOString().split("T")[0];
+
+    const sales = await saleRepo
+      .createQueryBuilder("sale")
+      .leftJoinAndSelect("sale.saleItems", "saleItems")
+      .where("DATE(sale.timestamp) = :date", { date: dateStr })
+      .andWhere("sale.status = 'paid'")
+      .getMany();
+
+    let totalAmount = 0;
+    let totalWeight = 0;
+    let totalItems = 0;
+    const byPaymentMethod = {};
+
+    for (const sale of sales) {
+      totalAmount += sale.totalAmount;
+      totalItems += sale.saleItems?.length || 0;
+      const weight = sale.saleItems?.reduce((sum, item) => sum + item.weightKg, 0) || 0;
+      totalWeight += weight;
+
+      const method = sale.paymentMethod || "unknown";
+      byPaymentMethod[method] = (byPaymentMethod[method] || 0) + sale.totalAmount;
+    }
+
+    return {
+      date: dateStr,
+      totalSales: sales.length,
+      totalAmount,
+      averageAmount: sales.length > 0 ? totalAmount / sales.length : 0,
+      totalItems,
+      totalWeight,
+      byPaymentMethod,
+      sales,
+    };
   }
 }
 

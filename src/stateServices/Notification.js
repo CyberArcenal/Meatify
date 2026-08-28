@@ -5,12 +5,13 @@ const auditLogger = require("../utils/auditLogger");
 const Notification = require("../entities/Notification");
 const NotificationLog = require("../entities/NotificationLog");
 const notificationService = require("../services/Notification");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
 
-// Settings getters (you can implement these as async functions)
-const emailEnabled = async () => true;
-const smsEnabled = async () => true;
-const inAppNotificationsEnabled = async () => true;
-const companyName = async () => "Meatify Shop";
+// ❌ REMOVED hardcoded functions:
+// const emailEnabled = async () => true;
+// const smsEnabled = async () => true;
+// const inAppNotificationsEnabled = async () => true;
+// const companyName = async () => "Meatify Shop";
 
 /**
  * NotificationStateService handles state transitions and side effects for notifications.
@@ -244,7 +245,8 @@ class NotificationStateService {
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
   async sendInApp(data, user = "system", queryRunner = null) {
-    const enabled = await inAppNotificationsEnabled();
+    // ✅ Use system setting instead of hardcoded value
+    const enabled = await system.inAppNotificationsEnabled();
     if (!enabled) {
       logger.info(`[NotificationState] In-app notifications disabled, skipping`);
       return null;
@@ -261,7 +263,8 @@ class NotificationStateService {
    */
   async sendEmail(data, user = "system", queryRunner = null) {
     const { saveDb } = require("../utils/dbUtils/dbActions");
-    const enabled = await emailEnabled();
+    // ✅ Use system setting instead of hardcoded value
+    const enabled = await system.emailEnabled();
     if (!enabled) {
       logger.info(`[NotificationState] Email notifications disabled, skipping`);
       return null;
@@ -303,7 +306,8 @@ class NotificationStateService {
    */
   async sendSms(data, user = "system", queryRunner = null) {
     const { saveDb } = require("../utils/dbUtils/dbActions");
-    const enabled = await smsEnabled();
+    // ✅ Use system setting instead of hardcoded value
+    const enabled = await system.smsEnabled();
     if (!enabled) {
       logger.info(`[NotificationState] SMS notifications disabled, skipping`);
       return null;
@@ -364,9 +368,10 @@ class NotificationStateService {
       );
     }
 
-    // Send email if requested
+    // Send email if requested - ✅ Uses system setting via sendEmail()
     if (data.email) {
-      const company = await companyName();
+      // ✅ Use system for company name
+      const company = await system.companyName();
       results.email = await this.sendEmail(
         {
           to: data.email,
@@ -380,7 +385,7 @@ class NotificationStateService {
       );
     }
 
-    // Send SMS if requested
+    // Send SMS if requested - ✅ Uses system setting via sendSms()
     if (data.sms) {
       results.sms = await this.sendSms(
         {

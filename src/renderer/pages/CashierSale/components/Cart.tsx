@@ -45,6 +45,7 @@ interface CartProps {
   onNotesChange: (value: string) => void;
   selectedCustomer: Customer | null;
   onCustomerSelect: (customer: Customer | null) => void;
+  onUpdateWeight: (id: number, weightKg: number) => void;
   loyaltyPointsAvailable: number;
   loyaltyPointsToRedeem: number;
   useLoyalty: boolean;
@@ -63,6 +64,7 @@ const Cart: React.FC<CartProps> = ({
   globalTax,
   notes,
   onUpdateQuantity,
+  onUpdateWeight,
   onRemove,
   onUpdateDiscount,
   onUpdateTax,
@@ -180,13 +182,13 @@ const Cart: React.FC<CartProps> = ({
         ) : (
           cart.map((item) => (
             <CartItem
-              key={item.id}
-              item={item}
-              onUpdateQuantity={onUpdateQuantity}
-              onRemove={onRemove}
-              onUpdateDiscount={onUpdateDiscount}
-              onUpdateTax={onUpdateTax}
-              maxDiscount={maxDiscount}
+          key={item.id}
+    item={item}
+    onUpdateWeight={onUpdateWeight}
+    onRemove={onRemove}
+    onUpdateDiscount={onUpdateDiscount}
+    onUpdateTax={onUpdateTax}
+    maxDiscount={maxDiscount}
             />
           ))
         )}

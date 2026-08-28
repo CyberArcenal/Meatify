@@ -3,6 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -75,6 +78,132 @@ class CustomerService {
   }
 
   /**
+   * ✅ NEW: Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditEnabled(qr = null) {
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[Customer] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get default active status from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _getDefaultActiveStatus(qr = null) {
+    try {
+      return await system.getBool("default_customer_active", SettingType.SALES, true);
+    } catch (error) {
+      logger.warn(`[Customer] Failed to get default active status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get default customer status from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string>}
+   */
+  async _getDefaultCustomerStatus(qr = null) {
+    try {
+      const status = await system.getValue("default_customer_status", SettingType.SALES, "regular");
+      const validStatuses = ["regular", "vip", "elite"];
+      if (!validStatuses.includes(status)) {
+        logger.warn(`[Customer] Invalid default status "${status}", defaulting to "regular"`);
+        return "regular";
+      }
+      return status;
+    } catch (error) {
+      logger.warn(`[Customer] Failed to get default status: ${error.message}, defaulting to "regular"`);
+      return "regular";
+    }
+  }
+
+  /**
+   * ✅ NEW: Get allowed customer statuses from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string[]>}
+   */
+  async _getAllowedStatuses(qr = null) {
+    try {
+      return await system.getArray("allowed_customer_statuses", SettingType.SALES, [
+        "regular", "vip", "elite"
+      ]);
+    } catch (error) {
+      logger.warn(`[Customer] Failed to get allowed statuses: ${error.message}, using defaults`);
+      return ["regular", "vip", "elite"];
+    }
+  }
+
+  /**
+   * ✅ NEW: Check if loyalty points are enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isLoyaltyEnabled(qr = null) {
+    try {
+      return await system.loyaltyPointsEnabled();
+    } catch (error) {
+      logger.warn(`[Customer] Failed to check loyalty enabled: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get VIP threshold from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getVipThreshold(qr = null) {
+    try {
+      return await system.loyaltyVipThreshold();
+    } catch (error) {
+      logger.warn(`[Customer] Failed to get VIP threshold: ${error.message}, defaulting to 1000`);
+      return 1000;
+    }
+  }
+
+  /**
+   * ✅ NEW: Get Elite threshold from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getEliteThreshold(qr = null) {
+    try {
+      return await system.loyaltyEliteThreshold();
+    } catch (error) {
+      logger.warn(`[Customer] Failed to get Elite threshold: ${error.message}, defaulting to 5000`);
+      return 5000;
+    }
+  }
+
+  /**
+   * ✅ NEW: Validate email format
+   * @param {string} email
+   * @returns {boolean}
+   */
+  _isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  }
+
+  /**
+   * ✅ NEW: Validate phone format
+   * @param {string} phone
+   * @returns {boolean}
+   */
+  _isValidPhone(phone) {
+    const phoneRegex = /^[\d\+\-\(\)\s]+$/;
+    return phoneRegex.test(phone);
+  }
+
+  /**
    * Create a new customer
    * @param {Object} data - { name, email?, phone?, address?, notes? }
    * @param {string} user
@@ -88,6 +217,16 @@ class CustomerService {
     try {
       // Validate required fields
       if (!data.name) throw new Error("name is required");
+
+      // ✅ Validate email format if provided
+      if (data.email && !this._isValidEmail(data.email)) {
+        throw new Error(`Invalid email format: "${data.email}"`);
+      }
+
+      // ✅ Validate phone format if provided
+      if (data.phone && !this._isValidPhone(data.phone)) {
+        throw new Error(`Invalid phone format: "${data.phone}"`);
+      }
 
       // Check email uniqueness if provided
       if (data.email) {
@@ -105,22 +244,44 @@ class CustomerService {
         }
       }
 
+      // ✅ Validate status if provided
+      if (data.status) {
+        const allowedStatuses = await this._getAllowedStatuses(qr);
+        if (!allowedStatuses.includes(data.status)) {
+          throw new Error(`Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`);
+        }
+      }
+
+      // ✅ Use system settings for defaults
+      const defaultActive = await this._getDefaultActiveStatus(qr);
+      const defaultStatus = await this._getDefaultCustomerStatus(qr);
+
+      // ✅ Check if loyalty is enabled (for initial points)
+      const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+      const initialPoints = loyaltyEnabled ? 0 : 0; // Always start at 0
+
       const customer = repo.create({
         name: data.name,
         email: data.email || null,
         phone: data.phone || null,
         address: data.address || null,
         notes: data.notes || null,
-        loyaltyPointsBalance: 0,
+        loyaltyPointsBalance: initialPoints,
         lifetimePointsEarned: 0,
-        status: "regular",
-        isActive: data.isActive !== undefined ? data.isActive : true,
+        status: data.status || defaultStatus,
+        isActive: data.isActive !== undefined ? data.isActive : defaultActive,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
 
       const saved = await saveDb(repo, customer, { queryRunner: qr });
-      await auditLogger.logCreate("Customer", saved.id, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Customer", saved.id, saved, user);
+      }
+
       logger.debug(`Customer created: #${saved.id} - ${saved.name}`);
       return saved;
     } catch (error) {
@@ -149,16 +310,22 @@ class CustomerService {
 
       const oldData = { ...existing };
 
-      // Check email uniqueness if changed
+      // ✅ Validate email format if changed
       if (data.email && data.email !== existing.email) {
+        if (!this._isValidEmail(data.email)) {
+          throw new Error(`Invalid email format: "${data.email}"`);
+        }
         const duplicate = await repo.findOne({ where: { email: data.email } });
         if (duplicate && duplicate.id !== id) {
           throw new Error(`Email "${data.email}" already exists`);
         }
       }
 
-      // Check phone uniqueness if changed
+      // ✅ Validate phone format if changed
       if (data.phone && data.phone !== existing.phone) {
+        if (!this._isValidPhone(data.phone)) {
+          throw new Error(`Invalid phone format: "${data.phone}"`);
+        }
         const duplicate = await repo.findOne({ where: { phone: data.phone } });
         if (duplicate && duplicate.id !== id) {
           throw new Error(`Phone "${data.phone}" already exists`);
@@ -167,6 +334,11 @@ class CustomerService {
 
       // Only allow status update through state service
       if (data.status !== undefined && data.status !== existing.status) {
+        // ✅ Validate status if provided
+        const allowedStatuses = await this._getAllowedStatuses(qr);
+        if (!allowedStatuses.includes(data.status)) {
+          throw new Error(`Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`);
+        }
         throw new Error("Use CustomerStateService to update customer status");
       }
 
@@ -179,7 +351,13 @@ class CustomerService {
       existing.updatedAt = new Date();
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
-      await auditLogger.logUpdate("Customer", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Customer", id, oldData, saved, user);
+      }
+
       logger.debug(`Customer updated: #${id}`);
       return saved;
     } catch (error) {
@@ -217,7 +395,13 @@ class CustomerService {
       customer.updatedAt = new Date();
 
       const saved = await updateDb(repo, customer, { queryRunner: qr });
-      await auditLogger.debugDelete("Customer", id, oldData, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugDelete("Customer", id, oldData, user);
+      }
+
       logger.debug(`Customer deactivated: #${id}`);
       return saved;
     } catch (error) {
@@ -252,7 +436,13 @@ class CustomerService {
       customer.updatedAt = new Date();
 
       const saved = await updateDb(repo, customer, { queryRunner: qr });
-      await auditLogger.logUpdate("Customer", id, oldData, saved, user);
+
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Customer", id, oldData, saved, user);
+      }
+
       logger.debug(`Customer restored: #${id}`);
       return saved;
     } catch (error) {
@@ -301,7 +491,13 @@ class CustomerService {
     }
 
     await removeDb(customerRepo, customer, { queryRunner: qr });
-    await auditLogger.debugDelete("Customer", id, customer, user);
+
+    // ✅ Check if audit logging is enabled before logging
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.debugDelete("Customer", id, customer, user);
+    }
+
     logger.debug(`Customer #${id} permanently deleted`);
   }
 
@@ -348,6 +544,12 @@ class CustomerService {
     }
     if (options.status) {
       const statuses = Array.isArray(options.status) ? options.status : [options.status];
+      // ✅ Validate statuses against allowed list
+      const allowedStatuses = await this._getAllowedStatuses(qr);
+      const invalidStatuses = statuses.filter(s => !allowedStatuses.includes(s));
+      if (invalidStatuses.length > 0) {
+        logger.warn(`[Customer] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`);
+      }
       qb.andWhere("customer.status IN (:...statuses)", { statuses });
     }
     if (options.minPoints !== undefined) {
@@ -390,6 +592,11 @@ class CustomerService {
     const Customer = require("../entities/Customer");
     const repo = this._getRepo(qr, Customer);
 
+    // ✅ Get thresholds from settings
+    const vipThreshold = await this._getVipThreshold(qr);
+    const eliteThreshold = await this._getEliteThreshold(qr);
+    const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+
     const totalActive = await repo.count({ where: { isActive: true } });
     const totalInactive = await repo.count({ where: { isActive: false } });
 
@@ -402,25 +609,45 @@ class CustomerService {
       .groupBy("customer.status")
       .getRawMany();
 
-    // Average points
-    const avgPointsResult = await repo
-      .createQueryBuilder("customer")
-      .select("AVG(customer.loyaltyPointsBalance)", "avg")
-      .where("customer.isActive = true")
-      .getRawOne();
-    const avgPoints = parseFloat(avgPointsResult.avg) || 0;
+    // Average points (only if loyalty is enabled)
+    let avgPoints = 0;
+    let withPoints = 0;
+    if (loyaltyEnabled) {
+      const avgPointsResult = await repo
+        .createQueryBuilder("customer")
+        .select("AVG(customer.loyaltyPointsBalance)", "avg")
+        .where("customer.isActive = true")
+        .getRawOne();
+      avgPoints = parseFloat(avgPointsResult.avg) || 0;
 
-    // Top customers by points
-    const topCustomers = await repo
-      .createQueryBuilder("customer")
-      .where("customer.isActive = true")
-      .orderBy("customer.loyaltyPointsBalance", "DESC")
-      .limit(5)
-      .getMany();
+      withPoints = await repo.count({
+        where: { isActive: true, loyaltyPointsBalance: { $gt: 0 } },
+      });
+    }
 
-    // Customers with positive points
-    const withPoints = await repo.count({
-      where: { isActive: true, loyaltyPointsBalance: { $gt: 0 } },
+    // Top customers by points (only if loyalty is enabled)
+    let topCustomers = [];
+    if (loyaltyEnabled) {
+      topCustomers = await repo
+        .createQueryBuilder("customer")
+        .where("customer.isActive = true")
+        .orderBy("customer.loyaltyPointsBalance", "DESC")
+        .limit(5)
+        .getMany();
+    }
+
+    // ✅ Count customers by tier
+    const vipCount = await repo.count({
+      where: {
+        isActive: true,
+        lifetimePointsEarned: { $gte: vipThreshold, $lt: eliteThreshold },
+      },
+    });
+    const eliteCount = await repo.count({
+      where: {
+        isActive: true,
+        lifetimePointsEarned: { $gte: eliteThreshold },
+      },
     });
 
     return {
@@ -432,11 +659,17 @@ class CustomerService {
       }, {}),
       averageLoyaltyPoints: avgPoints,
       customersWithPoints: withPoints,
+      loyaltyEnabled,
+      vipThreshold,
+      eliteThreshold,
+      vipCount,
+      eliteCount,
       topCustomers: topCustomers.map((c) => ({
         id: c.id,
         name: c.name,
         points: c.loyaltyPointsBalance,
         status: c.status,
+        lifetimePoints: c.lifetimePointsEarned || 0,
       })),
     };
   }
@@ -496,7 +729,12 @@ class CustomerService {
         };
       }
 
-      await auditLogger.debugExport("Customer", format, filters, user);
+      // ✅ Check if audit logging is enabled before logging
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.debugExport("Customer", format, filters, user);
+      }
+
       logger.debug(`Exported ${customers.length} customers in ${format} format`);
       return exportData;
     } catch (error) {
@@ -569,6 +807,7 @@ class CustomerService {
           address: record.address || null,
           notes: record.notes || null,
           isActive: record.isActive !== "false",
+          status: record.status || "regular",
         };
         if (!data.name) {
           throw new Error("name is required");
@@ -580,6 +819,97 @@ class CustomerService {
       }
     }
     return results;
+  }
+
+  /**
+   * ✅ NEW: Clean up inactive customers (soft delete)
+   * @param {number} daysOld - Inactive for this many days
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanInactiveCustomers(daysOld = 365, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Customer = require("../entities/Customer");
+    const repo = this._getRepo(qr, Customer);
+
+    // ✅ Get threshold from settings if not provided
+    if (daysOld === 365) {
+      try {
+        daysOld = await system.getInt("inactive_customer_cleanup_days", SettingType.SALES, 365);
+      } catch (error) {
+        logger.warn(`[Customer] Failed to get inactive cleanup days: ${error.message}, defaulting to 365`);
+      }
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+
+    const inactiveCustomers = await repo
+      .createQueryBuilder("customer")
+      .where("customer.isActive = true")
+      .andWhere("customer.updatedAt < :cutoffDate", { cutoffDate })
+      .andWhere("customer.loyaltyPointsBalance = 0")
+      .getMany();
+
+    if (inactiveCustomers.length === 0) {
+      logger.info(`[Customer] No inactive customers to clean up (threshold: ${daysOld} days)`);
+      return { count: 0 };
+    }
+
+    let updatedCount = 0;
+    for (const customer of inactiveCustomers) {
+      try {
+        customer.isActive = false;
+        customer.updatedAt = new Date();
+        await updateDb(repo, customer, { queryRunner: qr, skipSignal: true });
+
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.logUpdate(
+            "Customer",
+            customer.id,
+            { isActive: true },
+            { isActive: false },
+            user
+          );
+        }
+
+        updatedCount++;
+        logger.info(`[Customer] Customer #${customer.id} (${customer.name}) deactivated (inactive for ${daysOld} days)`);
+      } catch (err) {
+        logger.error(`[Customer] Failed to clean inactive customer #${customer.id}:`, err);
+      }
+    }
+
+    logger.info(`[Customer] Cleaned up ${updatedCount} inactive customers (older than ${daysOld} days)`);
+    return { count: updatedCount };
+  }
+
+  /**
+   * ✅ NEW: Get customer tier info
+   * @param {number} lifetimePoints
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<{ tier: string, nextTier: string | null, pointsToNext: number }>}
+   */
+  async getCustomerTierInfo(lifetimePoints, qr = null) {
+    const vipThreshold = await this._getVipThreshold(qr);
+    const eliteThreshold = await this._getEliteThreshold(qr);
+
+    if (lifetimePoints >= eliteThreshold) {
+      return { tier: "elite", nextTier: null, pointsToNext: 0 };
+    } else if (lifetimePoints >= vipThreshold) {
+      return {
+        tier: "vip",
+        nextTier: "elite",
+        pointsToNext: eliteThreshold - lifetimePoints,
+      };
+    } else {
+      return {
+        tier: "regular",
+        nextTier: "vip",
+        pointsToNext: vipThreshold - lifetimePoints,
+      };
+    }
   }
 }
 

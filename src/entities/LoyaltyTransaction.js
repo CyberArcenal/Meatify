@@ -8,7 +8,7 @@ const LoyaltyTransaction = new EntitySchema({
     id: { type: Number, primary: true, generated: true },
     transactionType: {
       type: "varchar",
-      enum: ["earn", "redeem", "refund"],
+      enum: ["earn", "redeem", "adjustment", "refund"],
       default: "earn",
     },
 

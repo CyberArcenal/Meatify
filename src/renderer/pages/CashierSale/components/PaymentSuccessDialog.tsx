@@ -114,18 +114,18 @@ const PaymentSuccessDialog: React.FC<PaymentSuccessDialogProps> = ({
             <p className="text-sm font-medium text-[var(--text-tertiary)] mb-2">
               Items
             </p>
-            {items.map((item) => (
-              <div key={item.id} className="flex justify-between text-sm py-1">
-                <span className="text-[var(--text-secondary)]">
-                  {item.name} x{item.cartQuantity}
-                </span>
-                <span className="text-[var(--text-primary)] font-mono">
-                  {formatCurrency(
-                    new Decimal(item.price).times(item.cartQuantity).toFixed(2),
-                  )}
-                </span>
-              </div>
-            ))}
+       {items.map((item) => (
+  <div key={item.id} className="flex justify-between text-sm py-1">
+    <span className="text-[var(--text-secondary)]">
+      {item.name} x{item.weightKg.toFixed(2)} kg
+    </span>
+    <span className="text-[var(--text-primary)] font-mono">
+      {formatCurrency(
+        new Decimal(item.pricePerKg).times(item.weightKg).toFixed(2)
+      )}
+    </span>
+  </div>
+))}
           </div>
         </div>
 

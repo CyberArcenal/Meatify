@@ -3,11 +3,11 @@ import React from "react";
 import { X, Beef, Calendar, Hash, FileText, Package } from "lucide-react";
 import Decimal from "decimal.js";
 import { format } from "date-fns";
-import type { ReturnRefund } from "../../../../api/core/returnRefund";
+import type { ReturnRefundReport } from "../../../../api/analytics/returnRefundReports";
 
 interface ReturnViewDialogProps {
   isOpen: boolean;
-  returnRefund: ReturnRefund | null;
+  returnRefund: ReturnRefundReport | null;
   onClose: () => void;
 }
 
@@ -76,7 +76,7 @@ export const ReturnViewDialog: React.FC<ReturnViewDialogProps> = ({
               <div>
                 <p className="text-xs text-[var(--text-tertiary)] uppercase">Customer</p>
                 <p className="text-sm text-[var(--text-primary)]">
-                  {returnRefund.customer?.name || "—"}
+                  {returnRefund.customer?.name || returnRefund.customerName || "—"}
                 </p>
               </div>
               <div>
@@ -181,13 +181,13 @@ export const ReturnViewDialog: React.FC<ReturnViewDialogProps> = ({
                   <div>
                     <p className="text-xs text-[var(--text-tertiary)]">Sale ID</p>
                     <p className="text-sm font-mono text-[var(--text-primary)]">
-                      #{returnRefund.sale.id}
+                      #{returnRefund.saleId || returnRefund.sale?.id}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-[var(--text-tertiary)]">Total Amount</p>
                     <p className="text-sm font-semibold text-[var(--accent-gold)]">
-                      ₱{new Decimal(returnRefund.sale.totalAmount).toFixed(2)}
+                      ₱{new Decimal(returnRefund.sale?.totalAmount || 0).toFixed(2)}
                     </p>
                   </div>
                 </div>

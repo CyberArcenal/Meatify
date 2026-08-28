@@ -3,6 +3,8 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
+const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -65,6 +67,51 @@ class AuditLogService {
   }
 
   /**
+   * Check if audit logging is enabled
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<boolean>}
+   */
+  async _isAuditLogEnabled(qr = null) {
+    // ✅ Use system setting to check if audit logging is enabled
+    try {
+      return await system.auditLogEnabled();
+    } catch (error) {
+      logger.warn(`[AuditLog] Failed to check audit log enabled status: ${error.message}, defaulting to true`);
+      return true;
+    }
+  }
+
+  /**
+   * Get log retention days from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<number>}
+   */
+  async _getLogRetentionDays(qr = null) {
+    // ✅ Use system setting for log retention
+    try {
+      return await system.logRetentionDays();
+    } catch (error) {
+      logger.warn(`[AuditLog] Failed to get log retention days: ${error.message}, defaulting to 30`);
+      return 30;
+    }
+  }
+
+  /**
+   * Get allowed audit actions from settings
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string[]>}
+   */
+  async _getAllowedActions(qr = null) {
+    // ✅ Use system setting for allowed log events
+    try {
+      return await system.logEvents();
+    } catch (error) {
+      logger.warn(`[AuditLog] Failed to get allowed actions: ${error.message}, using defaults`);
+      return ["CREATE", "UPDATE", "DELETE", "LOGIN", "LOGOUT"];
+    }
+  }
+
+  /**
    * Create a new audit log entry
    * @param {Object} data - { action, entity, entityId?, user?, description? }
    * @param {string} user - User performing the action (for logger)
@@ -73,12 +120,28 @@ class AuditLogService {
   async create(data, user = "system", qr = null) {
     const { saveDb } = require("../utils/dbUtils/dbActions");
     const { AuditLog } = require("../entities/AuditLog");
+
+    // ✅ Check if audit logging is enabled
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+    if (!auditEnabled) {
+      logger.debug(`[AuditLog] Audit logging is disabled, skipping create for ${data.action} on ${data.entity}`);
+      return null;
+    }
+
     const repo = this._getRepo(qr, AuditLog);
 
     try {
       // Validate required fields
       if (!data.action) throw new Error("Action is required");
       if (!data.entity) throw new Error("Entity is required");
+
+      // ✅ Validate action against allowed list
+      const allowedActions = await this._getAllowedActions(qr);
+      if (!allowedActions.includes(data.action)) {
+        logger.warn(`[AuditLog] Action "${data.action}" is not in allowed list: ${allowedActions.join(", ")}`);
+        // Still allow but log warning - or you can throw error if strict
+        // throw new Error(`Action "${data.action}" is not allowed for audit logging`);
+      }
 
       const log = repo.create({
         action: data.action,
@@ -109,6 +172,12 @@ class AuditLogService {
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async findById(id, qr = null) {
+    // ✅ Check if audit logging is enabled
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+    if (!auditEnabled) {
+      throw new Error("Audit logging is disabled");
+    }
+
     const { AuditLog } = require("../entities/AuditLog");
     const repo = this._getRepo(qr, AuditLog);
 
@@ -126,9 +195,24 @@ class AuditLogService {
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async findAll(options = {}, qr = null) {
+    // ✅ Check if audit logging is enabled
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+    if (!auditEnabled) {
+      logger.debug("[AuditLog] Audit logging is disabled, returning empty result");
+      return { data: [], pagination: { page: 1, limit: 50, total: 0, pages: 0 } };
+    }
+
     const { AuditLog } = require("../entities/AuditLog");
     const repo = this._getRepo(qr, AuditLog);
     const qb = repo.createQueryBuilder("log");
+
+    // ✅ Apply retention days filter automatically if not specified
+    const retentionDays = await this._getLogRetentionDays(qr);
+    if (!options.startDate && !options.endDate) {
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+      qb.andWhere("log.timestamp >= :cutoffDate", { cutoffDate });
+    }
 
     // Filters
     if (options.action) {
@@ -184,6 +268,12 @@ class AuditLogService {
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async permanentlyDelete(id, user = "system", qr = null) {
+    // ✅ Check if audit logging is enabled
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+    if (!auditEnabled) {
+      throw new Error("Audit logging is disabled");
+    }
+
     const { removeDb } = require("../utils/dbUtils/dbActions");
     const { AuditLog } = require("../entities/AuditLog");
     const repo = this._getRepo(qr, AuditLog);
@@ -203,14 +293,32 @@ class AuditLogService {
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async getStatistics(qr = null) {
+    // ✅ Check if audit logging is enabled
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+    if (!auditEnabled) {
+      logger.debug("[AuditLog] Audit logging is disabled, returning empty statistics");
+      return {
+        total: 0,
+        last7Days: 0,
+        byAction: {},
+        byEntity: {},
+      };
+    }
+
     const { AuditLog } = require("../entities/AuditLog");
     const repo = this._getRepo(qr, AuditLog);
+
+    // ✅ Apply retention days filter
+    const retentionDays = await this._getLogRetentionDays(qr);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
     // Count by action
     const byAction = await repo
       .createQueryBuilder("log")
       .select("log.action", "action")
       .addSelect("COUNT(*)", "count")
+      .where("log.timestamp >= :cutoffDate", { cutoffDate })
       .groupBy("log.action")
       .getRawMany();
 
@@ -219,10 +327,13 @@ class AuditLogService {
       .createQueryBuilder("log")
       .select("log.entity", "entity")
       .addSelect("COUNT(*)", "count")
+      .where("log.timestamp >= :cutoffDate", { cutoffDate })
       .groupBy("log.entity")
       .getRawMany();
 
-    const total = await repo.count();
+    const total = await repo.count({
+      where: { timestamp: { $gte: cutoffDate } },
+    });
 
     // Last 7 days activity
     const sevenDaysAgo = new Date();
@@ -254,6 +365,12 @@ class AuditLogService {
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async exportAuditLogs(format = "json", filters = {}, user = "system", qr = null) {
+    // ✅ Check if audit logging is enabled
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+    if (!auditEnabled) {
+      throw new Error("Audit logging is disabled, cannot export");
+    }
+
     try {
       // Fetch all data without pagination for export
       const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
@@ -300,11 +417,20 @@ class AuditLogService {
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async bulkCreate(logsArray, user = "system", qr = null) {
+    // ✅ Check if audit logging is enabled
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+    if (!auditEnabled) {
+      logger.debug("[AuditLog] Audit logging is disabled, skipping bulk create");
+      return { created: [], errors: [] };
+    }
+
     const results = { created: [], errors: [] };
     for (const data of logsArray) {
       try {
         const saved = await this.create(data, user, qr);
-        results.created.push(saved);
+        if (saved) {
+          results.created.push(saved);
+        }
       } catch (err) {
         results.errors.push({ log: data, error: err.message });
       }
@@ -319,6 +445,12 @@ class AuditLogService {
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async importFromCSV(filePath, user = "system", qr = null) {
+    // ✅ Check if audit logging is enabled
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+    if (!auditEnabled) {
+      throw new Error("Audit logging is disabled, cannot import");
+    }
+
     const fs = require("fs").promises;
     const csv = require("csv-parse/sync");
     const fileContent = await fs.readFile(filePath, "utf-8");
@@ -343,12 +475,88 @@ class AuditLogService {
           throw new Error("Action and Entity are required");
         }
         const saved = await this.create(logData, user, qr);
-        results.imported.push(saved);
+        if (saved) {
+          results.imported.push(saved);
+        }
       } catch (err) {
         results.errors.push({ row: record, error: err.message });
       }
     }
     return results;
+  }
+
+  /**
+   * ✅ NEW: Clean up old audit logs based on retention settings
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cleanOldLogs(user = "system", qr = null) {
+    // ✅ Check if audit logging is enabled
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+    if (!auditEnabled) {
+      logger.debug("[AuditLog] Audit logging is disabled, skipping cleanup");
+      return { count: 0 };
+    }
+
+    const { removeDb } = require("../utils/dbUtils/dbActions");
+    const { AuditLog } = require("../entities/AuditLog");
+    const repo = this._getRepo(qr, AuditLog);
+
+    const retentionDays = await this._getLogRetentionDays(qr);
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    const oldLogs = await repo
+      .createQueryBuilder("log")
+      .where("log.timestamp < :cutoffDate", { cutoffDate })
+      .getMany();
+
+    if (oldLogs.length === 0) {
+      logger.info(`[AuditLog] No old logs to clean up (retention: ${retentionDays} days)`);
+      return { count: 0 };
+    }
+
+    let deletedCount = 0;
+    for (const log of oldLogs) {
+      try {
+        await removeDb(repo, log, { queryRunner: qr });
+        deletedCount++;
+      } catch (err) {
+        logger.error(`[AuditLog] Failed to delete log #${log.id}:`, err);
+      }
+    }
+
+    logger.info(`[AuditLog] Cleaned up ${deletedCount} old audit logs (older than ${retentionDays} days)`);
+    return { count: deletedCount };
+  }
+
+  /**
+   * ✅ NEW: Get audit log retention info
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async getRetentionInfo(qr = null) {
+    const retentionDays = await this._getLogRetentionDays(qr);
+    const auditEnabled = await this._isAuditLogEnabled(qr);
+
+    const { AuditLog } = require("../entities/AuditLog");
+    const repo = this._getRepo(qr, AuditLog);
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+    const totalLogs = await repo.count();
+    const oldLogs = await repo
+      .createQueryBuilder("log")
+      .where("log.timestamp < :cutoffDate", { cutoffDate })
+      .getCount();
+
+    return {
+      auditEnabled,
+      retentionDays,
+      totalLogs,
+      logsToDelete: oldLogs,
+      cutoffDate: cutoffDate.toISOString(),
+    };
   }
 }
 

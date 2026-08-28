@@ -1,14 +1,13 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { Minus, Plus, Trash2, Tag, Percent, ImageOff } from "lucide-react";
+import { Minus, Plus, Trash2, Tag, Percent } from "lucide-react";
 import Decimal from "decimal.js";
 import type { CartItem as CartItemType } from "../types";
 import { calculateLineTotal } from "../utils";
 import { formatCurrency } from "../../../utils/formatters";
-import productAPI from "../../../api/core/product";
 
 interface CartItemProps {
   item: CartItemType;
-  onUpdateQuantity: (id: number, newQty: number) => void;
+  onUpdateWeight: (id: number, weightKg: number) => void;
   onRemove: (id: number) => void;
   onUpdateDiscount: (id: number, discount: number) => void;
   onUpdateTax: (id: number, tax: number) => void;
@@ -17,82 +16,31 @@ interface CartItemProps {
 
 const CartItem: React.FC<CartItemProps> = ({
   item,
-  onUpdateQuantity,
+  onUpdateWeight,
   onRemove,
   onUpdateDiscount,
   onUpdateTax,
   maxDiscount = 100,
 }) => {
-  const [imageError, setImageError] = useState(false);
   const lineTotal = useMemo(() => calculateLineTotal(item), [item]);
 
-  // Get product image URL (if available)
-  const imageUrl = useMemo(() => {
-    if (!item.image || imageError) return null;
-    return productAPI.getImageUrl?.(item.image) || null;
-  }, [item.image, imageError]);
+  const handleWeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value) || 0;
+    onUpdateWeight(item.id, val);
+  };
 
-  const hasBackgroundImage = imageUrl && !imageError;
+  const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value) || 0;
+    onUpdateDiscount(item.id, Math.min(maxDiscount, Math.max(0, val)));
+  };
 
-  const handleImageError = useCallback(() => {
-    setImageError(true);
-  }, []);
-
-  const handleQuantityDecrement = useCallback(() => {
-    onUpdateQuantity(item.id, item.cartQuantity - 1);
-  }, [onUpdateQuantity, item.id, item.cartQuantity]);
-
-  const handleQuantityIncrement = useCallback(() => {
-    onUpdateQuantity(item.id, item.cartQuantity + 1);
-  }, [onUpdateQuantity, item.id, item.cartQuantity]);
-
-  const handleRemove = useCallback(() => {
-    onRemove(item.id);
-  }, [onRemove, item.id]);
-
-  const handleDiscountChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = parseFloat(e.target.value) || 0;
-      onUpdateDiscount(item.id, Math.min(maxDiscount, Math.max(0, val)));
-    },
-    [onUpdateDiscount, item.id, maxDiscount]
-  );
-
-  const handleTaxChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const val = parseFloat(e.target.value) || 0;
-      onUpdateTax(item.id, Math.min(100, Math.max(0, val)));
-    },
-    [onUpdateTax, item.id]
-  );
+  const handleTaxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value) || 0;
+    onUpdateTax(item.id, Math.min(100, Math.max(0, val)));
+  };
 
   return (
     <div className="relative bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-3 hover:border-[var(--accent-blue)] transition-colors overflow-hidden">
-      {/* Very dark product image background */}
-      {hasBackgroundImage && (
-        <>
-          <div
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
-            style={{ backgroundImage: `url(${imageUrl})` }}
-          />
-          {/* Extra dark overlay to ensure text readability */}
-          <div className="absolute inset-0 bg-black/60" />
-        </>
-      )}
-
-      {/* Fallback pattern when no image */}
-      {!hasBackgroundImage && (
-        <div
-          className="absolute inset-0 opacity-20 pointer-events-none"
-          style={{
-            backgroundImage: `radial-gradient(circle at 20% 30%, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.95) 100%),
-                              repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 2px, transparent 2px, transparent 8px)`,
-            backgroundBlendMode: "overlay",
-          }}
-        />
-      )}
-
-      {/* Content (kept above background) */}
       <div className="relative z-10">
         <div className="flex justify-between items-start">
           <div className="flex-1">
@@ -100,7 +48,7 @@ const CartItem: React.FC<CartItemProps> = ({
             <p className="text-xs text-[var(--text-tertiary)]">{item.sku}</p>
           </div>
           <button
-            onClick={handleRemove}
+            onClick={() => onRemove(item.id)}
             className="text-[var(--text-tertiary)] hover:text-[var(--accent-red)] p-1"
           >
             <Trash2 className="w-4 h-4" />
@@ -108,22 +56,17 @@ const CartItem: React.FC<CartItemProps> = ({
         </div>
 
         <div className="mt-2 flex items-center justify-between">
-          <div className="flex items-center border border-[var(--border-color)] rounded-lg bg-black/20">
-            <button
-              onClick={handleQuantityDecrement}
-              className="px-2 py-1 text-[var(--text-primary)] hover:bg-[var(--card-hover-bg)] rounded-l-lg"
-            >
-              <Minus className="w-4 h-4" />
-            </button>
-            <span className="px-3 py-1 text-[var(--text-primary)] font-medium">
-              {item.cartQuantity}
-            </span>
-            <button
-              onClick={handleQuantityIncrement}
-              className="px-2 py-1 text-[var(--text-primary)] hover:bg-[var(--card-hover-bg)] rounded-r-lg"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[var(--text-tertiary)]">Weight</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={item.weightKg}
+              onChange={handleWeightChange}
+              className="w-20 bg-[var(--input-bg)]/80 border border-[var(--input-border)] rounded px-2 py-1 text-sm text-[var(--text-primary)]"
+            />
+            <span className="text-xs text-[var(--text-tertiary)]">kg</span>
           </div>
           <span className="font-bold text-[var(--accent-green)]">
             {formatCurrency(lineTotal.toFixed(2))}

@@ -7,7 +7,7 @@ import { FilterBar } from "./components/FilterBar";
 import { SummaryCards } from "./components/SummaryCards";
 import { StatsCards } from "./components/StatsCards";
 import { ReturnsTable } from "./components/ReturnsTable";
-import type { ReturnRefund } from "../../../api/core/returnRefund";
+import type { ReturnRefundReport } from "../../../api/analytics/returnRefundReports";
 import { ReturnViewDialog } from "./components/ReturnViewDialog";
 
 const ReturnRefundReportsPage: React.FC = () => {
@@ -34,7 +34,7 @@ const ReturnRefundReportsPage: React.FC = () => {
     sortOrder: "DESC",
   });
 
-  const [selectedReturn, setSelectedReturn] = useState<ReturnRefund | null>(null);
+  const [selectedReturn, setSelectedReturn] = useState<ReturnRefundReport | null>(null);
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
 
   // Sync with global pagination
@@ -65,7 +65,7 @@ const ReturnRefundReportsPage: React.FC = () => {
     reload({ page: pagination.currentPage, limit: pagination.pageSize });
   };
 
-  const handleView = (returnRefund: ReturnRefund) => {
+  const handleView = (returnRefund: ReturnRefundReport) => {
     setSelectedReturn(returnRefund);
     setViewDialogOpen(true);
   };

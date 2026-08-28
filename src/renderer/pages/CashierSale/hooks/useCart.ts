@@ -10,8 +10,8 @@ type CartState = {
 };
 
 type CartAction =
-  | { type: "ADD_TO_CART"; product: Product }
-  | { type: "UPDATE_QUANTITY"; productId: number; quantity: number }
+  | { type: "ADD_TO_CART"; product: Product; weightKg: number }
+  | { type: "UPDATE_WEIGHT"; productId: number; weightKg: number }
   | { type: "REMOVE_FROM_CART"; productId: number }
   | { type: "UPDATE_LINE_DISCOUNT"; productId: number; discountPercent: number }
   | { type: "UPDATE_LINE_TAX"; productId: number; taxPercent: number }
@@ -20,41 +20,48 @@ type CartAction =
   | { type: "SET_NOTES"; value: string }
   | { type: "CLEAR_CART" };
 
+// Helper to get total weight for a given meat in cart
+const getTotalWeightForMeat = (cart: CartItem[], meatId: number) => {
+  return cart
+    .filter((item) => item.id === meatId)
+    .reduce((sum, item) => sum + item.weightKg, 0);
+};
+
 const cartReducer = (state: CartState, action: CartAction): CartState => {
   switch (action.type) {
     case "ADD_TO_CART": {
-      const existing = state.cart.find((item) => item.id === action.product.id);
+      const { product, weightKg } = action;
+      const existing = state.cart.find((item) => item.id === product.id);
+
+      // Check total weight for this meat against stock
+      const currentWeight = existing ? getTotalWeightForMeat(state.cart, product.id) : 0;
+      const newWeight = currentWeight + weightKg;
+
+      if (newWeight > product.stockQty) {
+        dialogs.alert({
+          title: "Insufficient Stock",
+          message: `Only ${product.stockQty} kg available for ${product.name}.`,
+        });
+        return state;
+      }
+
       if (existing) {
-        if (existing.cartQuantity + 1 > action.product.stockQty) {
-          dialogs.alert({
-            title: "Insufficient Stock",
-            message: `Only ${action.product.stockQty} available.`,
-          });
-          return state;
-        }
         return {
           ...state,
           cart: state.cart.map((item) =>
-            item.id === action.product.id
-              ? { ...item, cartQuantity: item.cartQuantity + 1 }
+            item.id === product.id
+              ? { ...item, weightKg: item.weightKg + weightKg }
               : item
           ),
         };
       } else {
-        if (action.product.stockQty < 1) {
-          dialogs.alert({
-            title: "Out of Stock",
-            message: `${action.product.name} is out of stock.`,
-          });
-          return state;
-        }
         return {
           ...state,
           cart: [
             ...state.cart,
             {
-              ...action.product,
-              cartQuantity: 1,
+              ...product,
+              weightKg,
               lineDiscount: 0,
               lineTax: 0,
             },
@@ -63,26 +70,37 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
       }
     }
 
-    case "UPDATE_QUANTITY": {
+    case "UPDATE_WEIGHT": {
       const item = state.cart.find((i) => i.id === action.productId);
       if (!item) return state;
-      if (action.quantity > item.stockQty) {
+
+      // Check if new weight exceeds stock
+      const otherWeight = getTotalWeightForMeat(
+        state.cart.filter((i) => i.id !== item.id),
+        item.id
+      );
+      const newTotalWeight = otherWeight + action.weightKg;
+
+      if (newTotalWeight > item.stockQty) {
         dialogs.alert({
           title: "Insufficient Stock",
-          message: `Only ${item.stockQty} available.`,
+          message: `Only ${item.stockQty} kg available for ${item.name}.`,
         });
         return state;
       }
-      if (action.quantity < 1) {
+
+      if (action.weightKg <= 0) {
+        // Remove if weight is zero or negative
         return {
           ...state,
           cart: state.cart.filter((i) => i.id !== action.productId),
         };
       }
+
       return {
         ...state,
         cart: state.cart.map((i) =>
-          i.id === action.productId ? { ...i, cartQuantity: action.quantity } : i
+          i.id === action.productId ? { ...i, weightKg: action.weightKg } : i
         ),
       };
     }
@@ -138,12 +156,12 @@ export const useCart = () => {
     notes: "",
   });
 
-  const addToCart = useCallback((product: Product) => {
-    dispatch({ type: "ADD_TO_CART", product });
+  const addToCart = useCallback((product: Product, weightKg: number = 1) => {
+    dispatch({ type: "ADD_TO_CART", product, weightKg });
   }, []);
 
-  const updateCartQuantity = useCallback((productId: number, quantity: number) => {
-    dispatch({ type: "UPDATE_QUANTITY", productId, quantity });
+  const updateWeight = useCallback((productId: number, weightKg: number) => {
+    dispatch({ type: "UPDATE_WEIGHT", productId, weightKg });
   }, []);
 
   const removeFromCart = useCallback((productId: number) => {
@@ -180,7 +198,7 @@ export const useCart = () => {
     globalTax: state.globalTax,
     notes: state.notes,
     addToCart,
-    updateCartQuantity,
+    updateWeight,
     removeFromCart,
     updateLineDiscount,
     updateLineTax,

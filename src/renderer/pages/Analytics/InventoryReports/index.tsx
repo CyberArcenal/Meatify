@@ -2,19 +2,21 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { RefreshCw } from 'lucide-react';
 import type {
   InventorySummary,
-  ProductStock,
-  InventoryMovement,
-  InventoryStats,
-} from '../../../api/analytics/inventory_reports';
+  MeatInventorySummary,
+  InventorySummaryData,
+  InventoryReportData,
+  CategorySummary,
+  SupplierSummary,
+} from '../../../api/analytics/inventoryReports';
 import FilterBar from './components/FilterBar';
-import inventoryReportsAPI from '../../../api/analytics/inventory_reports';
+import inventoryReportsAPI from '../../../api/analytics/inventoryReports';
 import ExportButton from './components/ExportButton';
 import LowStockTable from './components/LowStockTable';
 import SummaryCards from './components/SummaryCards';
 import OutOfStockTable from './components/OutOfStockTable';
 import StatsCards from './components/StatsCards';
 import MovementsTable from './components/MovementsTable';
-
+import type { InventoryMovement } from '../../../api/core/inventoryMovement';
 
 const InventoryReportsPage: React.FC = () => {
   // Filters
@@ -25,19 +27,13 @@ const InventoryReportsPage: React.FC = () => {
 
   // Data states
   const [summary, setSummary] = useState<InventorySummary | null>(null);
-  const [lowStock, setLowStock] = useState<ProductStock[]>([]);
-  const [outOfStock, setOutOfStock] = useState<ProductStock[]>([]);
+  const [lowStock, setLowStock] = useState<MeatInventorySummary[]>([]);
+  const [outOfStock, setOutOfStock] = useState<MeatInventorySummary[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
-  const [stats, setStats] = useState<InventoryStats | null>(null);
-
-  // Pagination states (optional, can add more if needed)
-  const [lowStockPage, setLowStockPage] = useState(1);
-  const [lowStockTotalPages, setLowStockTotalPages] = useState(1);
-  const [outOfStockPage, setOutOfStockPage] = useState(1);
-  const [outOfStockTotalPages, setOutOfStockTotalPages] = useState(1);
-  const [movementsPage, setMovementsPage] = useState(1);
-  const [movementsTotalPages, setMovementsTotalPages] = useState(1);
-  const limit = 10;
+  const [stats, setStats] = useState<InventorySummaryData | null>(null); // we'll use summary data for stats cards
+  const [topValueItems, setTopValueItems] = useState<MeatInventorySummary[]>([]);
+  const [categorySummary, setCategorySummary] = useState<CategorySummary[]>([]);
+  const [supplierSummary, setSupplierSummary] = useState<SupplierSummary[]>([]);
 
   // Loading states
   const [loading, setLoading] = useState({
@@ -53,91 +49,43 @@ const InventoryReportsPage: React.FC = () => {
   const fetchSummary = useCallback(async () => {
     setLoading(prev => ({ ...prev, summary: true }));
     try {
-      const res = await inventoryReportsAPI.getSummary();
-      if (res.status) setSummary(res.data);
-      else throw new Error(res.message);
+      const res = await inventoryReportsAPI.getSummary({ categoryId, supplierId });
+      if (res.status) {
+        const data = res.data as InventorySummaryData;
+        setSummary(data.summary);
+        setLowStock(data.lowStockItems);
+        setOutOfStock(data.outOfStockItems);
+        setTopValueItems(data.topValueItems);
+        setCategorySummary(data.categorySummary);
+        setSupplierSummary(data.supplierSummary);
+        setStats(data); // for StatsCards
+      } else throw new Error(res.message);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(prev => ({ ...prev, summary: false }));
     }
-  }, []);
-
-  const fetchLowStock = useCallback(async () => {
-    setLoading(prev => ({ ...prev, lowStock: true }));
-    try {
-      const res = await inventoryReportsAPI.getLowStockAlerts({
-        categoryId,
-        supplierId,
-        page: lowStockPage,
-        limit,
-      });
-      if (res.status) {
-        setLowStock(res.data);
-        setLowStockTotalPages(Math.ceil(res.total / limit));
-      } else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, lowStock: false }));
-    }
-  }, [categoryId, supplierId, lowStockPage, limit]);
-
-  const fetchOutOfStock = useCallback(async () => {
-    setLoading(prev => ({ ...prev, outOfStock: true }));
-    try {
-      const res = await inventoryReportsAPI.getOutOfStock({
-        categoryId,
-        supplierId,
-        page: outOfStockPage,
-        limit,
-      });
-      if (res.status) {
-        setOutOfStock(res.data);
-        setOutOfStockTotalPages(Math.ceil(res.total / limit));
-      } else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, outOfStock: false }));
-    }
-  }, [categoryId, supplierId, outOfStockPage, limit]);
+  }, [categoryId, supplierId]);
 
   const fetchMovements = useCallback(async () => {
     setLoading(prev => ({ ...prev, movements: true }));
     try {
-      const res = await inventoryReportsAPI.getMovements({
+      const res = await inventoryReportsAPI.getData({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        page: movementsPage,
-        limit,
+        includeMovementHistory: true,
+        categoryId,
+        supplierId,
       });
       if (res.status) {
-        setMovements(res.data);
-        setMovementsTotalPages(Math.ceil(res.total / limit));
+        setMovements(res.data.movementHistory);
       } else throw new Error(res.message);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(prev => ({ ...prev, movements: false }));
     }
-  }, [startDate, endDate, movementsPage, limit]);
-
-  const fetchStats = useCallback(async () => {
-    setLoading(prev => ({ ...prev, stats: true }));
-    try {
-      const res = await inventoryReportsAPI.getStats({
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-      if (res.status) setStats(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, stats: false }));
-    }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, categoryId, supplierId]);
 
   // Initial load and filter changes
   useEffect(() => {
@@ -145,39 +93,20 @@ const InventoryReportsPage: React.FC = () => {
   }, [fetchSummary]);
 
   useEffect(() => {
-    fetchLowStock();
-  }, [fetchLowStock]);
-
-  useEffect(() => {
-    fetchOutOfStock();
-  }, [fetchOutOfStock]);
-
-  useEffect(() => {
     fetchMovements();
   }, [fetchMovements]);
-
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
 
   const handleFilterChange = (filters: any) => {
     setCategoryId(filters.categoryId ? Number(filters.categoryId) : undefined);
     setSupplierId(filters.supplierId ? Number(filters.supplierId) : undefined);
     setStartDate(filters.startDate);
     setEndDate(filters.endDate);
-    // Reset pages
-    setLowStockPage(1);
-    setOutOfStockPage(1);
-    setMovementsPage(1);
   };
 
   const handleRefresh = () => {
     setError(null);
     fetchSummary();
-    fetchLowStock();
-    fetchOutOfStock();
     fetchMovements();
-    fetchStats();
   };
 
   const anyLoading = Object.values(loading).some(v => v);
@@ -221,31 +150,19 @@ const InventoryReportsPage: React.FC = () => {
       <SummaryCards summary={summary} loading={loading.summary} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <LowStockTable
-          data={lowStock}
-          loading={loading.lowStock}
-          page={lowStockPage}
-          totalPages={lowStockTotalPages}
-          onPageChange={setLowStockPage}
-        />
-        <OutOfStockTable
-          data={outOfStock}
-          loading={loading.outOfStock}
-          page={outOfStockPage}
-          totalPages={outOfStockTotalPages}
-          onPageChange={setOutOfStockPage}
-        />
+        <LowStockTable data={lowStock} loading={loading.summary} />
+        <OutOfStockTable data={outOfStock} loading={loading.summary} />
       </div>
 
-      <StatsCards stats={stats} loading={loading.stats} />
-
-      <MovementsTable
-        data={movements}
-        loading={loading.movements}
-        page={movementsPage}
-        totalPages={movementsTotalPages}
-        onPageChange={setMovementsPage}
+      <StatsCards
+        stats={stats}
+        loading={loading.summary}
+        topValueItems={topValueItems}
+        categorySummary={categorySummary}
+        supplierSummary={supplierSummary}
       />
+
+      <MovementsTable data={movements} loading={loading.movements} />
     </div>
   );
 };
