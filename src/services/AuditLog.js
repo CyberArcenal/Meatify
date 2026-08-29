@@ -284,7 +284,7 @@ class AuditLogService {
     }
 
     await removeDb(repo, log, { queryRunner: qr });
-    await auditLogger.debugDelete("AuditLog", id, log, user);
+    await auditLogger.logCreate("AuditLog", id, log, user);
     logger.debug(`AuditLog #${id} permanently deleted`);
   }
 

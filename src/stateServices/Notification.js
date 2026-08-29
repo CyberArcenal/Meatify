@@ -231,7 +231,7 @@ class NotificationStateService {
       notification.updatedAt = new Date();
       await updateDb(repo, notification, { queryRunner, skipSignal: false });
 
-      await auditLogger.debugDelete("Notification", notification.id, oldData, user);
+      await auditLogger.logCreate("Notification", notification.id, oldData, user);
     }
 
     logger.info(`[NotificationState] Deleted ${readNotifications.length} read notifications for user #${userId}`);
@@ -519,7 +519,7 @@ class NotificationStateService {
       notification.updatedAt = new Date();
       await updateDb(repo, notification, { queryRunner, skipSignal: false });
 
-      await auditLogger.debugDelete("Notification", notification.id, oldData, user);
+      await auditLogger.logCreate("Notification", notification.id, oldData, user);
     }
 
     logger.info(`[NotificationState] Cleaned up ${oldNotifications.length} old notifications`);

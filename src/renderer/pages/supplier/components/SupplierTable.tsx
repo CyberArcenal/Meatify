@@ -1,7 +1,8 @@
 // src/renderer/pages/inventory/suppliers/components/SupplierTable.tsx
 import React from "react";
-import { Eye, Edit, Trash2, Beef, Check, X } from "lucide-react";
+import { Beef, Check, X } from "lucide-react";
 import type { Supplier } from "../../../api/core/supplier";
+import SupplierActionsDropdown from "./SupplierActionsDropdown";
 
 const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => {
   return active ? (
@@ -23,6 +24,10 @@ interface SupplierTableProps {
   onView: (supplier: Supplier) => void;
   onEdit: (supplier: Supplier) => void;
   onDelete: (supplier: Supplier) => void;
+  onToggleStatus: (supplier: Supplier) => void;
+  selectedIds: number[];
+  onSelectRow: (id: number, checked: boolean) => void;
+  onSelectAll: (checked: boolean) => void;
 }
 
 export const SupplierTable: React.FC<SupplierTableProps> = ({
@@ -31,14 +36,16 @@ export const SupplierTable: React.FC<SupplierTableProps> = ({
   onView,
   onEdit,
   onDelete,
+  onToggleStatus,
+  selectedIds,
+  onSelectRow,
+  onSelectAll,
 }) => {
   if (suppliers.length === 0) {
     return (
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-8 text-center">
+      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl p-8 text-center">
         <Beef className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
-        <p className="text-[var(--text-primary)] font-medium">
-          No suppliers found
-        </p>
+        <p className="text-[var(--text-primary)] font-medium">No suppliers found</p>
         <p className="text-sm text-[var(--text-tertiary)] mt-1">
           Try adjusting your filters or add a new supplier
         </p>
@@ -46,90 +53,84 @@ export const SupplierTable: React.FC<SupplierTableProps> = ({
     );
   }
 
-  return (
-    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg overflow-hidden flex flex-col">
-      <table className="w-full table-fixed">
-        <thead className="bg-[var(--table-header-bg)]">
-          <tr>
-            <th className="w-1/5 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Name
-            </th>
-            <th className="w-1/5 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Contact
-            </th>
-            <th className="w-1/5 px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Address
-            </th>
-            <th className="w-1/6 px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Meats
-            </th>
-            <th className="w-1/6 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Status
-            </th>
-            <th className="w-1/6 px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
-      </table>
+  const allSelected = suppliers.length > 0 && suppliers.every((s) => selectedIds.includes(s.id));
+  const someSelected = selectedIds.length > 0 && !allSelected;
 
-      <div className="flex-1 overflow-auto min-h-0">
-        <table className="w-full table-fixed">
+  return (
+    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
+            <tr>
+              <th className="w-8 py-3 px-2">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(input) => {
+                    if (input) input.indeterminate = someSelected;
+                  }}
+                  onChange={(e) => onSelectAll(e.target.checked)}
+                  className="rounded border-[var(--border-color)] cursor-pointer"
+                />
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Name
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Contact
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Address
+              </th>
+              <th className="py-3 px-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Meats
+              </th>
+              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Status
+              </th>
+              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
             {suppliers.map((supplier) => (
               <tr
                 key={supplier.id}
-                onClick={() => onView(supplier)}
                 className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
+                onClick={() => onView(supplier)}
               >
-                <td className="w-1/5 px-4 py-3 text-sm font-medium text-[var(--text-primary)]">
+                <td className="py-2.5 px-2" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(supplier.id)}
+                    onChange={(e) => onSelectRow(supplier.id, e.target.checked)}
+                    className="rounded border-[var(--border-color)] cursor-pointer"
+                  />
+                </td>
+                <td className="py-2.5 px-3 text-sm font-medium text-[var(--text-primary)]">
                   {supplier.name}
                 </td>
-                <td className="w-1/5 px-4 py-3 text-sm text-[var(--text-secondary)] truncate">
-                  {supplier.phone || supplier.email || "-"}
+                <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)] truncate max-w-[120px]">
+                  {supplier.phone || supplier.email || "—"}
                 </td>
-                <td className="w-1/5 px-4 py-3 text-sm text-[var(--text-secondary)] truncate">
+                <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)] truncate max-w-[120px]">
                   {supplier.address || "—"}
                 </td>
-                <td className="w-1/6 px-4 py-3 text-right text-sm font-mono text-[var(--text-primary)]">
+                <td className="py-2.5 px-3 text-right text-sm font-mono text-[var(--text-primary)]">
                   {meatCounts.get(supplier.id) ?? 0}
                 </td>
-                <td className="w-1/6 px-4 py-3 text-center">
+                <td className="py-2.5 px-3 text-center">
                   <StatusBadge active={supplier.isActive} />
                 </td>
-                <td className="w-1/6 px-4 py-3">
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onView(supplier);
-                      }}
-                      className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-blue)]"
-                      title="View Details"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEdit(supplier);
-                      }}
-                      className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-purple)]"
-                      title="Edit"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(supplier);
-                      }}
-                      className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-red)]"
-                      title="Deactivate"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                  <SupplierActionsDropdown
+                    supplier={supplier}
+                    onView={onView}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onToggleStatus={onToggleStatus}
+                  />
                 </td>
               </tr>
             ))}

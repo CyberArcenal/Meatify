@@ -55,33 +55,35 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
   const receiptPrintingEnabled = useReceiptPrintingEnabled();
 
   return (
-    <div className="flex-shrink-0 bg-[var(--header-bg)] border-b border-[var(--border-color)] px-3 py-2 space-y-2">
+    <div className="flex-shrink-0 bg-[var(--header-bg)] border-b border-[var(--border-color)] px-4 py-3 space-y-3">
       {/* ROW 1: Search + Total */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-1 flex-wrap items-center gap-2 min-w-[240px]">
-          <div className="flex-1 min-w-[140px]">
+        <div className="flex flex-1 flex-wrap items-center gap-3 min-w-[240px]">
+          <div className="flex-1 min-w-[180px]">
             <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-[var(--accent-blue)] w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
               <input
                 ref={searchInputRef}
                 type="text"
-                placeholder="Search meats..."
+                placeholder="Search meats by name, SKU, or barcode..."
                 value={searchTerm}
                 onChange={(e) => onSearchChange(e.target.value)}
-                className="w-full bg-[var(--card-bg)] border border-[var(--accent-blue)] rounded-lg pl-8 pr-3 py-2 text-sm text-[var(--accent-blue)] placeholder-[var(--text-tertiary)]"
+                className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-9 pr-3 py-2.5 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent transition-all"
               />
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 bg-[var(--card-bg)] border-2 border-[var(--accent-green)] rounded-lg px-4 py-2 shadow-md">
-          <ShoppingBag className="w-5 h-5 text-[var(--accent-green)]" />
-          <div className="text-right">
-            <div className="text-xs text-[var(--text-tertiary)] whitespace-nowrap">
-              {itemCount} item{itemCount !== 1 ? "s" : ""}
-            </div>
-            <div className="text-2xl sm:text-3xl font-extrabold text-[var(--accent-green)] whitespace-nowrap">
-              {formatCurrency(total.toNumber())}
+        <div className="flex items-center gap-3 bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-xl px-5 py-2.5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="w-5 h-5 text-[var(--accent-gold)]" />
+            <div className="text-right">
+              <div className="text-xs font-medium text-[var(--text-tertiary)]">
+                {itemCount} item{itemCount !== 1 ? "s" : ""}
+              </div>
+              <div className="text-2xl font-extrabold text-[var(--accent-gold)]">
+                {formatCurrency(total.toNumber())}
+              </div>
             </div>
           </div>
         </div>
@@ -90,7 +92,7 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
       {/* ROW 2: Category, Actions, Status, Hotkeys */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="w-60">
+          <div className="w-56">
             <CategorySelect
               value={categoryId}
               onChange={onCategoryChange}
@@ -103,7 +105,7 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
             <button
               onClick={onRefresh}
               disabled={loadingProducts}
-              className="p-1.5 rounded-md bg-[var(--card-bg)] text-[var(--text-secondary)] hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
+              className="p-2 rounded-lg bg-[var(--card-secondary-bg)] text-[var(--text-secondary)] hover:bg-[var(--card-hover-bg)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 border border-[var(--border-color)]"
               title="Refresh products"
             >
               <RefreshCw className={`w-4 h-4 ${loadingProducts ? "animate-spin" : ""}`} />
@@ -111,7 +113,7 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
             {showClearFilters && (
               <button
                 onClick={onClearFilters}
-                className="p-1.5 rounded-md bg-[var(--card-bg)] text-[var(--text-secondary)] hover:bg-[var(--card-hover-bg)]"
+                className="p-2 rounded-lg bg-[var(--card-secondary-bg)] text-[var(--text-secondary)] hover:bg-[var(--card-hover-bg)] hover:text-[var(--danger-color)] transition-colors border border-[var(--border-color)]"
                 title="Clear filters"
               >
                 <XCircle className="w-4 h-4" />
@@ -119,10 +121,14 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3 ml-2">
             {receiptPrintingEnabled && (
               <div
-                className={`flex items-center gap-1 text-xs ${printerReady ? "text-[var(--accent-green)]" : "text-[var(--accent-red)]"}`}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                  printerReady
+                    ? "bg-[var(--status-completed-bg)] text-[var(--status-completed)]"
+                    : "bg-[var(--status-cancelled-bg)] text-[var(--status-cancelled)]"
+                }`}
                 title={printerReady ? "Printer ready" : "Printer error"}
               >
                 <Printer className="w-3.5 h-3.5" />
@@ -131,7 +137,11 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
             )}
             {cashDrawerEnabled && (
               <div
-                className={`flex items-center gap-1 text-xs ${drawerOpen ? "text-[var(--accent-amber)]" : "text-[var(--text-tertiary)]"}`}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                  drawerOpen
+                    ? "bg-[var(--status-pending-bg)] text-[var(--status-pending)]"
+                    : "bg-[var(--card-secondary-bg)] text-[var(--text-tertiary)]"
+                }`}
                 title={drawerOpen ? "Drawer open" : "Drawer closed"}
               >
                 <Lock className="w-3.5 h-3.5" />
@@ -139,7 +149,11 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
               </div>
             )}
             <div
-              className={`flex items-center gap-1 text-xs ${online ? "text-[var(--accent-green)]" : "text-[var(--accent-red)]"}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                online
+                  ? "bg-[var(--status-completed-bg)] text-[var(--status-completed)]"
+                  : "bg-[var(--status-cancelled-bg)] text-[var(--status-cancelled)]"
+              }`}
               title={online ? "Online" : "Offline"}
             >
               {online ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
@@ -149,12 +163,14 @@ const CashierHeader: React.FC<CashierHeaderProps> = ({
         </div>
 
         <div className="flex flex-wrap gap-2 text-[11px] font-mono text-[var(--text-secondary)]">
-          <kbd className="px-1.5 py-0.5 bg-[var(--card-bg)] rounded border border-[var(--border-color)]">Ctrl+D</kbd>
-          <kbd className="px-1.5 py-0.5 bg-[var(--card-bg)] rounded border border-[var(--border-color)]">Ctrl+Enter</kbd>
+          <kbd className="px-2 py-1 bg-[var(--card-secondary-bg)] rounded border border-[var(--border-color)] text-[var(--text-tertiary)]">Ctrl+D</kbd>
+          <span className="text-[var(--text-tertiary)] text-xs">Discount</span>
+          <kbd className="px-2 py-1 bg-[var(--card-secondary-bg)] rounded border border-[var(--border-color)] text-[var(--text-tertiary)]">Ctrl+Enter</kbd>
+          <span className="text-[var(--text-tertiary)] text-xs">Checkout</span>
         </div>
       </div>
     </div>
   );
 };
 
-export default CashierHeader;
+export default React.memo(CashierHeader);

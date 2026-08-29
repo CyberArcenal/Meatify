@@ -1,6 +1,8 @@
+// src/renderer/pages/Cashier/components/TotalsDisplay.tsx
 import React, { useMemo } from "react";
 import Decimal from "decimal.js";
 import { formatCurrency } from "../../../utils/formatters";
+import { Minus, Plus, Gift } from "lucide-react";
 
 interface TotalsDisplayProps {
   subtotal: Decimal;
@@ -29,32 +31,45 @@ const TotalsDisplay: React.FC<TotalsDisplayProps> = ({
   );
 
   return (
-    <div className="space-y-1 mb-4">
+    <div className="space-y-1.5 bg-[var(--card-bg)] rounded-xl p-3 border border-[var(--border-color)]">
       <div className="flex justify-between text-sm">
-        <span className="text-[var(--text-tertiary)]">Subtotal:</span>
-        <span className="text-[var(--text-primary)]">{formatCurrency(subtotal.toFixed(2))}</span>
+        <span className="text-[var(--text-tertiary)]">Subtotal</span>
+        <span className="text-[var(--text-primary)] font-medium">{formatCurrency(subtotal.toFixed(2))}</span>
       </div>
+
       {globalDiscount > 0 && discountAmount && (
         <div className="flex justify-between text-sm">
-          <span className="text-[var(--text-tertiary)]">Discount ({globalDiscount}%):</span>
-          <span className="text-[var(--accent-amber)]">-{formatCurrency(discountAmount.toFixed(2))}</span>
+          <span className="text-[var(--text-tertiary)] flex items-center gap-1">
+            <Minus className="w-3 h-3 text-[var(--accent-amber)]" />
+            Discount ({globalDiscount}%)
+          </span>
+          <span className="text-[var(--accent-amber)] font-medium">-{formatCurrency(discountAmount.toFixed(2))}</span>
         </div>
       )}
+
       {globalTax > 0 && taxAmount && (
         <div className="flex justify-between text-sm">
-          <span className="text-[var(--text-tertiary)]">Tax ({globalTax}%):</span>
-          <span className="text-[var(--accent-blue)]">+{formatCurrency(taxAmount.toFixed(2))}</span>
+          <span className="text-[var(--text-tertiary)] flex items-center gap-1">
+            <Plus className="w-3 h-3 text-[var(--accent-blue)]" />
+            Tax ({globalTax}%)
+          </span>
+          <span className="text-[var(--accent-blue)] font-medium">+{formatCurrency(taxAmount.toFixed(2))}</span>
         </div>
       )}
+
       {useLoyalty && loyaltyPointsToRedeem > 0 && (
         <div className="flex justify-between text-sm">
-          <span className="text-[var(--text-tertiary)]">Loyalty redemption:</span>
-          <span className="text-[var(--accent-purple)]">-{formatCurrency(loyaltyPointsToRedeem.toFixed(2))}</span>
+          <span className="text-[var(--text-tertiary)] flex items-center gap-1">
+            <Gift className="w-3 h-3 text-[var(--accent-purple)]" />
+            Loyalty redemption
+          </span>
+          <span className="text-[var(--accent-purple)] font-medium">-{formatCurrency(loyaltyPointsToRedeem.toFixed(2))}</span>
         </div>
       )}
-      <div className="flex justify-between text-lg font-bold pt-2 border-t border-[var(--border-color)]">
-        <span className="text-[var(--text-primary)]">Total:</span>
-        <span className="text-[var(--accent-green)]">{formatCurrency(total.toFixed(2))}</span>
+
+      <div className="flex justify-between text-base font-bold pt-2 border-t border-[var(--border-color)]">
+        <span className="text-[var(--text-primary)]">Total</span>
+        <span className="text-[var(--accent-gold)] text-lg">{formatCurrency(total.toFixed(2))}</span>
       </div>
     </div>
   );

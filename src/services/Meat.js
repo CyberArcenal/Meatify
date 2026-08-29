@@ -494,7 +494,7 @@ class MeatService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugDelete("Meat", id, oldData, user);
+        await auditLogger.logCreate("Meat", id, oldData, user);
       }
 
       logger.debug(`Meat deactivated: #${id}`);
@@ -581,7 +581,7 @@ class MeatService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("Meat", id, meat, user);
+      await auditLogger.logCreate("Meat", id, meat, user);
     }
 
     logger.debug(`Meat #${id} permanently deleted`);
@@ -979,7 +979,7 @@ class MeatService {
 
         const auditEnabled = await this._isAuditEnabled(qr);
         if (auditEnabled) {
-          await auditLogger.debugDelete("Meat", meat.id, meat, user);
+          await auditLogger.logCreate("Meat", meat.id, meat, user);
         }
 
         deletedCount++;

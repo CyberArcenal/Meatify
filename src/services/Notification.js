@@ -370,7 +370,7 @@ class NotificationService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugDelete("Notification", id, oldData, user);
+        await auditLogger.logCreate("Notification", id, oldData, user);
       }
 
       logger.debug(`Notification soft deleted: #${id}`);
@@ -443,7 +443,7 @@ class NotificationService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("Notification", id, notification, user);
+      await auditLogger.logCreate("Notification", id, notification, user);
     }
 
     logger.debug(`Notification #${id} permanently deleted`);
@@ -806,7 +806,7 @@ class NotificationService {
 
         const auditEnabled = await this._isAuditEnabled(qr);
         if (auditEnabled) {
-          await auditLogger.debugDelete("Notification", notification.id, oldData, user);
+          await auditLogger.logCreate("Notification", notification.id, oldData, user);
         }
 
         updatedCount++;

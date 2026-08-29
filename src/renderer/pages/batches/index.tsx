@@ -1,162 +1,337 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Plus } from 'lucide-react';
-import FilterBar from './components/FilterBar';
-import SummaryCards from './components/SummaryCards';
-import BatchTable from './components/BatchTable';
-import BatchFormDialog from './components/BatchFormDialog';
-import BatchViewDialog from './components/BatchViewDialog';
-import ExportButton from './components/ExportButton';
-import type { Batch, BatchStatistics } from '../../api/core/batch';
-import batchAPI from '../../api/core/batch';
+// src/renderer/pages/inventory/batches/index.tsx
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Plus,
+  Filter,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Download,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import { useBatches, type BatchFilters } from "./hooks/useBatches";
+import { BatchTable } from "./components/BatchTable";
+import { FilterBar } from "./components/FilterBar";
+import { BatchFormDialog } from "./components/BatchFormDialog";
+import { BatchViewDialog } from "./components/BatchViewDialog";
+import { SummaryCards } from "./components/SummaryCards";
+import BulkActionsBar from "./components/BulkActionsBar";
+import { usePagination } from "../../contexts/PaginationContext";
+import batchAPI, { type Batch } from "../../api/core/batch";
+import { dialogs } from "../../utils/dialogs";
 
 const BatchesPage: React.FC = () => {
-  // Filters
-  const [search, setSearch] = useState('');
-  const [meatId, setMeatId] = useState<number | undefined>();
-  const [supplierId, setSupplierId] = useState<number | undefined>();
-  const [status, setStatus] = useState('');
-  const [expiryFrom, setExpiryFrom] = useState('');
-  const [expiryTo, setExpiryTo] = useState('');
-  const [minRemaining, setMinRemaining] = useState<number | undefined>();
-  const [maxRemaining, setMaxRemaining] = useState<number | undefined>();
+  const { pagination, setPagination, clearPagination } = usePagination();
 
-  // Data states
-  const [batches, setBatches] = useState<Batch[]>([]);
-  const [statistics, setStatistics] = useState<BatchStatistics | null>(null);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const limit = 10;
+  const {
+    batches,
+    filters,
+    setFilters,
+    loading,
+    error,
+    totalItems,
+    page,
+    limit,
+    stats,
+    reload,
+    fetchStats,
+    goToPage,
+    changeLimit,
+    resetFilters,
+  } = useBatches({
+    search: "",
+    status: "",
+    meatId: undefined,
+    supplierId: undefined,
+  });
 
-  // UI states
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
-  const [viewingBatch, setViewingBatch] = useState<Batch | null>(null);
+  const [showStats, setShowStats] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [exporting, setExporting] = useState(false);
 
-  // Fetch batches
-  const fetchBatches = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await batchAPI.getAll({
-        page,
-        limit,
-        search: search || undefined,
-        meatId,
-        supplierId,
-        status: status || undefined,
-        expiryDateFrom: expiryFrom || undefined,
-        expiryDateTo: expiryTo || undefined,
-        minRemaining,
-        maxRemaining,
-        sortBy: 'createdAt',
-        sortOrder: 'DESC',
+  // Dialog states
+  const [formDialog, setFormDialog] = useState<{
+    isOpen: boolean;
+    batch: Batch | null;
+  }>({ isOpen: false, batch: null });
+
+  const [viewDialog, setViewDialog] = useState<{
+    isOpen: boolean;
+    batch: Batch | null;
+  }>({ isOpen: false, batch: null });
+
+  const hasFilters = !!(
+    filters.search ||
+    filters.status ||
+    filters.meatId ||
+    filters.supplierId ||
+    filters.expiryDateFrom ||
+    filters.expiryDateTo ||
+    filters.minRemaining ||
+    filters.maxRemaining
+  );
+
+  // ─── Pagination Sync ──────────────────────────────────────────────
+  const handlePageChange = useCallback(
+    (newPage: number) => {
+      goToPage(newPage);
+    },
+    [goToPage]
+  );
+
+  const handlePageSizeChange = useCallback(
+    (newSize: number) => {
+      changeLimit(newSize);
+    },
+    [changeLimit]
+  );
+
+  const handlersRef = useRef({
+    onPageChange: handlePageChange,
+    onPageSizeChange: handlePageSizeChange,
+  });
+
+  useEffect(() => {
+    handlersRef.current = {
+      onPageChange: handlePageChange,
+      onPageSizeChange: handlePageSizeChange,
+    };
+  }, [handlePageChange, handlePageSizeChange]);
+
+  const prevPageRef = useRef(pagination.currentPage);
+  const prevTotalRef = useRef(totalItems);
+  const prevLimitRef = useRef(pagination.pageSize);
+
+  useEffect(() => {
+    const pageChanged = prevPageRef.current !== page;
+    const totalChanged = prevTotalRef.current !== totalItems;
+    const limitChanged = prevLimitRef.current !== limit;
+
+    if (pageChanged || totalChanged || limitChanged) {
+      prevPageRef.current = page;
+      prevTotalRef.current = totalItems;
+      prevLimitRef.current = limit;
+
+      setPagination({
+        currentPage: page,
+        totalItems: totalItems,
+        pageSize: limit,
+        onPageChange: handlersRef.current.onPageChange,
+        onPageSizeChange: handlersRef.current.onPageSizeChange,
+        pageSizeOptions: [10, 25, 50, 100],
+        showPageSize: true,
       });
-      if (res.status) {
-        setBatches(res.data.items);
-        setTotal(res.data.total);
-        setTotalPages(res.data.totalPages);
-      } else {
-        throw new Error(res.message);
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
-  }, [page, limit, search, meatId, supplierId, status, expiryFrom, expiryTo, minRemaining, maxRemaining]);
-
-  // Fetch statistics
-  const fetchStatistics = useCallback(async () => {
-    try {
-      const res = await batchAPI.getStatistics();
-      if (res.status) setStatistics(res.data);
-    } catch (err) {
-      console.error('Failed to fetch statistics:', err);
-    }
-  }, []);
+  }, [page, totalItems, limit, setPagination]);
 
   useEffect(() => {
-    fetchBatches();
-  }, [fetchBatches]);
+    return () => clearPagination();
+  }, [clearPagination]);
 
-  useEffect(() => {
-    fetchStatistics();
-  }, [fetchStatistics]);
+  // ─── Filter Handlers ────────────────────────────────────────────
+  const handleFilterChange = useCallback(
+    <K extends keyof BatchFilters>(key: K, value: BatchFilters[K]) => {
+      setFilters((prev) => ({ ...prev, [key]: value }));
+    },
+    [setFilters]
+  );
 
-  const handleRefresh = () => {
-    fetchBatches();
-    fetchStatistics();
-  };
-
-  const handleFilterChange = (filters: any) => {
-    setSearch(filters.search);
-    setMeatId(filters.meatId ? Number(filters.meatId) : undefined);
-    setSupplierId(filters.supplierId ? Number(filters.supplierId) : undefined);
-    setStatus(filters.status);
-    setExpiryFrom(filters.expiryFrom);
-    setExpiryTo(filters.expiryTo);
-    setMinRemaining(filters.minRemaining ? Number(filters.minRemaining) : undefined);
-    setMaxRemaining(filters.maxRemaining ? Number(filters.maxRemaining) : undefined);
-    setPage(1);
-  };
-
+  // ─── CRUD Handlers ──────────────────────────────────────────────
   const handleCreate = () => {
-    setEditingBatch(null);
-    setShowForm(true);
+    setFormDialog({ isOpen: true, batch: null });
   };
 
   const handleEdit = (batch: Batch) => {
-    setEditingBatch(batch);
-    setShowForm(true);
-  };
-
-  const handleDelete = async (batch: Batch) => {
-    if (!confirm(`Are you sure you want to delete batch ${batch.batchCode}?`)) return;
-    try {
-      const res = await batchAPI.delete(batch.id);
-      if (res.status) {
-        handleRefresh();
-      } else {
-        alert(res.message);
-      }
-    } catch (err: any) {
-      alert('Delete failed: ' + err.message);
-    }
+    setFormDialog({ isOpen: true, batch });
   };
 
   const handleView = (batch: Batch) => {
-    setViewingBatch(batch);
+    setViewDialog({ isOpen: true, batch });
+  };
+
+  const handleDelete = async (batch: Batch) => {
+    const confirmed = await dialogs.confirm({
+      title: "Delete Batch",
+      message: `Are you sure you want to delete batch "${batch.batchCode}"? This action cannot be undone.`,
+      confirmText: "Delete",
+      icon: "danger",
+    });
+    if (!confirmed) return;
+
+    try {
+      await batchAPI.delete(batch.id);
+      dialogs.success(`Batch ${batch.batchCode} deleted successfully.`);
+      reload({ page, limit });
+    } catch (err: any) {
+      dialogs.error(err.message || "Failed to delete batch.");
+    }
+  };
+
+  const handleToggleStatus = async (batch: Batch) => {
+    const newStatus = batch.status === "active" ? "on_hold" : "active";
+    const action = newStatus === "active" ? "activate" : "put on hold";
+    const confirmed = await dialogs.confirm({
+      title: newStatus === "active" ? "Activate Batch" : "Put Batch On Hold",
+      message: `Are you sure you want to ${action} batch "${batch.batchCode}"?`,
+      confirmText: newStatus === "active" ? "Activate" : "Hold",
+      icon: "warning",
+    });
+    if (!confirmed) return;
+
+    try {
+      await batchAPI.update(batch.id, { status: newStatus as any });
+      dialogs.success(`Batch ${batch.batchCode} ${action}d successfully.`);
+      reload({ page, limit });
+    } catch (err: any) {
+      dialogs.error(err.message || `Failed to ${action} batch.`);
+    }
   };
 
   const handleFormSuccess = () => {
-    setShowForm(false);
-    handleRefresh();
+    setFormDialog({ isOpen: false, batch: null });
+    reload({ page, limit });
   };
 
-  const anyLoading = loading;
+  const handleViewClose = () => {
+    setViewDialog({ isOpen: false, batch: null });
+  };
 
+  // ─── Bulk Actions ───────────────────────────────────────────────
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = await dialogs.confirm({
+      title: "Bulk Delete",
+      message: `Delete ${selectedIds.length} selected batch(es)? This action cannot be undone.`,
+      confirmText: "Delete All",
+      icon: "danger",
+    });
+    if (!confirmed) return;
+
+    try {
+      await Promise.all(selectedIds.map((id) => batchAPI.delete(id)));
+      dialogs.success(`${selectedIds.length} batch(es) deleted.`);
+      setSelectedIds([]);
+      reload({ page, limit });
+    } catch (err: any) {
+      dialogs.error(err.message || "Bulk delete failed.");
+    }
+  };
+
+  const handleBulkExport = () => {
+    const selectedBatches = batches.filter((b) => selectedIds.includes(b.id));
+    if (selectedBatches.length === 0) {
+      dialogs.warning("No items selected for export.");
+      return;
+    }
+    const headers = ["ID", "Batch Code", "Meat", "Supplier", "Status", "Remaining", "Expiry Date"];
+    const rows = selectedBatches.map((b) => [
+      b.id,
+      b.batchCode,
+      b.meat?.name || "",
+      b.supplier?.name || "",
+      b.status,
+      b.remainingQuantity,
+      new Date(b.expiryDate).toLocaleDateString(),
+    ]);
+    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `selected_batches_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    dialogs.success("Export completed.");
+  };
+
+  const handleClearSelection = () => setSelectedIds([]);
+
+  // ─── Full Export ────────────────────────────────────────────────
+  const handleExportAll = async () => {
+    setExporting(true);
+    try {
+      const response = await batchAPI.export({
+        format: "csv",
+        filters: {
+          search: filters.search || undefined,
+          status: filters.status || undefined,
+          meatId: filters.meatId,
+          supplierId: filters.supplierId,
+          expiryDateFrom: filters.expiryDateFrom,
+          expiryDateTo: filters.expiryDateTo,
+          minRemaining: filters.minRemaining,
+          maxRemaining: filters.maxRemaining,
+        },
+      });
+      if (response.status && response.data) {
+        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = response.data.filename || `batches_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        dialogs.success("Export completed.");
+      }
+    } catch (err: any) {
+      dialogs.error(err.message || "Export failed.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // ─── Render ──────────────────────────────────────────────────────
   return (
-    <div className="p-6 space-y-6 bg-[var(--background-color)] min-h-screen">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Batch Management</h1>
-        <div className="flex items-center gap-2">
+    <div className="p-4 space-y-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="text-[var(--accent-gold)]">📦</span>
+            Batch Management
+          </h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+            Manage inventory batches, track stock, and monitor expiry dates
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={handleRefresh}
-            disabled={anyLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--card-secondary-bg)] text-[var(--text-secondary)] rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
+            onClick={() => setShowStats(!showStats)}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
+            title={showStats ? "Hide summary" : "Show summary"}
           >
-            <RefreshCw className={`w-4 h-4 ${anyLoading ? 'animate-spin' : ''}`} />
-            Refresh
+            {showStats ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
-          <ExportButton
-            filters={{ search, meatId, supplierId, status, expiryDateFrom: expiryFrom, expiryDateTo: expiryTo, minRemaining, maxRemaining }}
-          />
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
+            title={showFilters ? "Hide filters" : "Show filters"}
+          >
+            <Filter className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleExportAll}
+            disabled={exporting || batches.length === 0}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
+            title="Export all (current filters)"
+          >
+            <Download className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+          </button>
+          <button
+            onClick={() => {
+              reload({ page, limit });
+            }}
+            disabled={loading}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
           <button
             onClick={handleCreate}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] transition-colors"
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors shadow-md font-medium"
           >
             <Plus className="w-4 h-4" />
             New Batch
@@ -164,52 +339,81 @@ const BatchesPage: React.FC = () => {
         </div>
       </div>
 
-      <FilterBar
-        search={search}
-        meatId={meatId}
-        supplierId={supplierId}
-        status={status}
-        expiryFrom={expiryFrom}
-        expiryTo={expiryTo}
-        minRemaining={minRemaining}
-        maxRemaining={maxRemaining}
-        onFilterChange={handleFilterChange}
-      />
+      {/* Summary Cards */}
+      {showStats && stats && (
+        <SummaryCards statistics={stats} loading={loading} />
+      )}
 
-      {error && (
-        <div className="bg-[var(--danger-bg)] text-[var(--danger-color)] p-4 rounded-lg border border-[var(--danger-border)]">
-          Error: {error}
+      {/* Filters Bar */}
+      {showFilters && (
+        <FilterBar
+          filters={filters}
+          onFilterChange={handleFilterChange}
+          hasFilters={hasFilters}
+          onReset={resetFilters}
+          onReload={() => reload({ page, limit })}
+        />
+      )}
+
+      {/* Bulk Actions Bar */}
+      {selectedIds.length > 0 && (
+        <BulkActionsBar
+          selectedCount={selectedIds.length}
+          onDelete={handleBulkDelete}
+          onExport={handleBulkExport}
+          onClearSelection={handleClearSelection}
+        />
+      )}
+
+      {/* Loading / Error / Table */}
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
         </div>
+      ) : error ? (
+        <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
+          <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
+          <p className="text-[var(--text-primary)] font-medium">Error loading batches</p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
+          <button
+            onClick={() => reload({ page: 1, limit })}
+            className="mt-4 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      ) : (
+        <BatchTable
+          batches={batches}
+          onView={handleView}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+          onToggleStatus={handleToggleStatus}
+          selectedIds={selectedIds}
+          onSelectRow={(id, checked) => {
+            setSelectedIds((prev) =>
+              checked ? [...prev, id] : prev.filter((i) => i !== id)
+            );
+          }}
+          onSelectAll={(checked) => {
+            setSelectedIds(checked ? batches.map((b) => b.id) : []);
+          }}
+        />
       )}
 
-      <SummaryCards statistics={statistics} loading={false} />
-
-      <BatchTable
-        data={batches}
-        loading={loading}
-        page={page}
-        totalPages={totalPages}
-        total={total}
-        onPageChange={setPage}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        onView={handleView}
+      {/* Dialogs */}
+      <BatchFormDialog
+        isOpen={formDialog.isOpen}
+        batch={formDialog.batch}
+        onClose={() => setFormDialog({ isOpen: false, batch: null })}
+        onSuccess={handleFormSuccess}
       />
 
-      {showForm && (
-        <BatchFormDialog
-          batch={editingBatch}
-          onClose={() => setShowForm(false)}
-          onSuccess={handleFormSuccess}
-        />
-      )}
-
-      {viewingBatch && (
-        <BatchViewDialog
-          batch={viewingBatch}
-          onClose={() => setViewingBatch(null)}
-        />
-      )}
+      <BatchViewDialog
+        isOpen={viewDialog.isOpen}
+        batch={viewDialog.batch}
+        onClose={handleViewClose}
+      />
     </div>
   );
 };

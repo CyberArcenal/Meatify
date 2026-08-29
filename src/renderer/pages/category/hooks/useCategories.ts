@@ -9,14 +9,26 @@ export interface CategoryFilters {
   sortOrder: "ASC" | "DESC";
 }
 
-export function useCategories(initialFilters?: Partial<CategoryFilters>) {
+export interface CategoryStats {
+  totalActive: number;
+  totalInactive: number;
+  totalMeats: number;
+  categoriesWithMeats: Array<{
+    id: number;
+    name: string;
+    meatCount: number;
+  }>;
+}
+
+export const useCategories = (initialFilters?: Partial<CategoryFilters>) => {
   const [categories, setCategories] = useState<Category[]>([]);
-  const [productCounts, setProductCounts] = useState<Map<number, number>>(
-    new Map()
-  );
+  const [productCounts, setProductCounts] = useState<Map<number, number>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalItems, setTotalItems] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [stats, setStats] = useState<CategoryStats | null>(null);
   const [filters, setFilters] = useState<CategoryFilters>({
     search: "",
     status: "all",
@@ -27,19 +39,18 @@ export function useCategories(initialFilters?: Partial<CategoryFilters>) {
 
   const fetchCategories = useCallback(
     async (options?: { page?: number; limit?: number }) => {
-      const page = options?.page || 1;
-      const limit = options?.limit || 10;
+      const p = options?.page ?? page;
+      const l = options?.limit ?? limit;
 
       setLoading(true);
       setError(null);
-      try {
-        const isActive =
-          filters.status === "all" ? undefined : filters.status === "active";
 
-        // ✅ Get paginated categories
+      try {
+        const isActive = filters.status === "all" ? undefined : filters.status === "active";
+
         const response = await categoryAPI.getAll({
-          page,
-          limit,
+          page: p,
+          limit: l,
           search: filters.search || undefined,
           isActive,
           sortBy: filters.sortBy,
@@ -48,33 +59,28 @@ export function useCategories(initialFilters?: Partial<CategoryFilters>) {
 
         if (response.status) {
           const data = response.data;
-          const items = data?.items || [];
-          const total = data?.total || 0;
-
-          setCategories(items);
-          setTotalItems(total);
+          setCategories(data?.items || []);
+          setTotalItems(data?.total || 0);
+          if (options?.page !== undefined) setPage(p);
+          if (options?.limit !== undefined) setLimit(l);
         } else {
           throw new Error(response.message || "Failed to fetch categories");
         }
 
-        // ✅ Get product counts from statistics
+        // Get product counts from statistics
         const statsResponse = await categoryAPI.getStatistics();
         if (statsResponse.status) {
           const countsMap = new Map<number, number>();
-          const stats = statsResponse.data;
-          
-          // ✅ Use correct field name: categoriesWithMeats
-          if (stats && stats.categoriesWithMeats) {
-            stats.categoriesWithMeats.forEach((item) => {
-              // ✅ Use correct property: meatCount
+          const statsData = statsResponse.data;
+          if (statsData && statsData.categoriesWithMeats) {
+            statsData.categoriesWithMeats.forEach((item) => {
               countsMap.set(item.id, item.meatCount);
             });
           }
           setProductCounts(countsMap);
         }
       } catch (err: unknown) {
-        const message =
-          err instanceof Error ? err.message : "Failed to fetch categories";
+        const message = err instanceof Error ? err.message : "Failed to fetch categories";
         setError(message);
         setCategories([]);
         setTotalItems(0);
@@ -82,28 +88,77 @@ export function useCategories(initialFilters?: Partial<CategoryFilters>) {
         setLoading(false);
       }
     },
-    [filters]
+    [filters, page, limit]
   );
 
+  const fetchStats = useCallback(async () => {
+    try {
+      const response = await categoryAPI.getStatistics();
+      if (response.status) {
+        setStats(response.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch category stats:", err);
+    }
+  }, []);
+
+  // Auto-fetch when filters change
   useEffect(() => {
-    fetchCategories({ page: 1, limit: 10 });
-  }, [fetchCategories]);
+    fetchCategories({ page: 1, limit });
+  }, [filters]);
+
+  // Re-fetch when page/limit change
+  useEffect(() => {
+    fetchCategories({ page, limit });
+  }, [page, limit]);
+
+  // Initial stats fetch
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
       fetchCategories(options);
+      fetchStats();
     },
-    [fetchCategories]
+    [fetchCategories, fetchStats]
   );
+
+  const goToPage = useCallback((newPage: number) => {
+    if (newPage >= 1) setPage(newPage);
+  }, []);
+
+  const changeLimit = useCallback((newLimit: number) => {
+    setLimit(newLimit);
+    setPage(1);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setFilters({
+      search: "",
+      status: "all",
+      sortBy: "name",
+      sortOrder: "ASC",
+    });
+    setPage(1);
+  }, []);
 
   return {
     categories,
     productCounts,
+    filters,
+    setFilters,
     loading,
     error,
     totalItems,
-    filters,
-    setFilters,
+    page,
+    limit,
+    stats,
     reload,
+    fetchStats,
+    goToPage,
+    changeLimit,
+    resetFilters,
   };
-}
+};

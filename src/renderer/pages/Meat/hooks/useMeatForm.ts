@@ -51,7 +51,7 @@ export const useMeatForm = () => {
     setMode("edit");
     setMeatId(meat.id);
     setInitialData({
-      sku: meat.sku,
+      sku: meat.sku || "",
       name: meat.name,
       barcode: meat.barcode || "",
       description: meat.description || "",
@@ -59,7 +59,7 @@ export const useMeatForm = () => {
       isActive: meat.isActive,
       categoryId: meat.categoryId || undefined,
       supplierId: meat.supplierId || undefined,
-      image: meat.image,
+      image: meat.image || null,
     });
     setIsOpen(true);
   };

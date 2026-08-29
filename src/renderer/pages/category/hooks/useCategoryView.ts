@@ -3,7 +3,7 @@ import { useState } from "react";
 import type { Category } from "../../../api/core/category";
 import meatAPI, { type Meat } from "../../../api/core/meat";
 
-export function useCategoryView() {
+export const useCategoryView = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [category, setCategory] = useState<Category | null>(null);
   const [products, setProducts] = useState<Meat[]>([]);
@@ -15,17 +15,13 @@ export function useCategoryView() {
     setLoading(true);
 
     try {
-      // ✅ Fetch meats by category using meatAPI
       const response = await meatAPI.getAll({
         categoryId: category.id,
         isActive: true,
         limit: 100,
       });
       if (response.status) {
-        // response.data is PaginatedMeats { items, total, page, limit, totalPages }
-        const data = response.data;
-        const items = data?.items || [];
-        setProducts(items);
+        setProducts(response.data?.items || []);
       }
     } catch (error) {
       console.error("Error loading category products:", error);
@@ -48,4 +44,4 @@ export function useCategoryView() {
     open,
     close,
   };
-}
+};

@@ -453,7 +453,7 @@ class SaleItemService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("SaleItem", id, item, user);
+      await auditLogger.logCreate("SaleItem", id, item, user);
     }
 
     logger.debug(`SaleItem #${id} permanently deleted`);
@@ -821,7 +821,7 @@ class SaleItemService {
 
         const auditEnabled = await this._isAuditEnabled(qr);
         if (auditEnabled) {
-          await auditLogger.debugDelete("SaleItem", item.id, item, user);
+          await auditLogger.logCreate("SaleItem", item.id, item, user);
         }
 
         deletedCount++;

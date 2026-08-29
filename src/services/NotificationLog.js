@@ -309,7 +309,7 @@ class NotificationLogService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("NotificationLog", id, log, user);
+      await auditLogger.logCreate("NotificationLog", id, log, user);
     }
 
     logger.debug(`NotificationLog #${id} permanently deleted`);
@@ -749,7 +749,7 @@ class NotificationLogService {
 
         const auditEnabled = await this._isAuditEnabled(qr);
         if (auditEnabled) {
-          await auditLogger.debugDelete("NotificationLog", log.id, log, user);
+          await auditLogger.logCreate("NotificationLog", log.id, log, user);
         }
 
         deletedCount++;

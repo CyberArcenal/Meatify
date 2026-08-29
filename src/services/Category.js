@@ -267,7 +267,7 @@ class CategoryService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugDelete("Category", id, oldData, user);
+        await auditLogger.logCreate("Category", id, oldData, user);
       }
 
       logger.debug(`Category deactivated: #${id}`);
@@ -353,7 +353,7 @@ class CategoryService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("Category", id, category, user);
+      await auditLogger.logCreate("Category", id, category, user);
     }
 
     logger.debug(`Category #${id} permanently deleted`);

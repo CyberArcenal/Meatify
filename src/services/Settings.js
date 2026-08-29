@@ -216,7 +216,7 @@ class SystemSettingService {
     setting.is_deleted = true;
     setting.updated_at = new Date();
     const saved = await updateDb(repo, setting, { queryRunner: qr });
-    await auditLogger.debugDelete("SystemSetting", id, setting, user);
+    await auditLogger.logCreate("SystemSetting", id, setting, user);
     return saved;
   }
 

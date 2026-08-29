@@ -1,16 +1,30 @@
 // src/renderer/pages/inventory/movements/components/SummaryCards.tsx
 import React from "react";
 import { Package, TrendingUp, TrendingDown, RefreshCw, AlertTriangle } from "lucide-react";
+import type { MovementSummary } from "../hooks/useMovements";
 
 interface SummaryCardsProps {
-  summary: {
-    totalToday: number;
-    byType: Record<string, number>;
-    mostMovedMeat: { name: string; count: number } | null;
-  };
+  summary: MovementSummary;
+  loading: boolean;
 }
 
-export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
+export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary, loading }) => {
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {[1, 2, 3, 4].map((i) => (
+          <div
+            key={i}
+            className="bg-[var(--card-bg)] rounded-xl p-4 border border-[var(--border-color)] animate-pulse"
+          >
+            <div className="h-3 bg-[var(--border-color)] rounded w-24 mb-2" />
+            <div className="h-6 bg-[var(--border-color)] rounded w-16" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   const cards = [
     {
       title: "Movements Today",
@@ -18,6 +32,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
       icon: Package,
       color: "var(--accent-gold)",
       bg: "var(--accent-gold-light)",
+      format: (v: number) => v.toLocaleString(),
     },
     {
       title: "Sales",
@@ -25,6 +40,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
       icon: TrendingDown,
       color: "var(--accent-blue)",
       bg: "var(--accent-blue-light)",
+      format: (v: number) => v.toLocaleString(),
     },
     {
       title: "Returns",
@@ -32,6 +48,7 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
       icon: TrendingUp,
       color: "var(--accent-red)",
       bg: "var(--accent-red-light)",
+      format: (v: number) => v.toLocaleString(),
     },
     {
       title: "Adjustments",
@@ -39,30 +56,30 @@ export const SummaryCards: React.FC<SummaryCardsProps> = ({ summary }) => {
       icon: RefreshCw,
       color: "var(--accent-amber)",
       bg: "var(--accent-amber-light)",
+      format: (v: number) => v.toLocaleString(),
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
       {cards.map((card, idx) => {
         const Icon = card.icon;
         return (
           <div
             key={idx}
-            className="rounded-xl p-4 border border-[var(--border-color)] transition-all duration-300 hover:scale-[1.02] hover:shadow-lg"
-            style={{ backgroundColor: card.bg }}
+            className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] p-4 shadow-sm hover:shadow-md transition-shadow"
           >
-            <div className="flex items-start justify-between">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium opacity-80 text-[var(--text-primary)]">
+                <p className="text-[10px] font-medium text-[var(--text-secondary)] uppercase tracking-wider">
                   {card.title}
                 </p>
-                <p className="text-2xl font-bold mt-1 text-[var(--text-primary)]">
-                  {card.value}
+                <p className="text-lg font-bold text-[var(--text-primary)] mt-0.5">
+                  {card.format(card.value)}
                 </p>
               </div>
-              <div className="p-2 rounded-lg bg-black/10">
-                <Icon className="w-6 h-6" style={{ color: card.color }} />
+              <div className={`p-2.5 rounded-full`} style={{ backgroundColor: card.bg }}>
+                <Icon className={`w-4 h-4`} style={{ color: card.color }} />
               </div>
             </div>
           </div>

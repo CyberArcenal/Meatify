@@ -1,13 +1,25 @@
 // src/renderer/pages/inventory/stock/index.tsx
-import React, { useState, useEffect } from "react";
-import { Loader2, AlertCircle, ShoppingCart, RefreshCw } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Plus,
+  Filter,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Download,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { useStockLevels, type StockFilters } from "./hooks/useStockLevels";
-import { StockSummaryCards } from "./components/StockSummaryCards";
-import { StockFilterBar } from "./components/StockFilterBar";
+import { SummaryCards } from "./components/SummaryCards";
+import { FilterBar } from "./components/FilterBar";
 import { StockTable } from "./components/StockTable";
-import type { StockMeat } from "./hooks/useStockLevels";
+import BulkActionsBar from "./components/BulkActionsBar";
 import { usePagination } from "../../contexts/PaginationContext";
 import { dialogs } from "../../utils/dialogs";
+
+import type { StockMeat } from "./hooks/useStockLevels";
+import meatAPI from "../../api/core/meat";
 import { PurchaseFormDialog } from "../purchase/components/PurchaseFormDialog";
 
 const StockLevelsPage: React.FC = () => {
@@ -22,7 +34,13 @@ const StockLevelsPage: React.FC = () => {
     loading,
     error,
     totalItems,
+    page,
+    limit,
+    summary,
     reload,
+    goToPage,
+    changeLimit,
+    resetFilters,
   } = useStockLevels({
     search: "",
     supplierId: undefined,
@@ -32,38 +50,86 @@ const StockLevelsPage: React.FC = () => {
     sortOrder: "ASC",
   });
 
+  const [showStats, setShowStats] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [exporting, setExporting] = useState(false);
   const [orderFormOpen, setOrderFormOpen] = useState(false);
   const [orderInitialData, setOrderInitialData] = useState<any>(null);
 
-  // Sync with global pagination
+  const hasFilters = !!(
+    filters.search ||
+    filters.supplierId ||
+    filters.categoryId ||
+    filters.stockStatus !== "all"
+  );
+
+  // ─── Pagination Sync ──────────────────────────────────────────────
+  const handlePageChange = useCallback(
+    (newPage: number) => {
+      goToPage(newPage);
+    },
+    [goToPage]
+  );
+
+  const handlePageSizeChange = useCallback(
+    (newSize: number) => {
+      changeLimit(newSize);
+    },
+    [changeLimit]
+  );
+
+  const handlersRef = useRef({
+    onPageChange: handlePageChange,
+    onPageSizeChange: handlePageSizeChange,
+  });
+
   useEffect(() => {
-    setPagination({
-      currentPage: pagination.currentPage,
-      totalItems: totalItems,
-      pageSize: pagination.pageSize,
-      onPageChange: (page) => {
-        reload({ page, limit: pagination.pageSize });
-      },
-      onPageSizeChange: (size) => {
-        reload({ page: 1, limit: size });
-      },
-      pageSizeOptions: [10, 20, 50, 100],
-      showPageSize: true,
-    });
+    handlersRef.current = {
+      onPageChange: handlePageChange,
+      onPageSizeChange: handlePageSizeChange,
+    };
+  }, [handlePageChange, handlePageSizeChange]);
 
+  const prevPageRef = useRef(pagination.currentPage);
+  const prevTotalRef = useRef(totalItems);
+  const prevLimitRef = useRef(pagination.pageSize);
+
+  useEffect(() => {
+    const pageChanged = prevPageRef.current !== page;
+    const totalChanged = prevTotalRef.current !== totalItems;
+    const limitChanged = prevLimitRef.current !== limit;
+
+    if (pageChanged || totalChanged || limitChanged) {
+      prevPageRef.current = page;
+      prevTotalRef.current = totalItems;
+      prevLimitRef.current = limit;
+
+      setPagination({
+        currentPage: page,
+        totalItems: totalItems,
+        pageSize: limit,
+        onPageChange: handlersRef.current.onPageChange,
+        onPageSizeChange: handlersRef.current.onPageSizeChange,
+        pageSizeOptions: [10, 25, 50, 100],
+        showPageSize: true,
+      });
+    }
+  }, [page, totalItems, limit, setPagination]);
+
+  useEffect(() => {
     return () => clearPagination();
-  }, [totalItems, pagination.currentPage, pagination.pageSize]);
+  }, [clearPagination]);
 
-  const handleFilterChange = <K extends keyof StockFilters>(
-    key: K,
-    value: StockFilters[K]
-  ) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    reload({ page: 1, limit: pagination.pageSize });
-    setSelectedIds(new Set());
-  };
+  // ─── Filter Handlers ────────────────────────────────────────────
+  const handleFilterChange = useCallback(
+    <K extends keyof StockFilters>(key: K, value: StockFilters[K]) => {
+      setFilters((prev) => ({ ...prev, [key]: value }));
+    },
+    [setFilters]
+  );
 
+  // ─── Selection Handlers ──────────────────────────────────────────
   const toggleSelect = (meatId: number) => {
     const newSet = new Set(selectedIds);
     if (newSet.has(meatId)) newSet.delete(meatId);
@@ -79,52 +145,12 @@ const StockLevelsPage: React.FC = () => {
     }
   };
 
-  const handleBulkReorder = () => {
-    if (selectedIds.size === 0) {
-      dialogs.alert({
-        title: "No Selection",
-        message: "Please select at least one meat product.",
-      });
-      return;
-    }
+  const handleClearSelection = () => setSelectedIds(new Set());
 
-    const selectedMeats = meats.filter((m) => selectedIds.has(m.id));
-    const supplierIds = new Set(selectedMeats.map((m) => m.supplier?.id));
-
-    if (supplierIds.size > 1 || supplierIds.has(undefined)) {
-      dialogs.alert({
-        title: "Multiple Suppliers",
-        message:
-          "Selected meats belong to different suppliers. Please select meats from a single supplier.",
-      });
-      return;
-    }
-
-    const supplierId = selectedMeats[0].supplier?.id;
-    if (!supplierId) {
-      dialogs.alert({
-        title: "No Supplier",
-        message: "Selected meats have no supplier assigned.",
-      });
-      return;
-    }
-
-    const items = selectedMeats.map((m) => ({
-      meatId: m.id,
-      quantity: m.reorderQty,
-      unitPrice: m.pricePerKg,
-    }));
-
-    setOrderInitialData({ supplierId, items });
-    setOrderFormOpen(true);
-  };
-
-  const handleSingleReorder = (meat: StockMeat) => {
+  // ─── Reorder Handlers ────────────────────────────────────────────
+  const handleReorder = (meat: StockMeat) => {
     if (!meat.supplier) {
-      dialogs.alert({
-        title: "No Supplier",
-        message: "This meat has no supplier assigned.",
-      });
+      dialogs.warning("This meat has no supplier assigned.");
       return;
     }
 
@@ -141,15 +167,44 @@ const StockLevelsPage: React.FC = () => {
     setOrderFormOpen(true);
   };
 
+  const handleBulkReorder = () => {
+    if (selectedIds.size === 0) {
+      dialogs.warning("Please select at least one meat product.");
+      return;
+    }
+
+    const selectedMeats = meats.filter((m) => selectedIds.has(m.id));
+    const supplierIds = new Set(selectedMeats.map((m) => m.supplier?.id));
+
+    if (supplierIds.size > 1 || supplierIds.has(undefined)) {
+      dialogs.warning(
+        "Selected meats belong to different suppliers. Please select meats from a single supplier."
+      );
+      return;
+    }
+
+    const supplierId = selectedMeats[0].supplier?.id;
+    if (!supplierId) {
+      dialogs.warning("Selected meats have no supplier assigned.");
+      return;
+    }
+
+    const items = selectedMeats.map((m) => ({
+      meatId: m.id,
+      quantity: m.reorderQty,
+      unitPrice: m.pricePerKg,
+    }));
+
+    setOrderInitialData({ supplierId, items });
+    setOrderFormOpen(true);
+  };
+
   const handleOrderSuccess = () => {
     setOrderFormOpen(false);
     setOrderInitialData(null);
     setSelectedIds(new Set());
-    dialogs.alert({
-      title: "Success",
-      message: "Purchase order created successfully.",
-    });
-    reload({ page: pagination.currentPage, limit: pagination.pageSize });
+    dialogs.success("Purchase order created successfully.");
+    reload({ page, limit });
   };
 
   const handleOrderClose = () => {
@@ -157,84 +212,163 @@ const StockLevelsPage: React.FC = () => {
     setOrderInitialData(null);
   };
 
-  const handleRefresh = () => {
-    reload({ page: pagination.currentPage, limit: pagination.pageSize });
+  // ─── Export ──────────────────────────────────────────────────────
+  const handleExportAll = async () => {
+    setExporting(true);
+    try {
+      const response = await meatAPI.export({
+        format: "csv",
+        filters: {
+          search: filters.search || undefined,
+          categoryId: filters.categoryId,
+          supplierId: filters.supplierId,
+        },
+      });
+      if (response.status && response.data) {
+        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = response.data.filename || `stock_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        dialogs.success("Export completed.");
+      }
+    } catch (err: any) {
+      dialogs.error(err.message || "Export failed.");
+    } finally {
+      setExporting(false);
+    }
   };
 
+  const handleBulkExport = () => {
+    const selectedMeats = meats.filter((m) => selectedIds.has(m.id));
+    if (selectedMeats.length === 0) {
+      dialogs.warning("No items selected for export.");
+      return;
+    }
+    const headers = ["ID", "SKU", "Name", "Supplier", "Category", "Stock", "Price/kg"];
+    const rows = selectedMeats.map((m) => [
+      m.id,
+      m.sku,
+      m.name,
+      m.supplier?.name || "",
+      m.category?.name || "",
+      m.currentStock.toFixed(2),
+      m.pricePerKg.toFixed(2),
+    ]);
+    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `selected_stock_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    dialogs.success("Export completed.");
+  };
+
+  // ─── Render ──────────────────────────────────────────────────────
   return (
-    <div className="h-full flex flex-col bg-[var(--card-bg)] p-6 rounded-lg">
+    <div className="p-4 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--accent-gold)] to-[var(--accent-gold-hover)] bg-clip-text text-transparent">
+          <h1 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="text-[var(--accent-gold)]">📊</span>
             Stock Levels
           </h1>
-          <p className="text-sm text-[var(--text-tertiary)] mt-1">
-            {totalItems} total meats tracked
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+            Monitor current inventory levels and reorder when needed
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           <button
-            onClick={handleBulkReorder}
-            disabled={selectedIds.size === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+            onClick={() => setShowStats(!showStats)}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
+            title={showStats ? "Hide summary" : "Show summary"}
           >
-            <ShoppingCart className="w-4 h-4" />
-            Reorder Selected ({selectedIds.size})
+            {showStats ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
           <button
-            onClick={handleRefresh}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--card-secondary-bg)] rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors text-[var(--text-primary)] border border-[var(--border-color)]"
+            onClick={() => setShowFilters(!showFilters)}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
+            title={showFilters ? "Hide filters" : "Show filters"}
           >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
+            <Filter className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleExportAll}
+            disabled={exporting || meats.length === 0}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
+            title="Export all (current filters)"
+          >
+            <Download className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+          </button>
+          <button
+            onClick={() => {
+              reload({ page, limit });
+            }}
+            disabled={loading}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
 
       {/* Summary Cards */}
-      {!loading && !error && <StockSummaryCards meats={meats} />}
+      {showStats && <SummaryCards summary={summary} loading={loading} />}
 
-      {/* Filter Bar */}
-      <StockFilterBar
-        filters={filters}
-        suppliers={suppliers}
-        categories={categories}
-        onFilterChange={handleFilterChange}
-        onReload={handleRefresh}
-      />
+      {/* Filters Bar */}
+      {showFilters && (
+        <FilterBar
+          filters={filters}
+          suppliers={suppliers}
+          categories={categories}
+          onFilterChange={handleFilterChange}
+          hasFilters={hasFilters}
+          onReset={resetFilters}
+          onReload={() => reload({ page, limit })}
+        />
+      )}
 
-      {/* Main Content */}
+      {/* Bulk Actions Bar */}
+      {selectedIds.size > 0 && (
+        <BulkActionsBar
+          selectedCount={selectedIds.size}
+          onReorder={handleBulkReorder}
+          onExport={handleBulkExport}
+          onClearSelection={handleClearSelection}
+        />
+      )}
+
+      {/* Loading / Error / Table */}
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
         </div>
       ) : error ? (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--accent-red)]" />
-            <p className="text-[var(--text-primary)] font-medium">
-              Error loading stock levels
-            </p>
-            <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
-            <button
-              onClick={() => reload({ page: 1, limit: pagination.pageSize })}
-              className="mt-4 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors"
-            >
-              Try Again
-            </button>
-          </div>
+        <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
+          <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
+          <p className="text-[var(--text-primary)] font-medium">Error loading stock data</p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
+          <button
+            onClick={() => reload({ page: 1, limit })}
+            className="mt-4 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors"
+          >
+            Retry
+          </button>
         </div>
       ) : (
-        <div className="flex-1">
-          <StockTable
-            meats={meats}
-            selectedIds={selectedIds}
-            onToggleSelect={toggleSelect}
-            onSelectAll={toggleSelectAll}
-            onReorder={handleSingleReorder}
-          />
-        </div>
+        <StockTable
+          meats={meats}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onSelectAll={toggleSelectAll}
+          onReorder={handleReorder}
+        />
       )}
 
       {/* Purchase Form Dialog */}

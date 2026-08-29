@@ -375,7 +375,7 @@ class LoyaltyTransactionService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugDelete("LoyaltyTransaction", id, oldData, user);
+        await auditLogger.logCreate("LoyaltyTransaction", id, oldData, user);
       }
 
       logger.debug(`LoyaltyTransaction soft deleted: #${id}`);
@@ -448,7 +448,7 @@ class LoyaltyTransactionService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("LoyaltyTransaction", id, transaction, user);
+      await auditLogger.logCreate("LoyaltyTransaction", id, transaction, user);
     }
 
     logger.debug(`LoyaltyTransaction #${id} permanently deleted`);
@@ -821,7 +821,7 @@ class LoyaltyTransactionService {
 
         const auditEnabled = await this._isAuditEnabled(qr);
         if (auditEnabled) {
-          await auditLogger.debugDelete("LoyaltyTransaction", tx.id, tx, user);
+          await auditLogger.logCreate("LoyaltyTransaction", tx.id, tx, user);
         }
 
         updatedCount++;

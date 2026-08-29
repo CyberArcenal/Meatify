@@ -1,88 +1,97 @@
-import React from 'react';
-import { Package, Layers, AlertTriangle, XCircle, CheckCircle } from 'lucide-react';
-import type { BatchStatistics } from '../../../api/core/batch';
+// src/renderer/pages/inventory/batches/components/SummaryCards.tsx
+import React from "react";
+import { Package, Layers, AlertTriangle, XCircle, CheckCircle } from "lucide-react";
+import type { BatchStatistics } from "../../../api/core/batch";
 
-interface Props {
+interface SummaryCardsProps {
   statistics: BatchStatistics | null;
   loading: boolean;
 }
 
-const SummaryCards: React.FC<Props> = ({ statistics, loading }) => {
-  const colorClasses = {
-    blue: 'bg-[var(--accent-blue-light)] text-[var(--accent-blue)] border-[var(--accent-blue)]/20',
-    green: 'bg-[var(--accent-green-light)] text-[var(--accent-green)] border-[var(--accent-green)]/20',
-    amber: 'bg-[var(--accent-amber-light)] text-[var(--accent-amber)] border-[var(--accent-amber)]/20',
-    red: 'bg-[var(--danger-bg)] text-[var(--danger-color)] border-[var(--danger-color)]/20',
-  };
-
+export const SummaryCards: React.FC<SummaryCardsProps> = ({ statistics, loading }) => {
   if (loading || !statistics) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        {[1, 2, 3, 4, 5].map(i => (
-          <div key={i} className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)] animate-pulse">
-            <div className="h-4 bg-[var(--border-color)] rounded w-24 mb-2" />
-            <div className="h-6 bg-[var(--border-color)] rounded w-32" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        {[1, 2, 3, 4, 5].map((i) => (
+          <div key={i} className="bg-[var(--card-bg)] rounded-xl p-4 border border-[var(--border-color)] animate-pulse">
+            <div className="h-3 bg-[var(--border-color)] rounded w-24 mb-2" />
+            <div className="h-6 bg-[var(--border-color)] rounded w-16" />
           </div>
         ))}
       </div>
     );
   }
 
+  const total = Object.values(statistics.byStatus).reduce((a, b) => a + b, 0);
+
   const cards = [
     {
-      title: 'Total Batches',
-      value: Object.values(statistics.byStatus).reduce((a, b) => a + b, 0),
+      title: "Total Batches",
+      value: total,
       icon: Package,
-      color: 'blue',
+      color: "var(--accent-blue)",
+      bg: "var(--accent-blue-light)",
+      format: (v: number) => v.toLocaleString(),
     },
     {
-      title: 'Active',
+      title: "Active",
       value: statistics.byStatus.active || 0,
       icon: CheckCircle,
-      color: 'green',
+      color: "var(--success-color)",
+      bg: "var(--status-completed-bg)",
+      format: (v: number) => v.toLocaleString(),
     },
     {
-      title: 'Depleted',
+      title: "Depleted",
       value: statistics.byStatus.depleted || 0,
       icon: Layers,
-      color: 'blue',
+      color: "var(--text-secondary)",
+      bg: "var(--stock-outstock-bg)",
+      format: (v: number) => v.toLocaleString(),
     },
     {
-      title: 'Expired',
+      title: "Expired",
       value: statistics.byStatus.expired || 0,
       icon: XCircle,
-      color: 'red',
+      color: "var(--danger-color)",
+      bg: "var(--status-cancelled-bg)",
+      format: (v: number) => v.toLocaleString(),
     },
     {
-      title: 'Expiring Soon',
-      value: statistics.expiringSoon,
+      title: "Expiring Soon",
+      value: statistics.expiringSoon || 0,
       icon: AlertTriangle,
-      color: 'amber',
+      color: "var(--warning-color)",
+      bg: "var(--status-pending-bg)",
+      format: (v: number) => v.toLocaleString(),
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-      {cards.map((card, idx) => (
-        <div
-          key={idx}
-          className={`rounded-xl p-5 border transition-all duration-300 hover:scale-[1.02] hover:shadow-lg ${
-            colorClasses[card.color as keyof typeof colorClasses]
-          }`}
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <p className="text-sm font-medium opacity-80">{card.title}</p>
-              <p className="text-2xl font-bold mt-1">{card.value}</p>
-            </div>
-            <div className="p-2 rounded-lg bg-black/10">
-              <card.icon className="w-6 h-6" />
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      {cards.map((card, idx) => {
+        const Icon = card.icon;
+        return (
+          <div
+            key={idx}
+            className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] p-4 shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-medium text-[var(--text-secondary)] uppercase tracking-wider">
+                  {card.title}
+                </p>
+                <p className="text-lg font-bold text-[var(--text-primary)] mt-0.5">
+                  {card.format(card.value)}
+                </p>
+              </div>
+              <div className={`p-2.5 rounded-full`} style={{ backgroundColor: card.bg }}>
+                <Icon className={`w-4 h-4`} style={{ color: card.color }} />
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
-
-export default SummaryCards;

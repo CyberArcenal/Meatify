@@ -1,113 +1,169 @@
 // src/renderer/pages/system/notification-logs/index.tsx
-import React, { useState, useEffect } from "react";
-import { RefreshCw } from "lucide-react";
-import notificationLogAPI, { type NotificationLog } from "../../api/core/notificationLog";
-import { usePagination } from "../../contexts/PaginationContext";
-import { dialogs } from "../../utils/dialogs";
-import { showError, showSuccess } from "../../utils/notification";
-import { NotificationStats } from "./components/NotificationStats";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Filter,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Download,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import { useNotificationLogs, type NotificationFilters } from "./hooks/useNotificationLogs";
+import { SummaryCards } from "./components/SummaryCards";
+import { FilterBar } from "./components/FilterBar";
 import { NotificationTable } from "./components/NotificationTable";
 import { NotificationViewDialog } from "./Dialogs/NotificationViewDialog";
-import { useNotificationLogs, type NotificationFilters } from "./hooks/useNotificationLogs";
-import { NotificationFilterBar } from "./components/NotificationFilterBar";
+import BulkActionsBar from "./components/BulkActionsBar";
+import { usePagination } from "../../contexts/PaginationContext";
+import notificationLogAPI from "../../api/core/notificationLog";
+import { dialogs } from "../../utils/dialogs";
 
 const NotificationLogPage: React.FC = () => {
   const { pagination, setPagination, clearPagination } = usePagination();
 
-  const { logs, filters, setFilters, loading, error, reload, stats, totalItems } =
-    useNotificationLogs({
-      sortBy: "created_at",
-      sortOrder: "DESC",
-    });
+  const {
+    logs,
+    filters,
+    setFilters,
+    loading,
+    error,
+    totalItems,
+    page,
+    limit,
+    stats,
+    reload,
+    goToPage,
+    changeLimit,
+    resetFilters,
+  } = useNotificationLogs({
+    sortBy: "created_at",
+    sortOrder: "DESC",
+  });
+
+  const [showStats, setShowStats] = useState(true);
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [exporting, setExporting] = useState(false);
+  const [sendingIds, setSendingIds] = useState<Set<number>>(new Set());
 
   // Dialog state
-  const [selectedLog, setSelectedLog] = useState<NotificationLog | null>(null);
+  const [viewLog, setViewLog] = useState<NotificationLog | null>(null);
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-  const [sendingRows, setSendingRows] = useState<Set<number>>(new Set());
 
-  // ✅ Sync with global pagination - gaya ng Category page
+  const hasFilters = !!(
+    filters.keyword ||
+    filters.status ||
+    filters.startDate ||
+    filters.endDate
+  );
+
+  // ─── Pagination Sync ──────────────────────────────────────────────
+  const handlePageChange = useCallback(
+    (newPage: number) => {
+      goToPage(newPage);
+    },
+    [goToPage]
+  );
+
+  const handlePageSizeChange = useCallback(
+    (newSize: number) => {
+      changeLimit(newSize);
+    },
+    [changeLimit]
+  );
+
+  const handlersRef = useRef({
+    onPageChange: handlePageChange,
+    onPageSizeChange: handlePageSizeChange,
+  });
+
   useEffect(() => {
-    // ✅ Ensure totalItems is a number (0 if no data)
-    const safeTotalItems = totalItems || 0;
-    
-    setPagination({
-      currentPage: pagination.currentPage,
-      totalItems: safeTotalItems,
-      pageSize: pagination.pageSize,
-      onPageChange: (page) => {
-        reload({ page, limit: pagination.pageSize });
-      },
-      onPageSizeChange: (size) => {
-        reload({ page: 1, limit: size });
-      },
-      pageSizeOptions: [10, 20, 50, 100],
-      // ✅ Only show page size selector if there are items
-      showPageSize: safeTotalItems > 0,
-    });
+    handlersRef.current = {
+      onPageChange: handlePageChange,
+      onPageSizeChange: handlePageSizeChange,
+    };
+  }, [handlePageChange, handlePageSizeChange]);
 
+  const prevPageRef = useRef(pagination.currentPage);
+  const prevTotalRef = useRef(totalItems);
+  const prevLimitRef = useRef(pagination.pageSize);
+
+  useEffect(() => {
+    const pageChanged = prevPageRef.current !== page;
+    const totalChanged = prevTotalRef.current !== totalItems;
+    const limitChanged = prevLimitRef.current !== limit;
+
+    if (pageChanged || totalChanged || limitChanged) {
+      prevPageRef.current = page;
+      prevTotalRef.current = totalItems;
+      prevLimitRef.current = limit;
+
+      setPagination({
+        currentPage: page,
+        totalItems: totalItems,
+        pageSize: limit,
+        onPageChange: handlersRef.current.onPageChange,
+        onPageSizeChange: handlersRef.current.onPageSizeChange,
+        pageSizeOptions: [10, 25, 50, 100],
+        showPageSize: true,
+      });
+    }
+  }, [page, totalItems, limit, setPagination]);
+
+  useEffect(() => {
     return () => clearPagination();
-  }, [totalItems, pagination.currentPage, pagination.pageSize]); // ✅ Walang reload dito
+  }, [clearPagination]);
 
-  // ✅ Gaya ng Category page - nagre-reload agad kapag nagbago ang filter
-  const handleFilterChange = (key: keyof NotificationFilters, value: any) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    reload({ page: 1, limit: pagination.pageSize });
-  };
+  // ─── Filter Handlers ────────────────────────────────────────────
+  const handleFilterChange = useCallback(
+    (key: keyof NotificationFilters, value: any) => {
+      setFilters((prev) => ({ ...prev, [key]: value }));
+    },
+    [setFilters]
+  );
 
+  // ─── Action Handlers ────────────────────────────────────────────
   const handleView = (log: NotificationLog) => {
-    setSelectedLog(log);
+    setViewLog(log);
     setIsViewDialogOpen(true);
   };
 
   const handleRetry = async (id: number) => {
-    setSendingRows((prev) => new Set(prev).add(id));
+    setSendingIds((prev) => new Set(prev).add(id));
     try {
       const response = await notificationLogAPI.retry(id);
       if (response.status) {
-        showSuccess("Notification queued for retry.");
-        reload({ page: pagination.currentPage, limit: pagination.pageSize });
+        dialogs.success("Notification queued for retry.");
+        reload({ page, limit });
       } else {
         throw new Error(response.message);
       }
     } catch (err: any) {
-      showError("Retry failed", err.message || "Unable to retry notification");
+      dialogs.error(err.message || "Unable to retry notification");
     } finally {
-      setSendingRows((prev) => {
+      setSendingIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
         return next;
       });
     }
-  };
-
-  const confirmRetry = (id: number) => {
-    dialogs
-      .confirm({
-        title: "Retry Notification",
-        message: "Are you sure you want to retry this failed notification?",
-        confirmText: "Retry",
-        cancelText: "Cancel",
-        icon: "warning",
-      })
-      .then((confirmed) => {
-        if (confirmed) handleRetry(id);
-      });
   };
 
   const handleResend = async (id: number) => {
-    setSendingRows((prev) => new Set(prev).add(id));
+    setSendingIds((prev) => new Set(prev).add(id));
     try {
       const response = await notificationLogAPI.resend(id);
       if (response.status) {
-        showSuccess("Notification resent.");
-        reload({ page: pagination.currentPage, limit: pagination.pageSize });
+        dialogs.success("Notification resent.");
+        reload({ page, limit });
       } else {
         throw new Error(response.message);
       }
     } catch (err: any) {
-      showError("Resend failed", err.message || "Unable to resend notification");
+      dialogs.error(err.message || "Unable to resend notification");
     } finally {
-      setSendingRows((prev) => {
+      setSendingIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
         return next;
@@ -115,121 +171,272 @@ const NotificationLogPage: React.FC = () => {
     }
   };
 
-  const confirmResend = (id: number) => {
-    dialogs
-      .confirm({
-        title: "Resend Notification",
-        message: "Are you sure you want to resend this notification?",
-        confirmText: "Resend",
-        cancelText: "Cancel",
-        icon: "info",
-      })
-      .then((confirmed) => {
-        if (confirmed) handleResend(id);
-      });
-  };
-
   const handleDelete = async (id: number) => {
+    const confirmed = await dialogs.confirm({
+      title: "Delete Notification",
+      message: `Are you sure you want to delete notification #${id}?`,
+      confirmText: "Delete",
+      icon: "danger",
+    });
+    if (!confirmed) return;
+
     try {
       const response = await notificationLogAPI.delete(id);
       if (response.status) {
-        dialogs.success("Deleted", `Notification #${id} has been deleted.`);
-        reload({ page: pagination.currentPage, limit: pagination.pageSize });
+        dialogs.success(`Notification #${id} deleted.`);
+        reload({ page, limit });
       } else {
         throw new Error(response.message);
       }
     } catch (err: any) {
-      dialogs.error("Delete failed", err.message);
+      dialogs.error(err.message || "Delete failed.");
     }
   };
 
-  const confirmDelete = (id: number) => {
-    dialogs
-      .delete()
-      .then((confirmed) => {
-        if (confirmed) handleDelete(id);
+  // ─── Bulk Actions ───────────────────────────────────────────────
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = await dialogs.confirm({
+      title: "Bulk Delete",
+      message: `Delete ${selectedIds.length} selected notification${selectedIds.length !== 1 ? "s" : ""}?`,
+      confirmText: "Delete All",
+      icon: "danger",
+    });
+    if (!confirmed) return;
+
+    try {
+      await Promise.all(selectedIds.map((id) => notificationLogAPI.delete(id)));
+      dialogs.success(`${selectedIds.length} notification${selectedIds.length !== 1 ? "s" : ""} deleted.`);
+      setSelectedIds([]);
+      reload({ page, limit });
+    } catch (err: any) {
+      dialogs.error(err.message || "Bulk delete failed.");
+    }
+  };
+
+  const handleBulkRetry = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = await dialogs.confirm({
+      title: "Bulk Retry",
+      message: `Retry ${selectedIds.length} selected failed notification${selectedIds.length !== 1 ? "s" : ""}?`,
+      confirmText: "Retry All",
+      icon: "warning",
+    });
+    if (!confirmed) return;
+
+    try {
+      await Promise.all(selectedIds.map((id) => notificationLogAPI.retry(id)));
+      dialogs.success(`${selectedIds.length} notification${selectedIds.length !== 1 ? "s" : ""} queued for retry.`);
+      setSelectedIds([]);
+      reload({ page, limit });
+    } catch (err: any) {
+      dialogs.error(err.message || "Bulk retry failed.");
+    }
+  };
+
+  const handleBulkResend = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = await dialogs.confirm({
+      title: "Bulk Resend",
+      message: `Resend ${selectedIds.length} selected notification${selectedIds.length !== 1 ? "s" : ""}?`,
+      confirmText: "Resend All",
+      icon: "info",
+    });
+    if (!confirmed) return;
+
+    try {
+      await Promise.all(selectedIds.map((id) => notificationLogAPI.resend(id)));
+      dialogs.success(`${selectedIds.length} notification${selectedIds.length !== 1 ? "s" : ""} resent.`);
+      setSelectedIds([]);
+      reload({ page, limit });
+    } catch (err: any) {
+      dialogs.error(err.message || "Bulk resend failed.");
+    }
+  };
+
+  const handleBulkExport = () => {
+    const selectedLogs = logs.filter((l) => selectedIds.includes(l.id));
+    if (selectedLogs.length === 0) {
+      dialogs.warning("No items selected for export.");
+      return;
+    }
+    const headers = ["ID", "Recipient", "Subject", "Status", "Retry Count", "Resend Count", "Sent At", "Created At"];
+    const rows = selectedLogs.map((l) => [
+      l.id,
+      l.recipient_email,
+      l.subject || "",
+      l.status,
+      l.retry_count,
+      l.resend_count,
+      l.sent_at || "",
+      l.created_at,
+    ]);
+    const csv = [headers, ...rows].map((row) => row.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `selected_notifications_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    dialogs.success("Export completed.");
+  };
+
+  const handleClearSelection = () => setSelectedIds([]);
+
+  // ─── Full Export ────────────────────────────────────────────────
+  const handleExportAll = async () => {
+    setExporting(true);
+    try {
+      const response = await notificationLogAPI.export({
+        format: "csv",
+        filters: {
+          status: filters.status,
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+        },
       });
+      if (response.status && response.data) {
+        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = response.data.filename || `notifications_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        dialogs.success("Export completed.");
+      }
+    } catch (err: any) {
+      dialogs.error(err.message || "Export failed.");
+    } finally {
+      setExporting(false);
+    }
   };
 
-  const handleRefresh = () => {
-    reload({ page: pagination.currentPage, limit: pagination.pageSize });
-  };
-
+  // ─── Render ──────────────────────────────────────────────────────
   return (
-    <div className="h-full flex flex-col bg-[var(--card-bg)] p-6 rounded-lg">
+    <div className="p-4 space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--accent-gold)] to-[var(--accent-gold-hover)] bg-clip-text text-transparent">
+          <h1 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="text-[var(--accent-gold)]">📬</span>
             Notification Logs
           </h1>
-          <p className="text-sm text-[var(--text-tertiary)] mt-1">
-            {totalItems || 0} total notifications
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+            View and manage all sent notification records
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          className="px-4 py-2 bg-[var(--card-secondary-bg)] rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors flex items-center gap-2 text-[var(--text-primary)] border border-[var(--border-color)]"
-        >
-          <RefreshCw className="w-4 h-4" />
-          Refresh
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => setShowStats(!showStats)}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
+            title={showStats ? "Hide summary" : "Show summary"}
+          >
+            {showStats ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
+            title={showFilters ? "Hide filters" : "Show filters"}
+          >
+            <Filter className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleExportAll}
+            disabled={exporting || logs.length === 0}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
+            title="Export all (current filters)"
+          >
+            <Download className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+          </button>
+          <button
+            onClick={() => {
+              reload({ page, limit });
+            }}
+            disabled={loading}
+            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
-      {!loading && !error && <NotificationStats stats={stats} />}
+      {showStats && <SummaryCards stats={stats} loading={loading} />}
 
-      {/* Filter Bar */}
-      <NotificationFilterBar
-        filters={filters}
-        onFilterChange={handleFilterChange}
-        onClear={() => {
-          setFilters({
-            sortBy: "created_at",
-            sortOrder: "DESC",
-          });
-          reload({ page: 1, limit: pagination.pageSize });
-        }}
-        onRefresh={handleRefresh}
-      />
+      {/* Filters Bar */}
+      {showFilters && (
+        <FilterBar
+          filters={filters}
+          onFilterChange={handleFilterChange}
+          hasFilters={hasFilters}
+          onReset={resetFilters}
+          onReload={() => reload({ page, limit })}
+        />
+      )}
 
-      {/* Error Display */}
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mt-4 text-red-400">
-          {error}
+      {/* Bulk Actions Bar */}
+      {selectedIds.length > 0 && (
+        <BulkActionsBar
+          selectedCount={selectedIds.length}
+          onRetryAll={handleBulkRetry}
+          onResendAll={handleBulkResend}
+          onDeleteAll={handleBulkDelete}
+          onExport={handleBulkExport}
+          onClearSelection={handleClearSelection}
+          showRetryAll={selectedIds.some((id) => logs.find((l) => l.id === id)?.status === "failed")}
+          showResendAll={selectedIds.some((id) => logs.find((l) => l.id === id)?.status === "sent" || logs.find((l) => l.id === id)?.status === "resend")}
+        />
+      )}
+
+      {/* Loading / Error / Table */}
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
+        </div>
+      ) : error ? (
+        <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
+          <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
+          <p className="text-[var(--text-primary)] font-medium">Error loading notification logs</p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
-            onClick={() => reload({ page: 1, limit: pagination.pageSize })}
-            className="ml-3 underline"
+            onClick={() => reload({ page: 1, limit })}
+            className="mt-4 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors"
           >
             Retry
           </button>
         </div>
-      )}
-
-      {/* Table */}
-      <div className="flex-1 mt-4">
+      ) : (
         <NotificationTable
           logs={logs}
           onView={handleView}
-          onRetry={confirmRetry}
-          onResend={confirmResend}
-          onDelete={confirmDelete}
-          isLoading={loading}
-          sendingIds={sendingRows}
-        />
-      </div>
-
-      {/* View Dialog */}
-      {selectedLog && (
-        <NotificationViewDialog
-          log={selectedLog}
-          isOpen={isViewDialogOpen}
-          onClose={() => {
-            setIsViewDialogOpen(false);
-            setSelectedLog(null);
+          onRetry={handleRetry}
+          onResend={handleResend}
+          onDelete={handleDelete}
+          sendingIds={sendingIds}
+          selectedIds={selectedIds}
+          onSelectRow={(id, checked) => {
+            setSelectedIds((prev) =>
+              checked ? [...prev, id] : prev.filter((i) => i !== id)
+            );
+          }}
+          onSelectAll={(checked) => {
+            setSelectedIds(checked ? logs.map((l) => l.id) : []);
           }}
         />
       )}
+
+      {/* View Dialog */}
+      <NotificationViewDialog
+        log={viewLog}
+        isOpen={isViewDialogOpen}
+        onClose={() => {
+          setIsViewDialogOpen(false);
+          setViewLog(null);
+        }}
+      />
     </div>
   );
 };

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+// src/renderer/components/Shared/NotificationDrawer.tsx
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   X,
   Bell,
@@ -30,54 +31,88 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const limit = 15;
 
-  // Reset to page 1 and clear notifications when drawer opens
+  // Track if initial load has been done
+  const initialLoadDone = useRef(false);
+
+  // Reset state when drawer opens
   useEffect(() => {
     if (isOpen) {
       setPage(1);
       setNotifications([]);
+      setTotalPages(0);
+      setTotalItems(0);
+      initialLoadDone.current = false;
       fetchUnreadCount();
     }
   }, [isOpen]);
 
-  // Fetch notifications whenever page changes (only if drawer is open)
+  // Fetch notifications when page changes (only if drawer is open)
   useEffect(() => {
     if (!isOpen) return;
-    fetchNotifications(page === 1); // reset = true only for page 1
+    // Only fetch if page is 1 (initial load) or if we're loading more
+    if (page === 1 && !initialLoadDone.current) {
+      fetchNotifications(true);
+    } else if (page > 1) {
+      fetchNotifications(false);
+    }
   }, [page, isOpen]);
 
-  const fetchNotifications = async (reset: boolean = false) => {
-    try {
+  const fetchNotifications = async (reset: boolean = true) => {
+    if (reset) {
       setLoading(true);
       setError(null);
+    } else {
+      setLoadingMore(true);
+    }
+
+    try {
       const response = await notificationAPI.getAll({
+        page,
         limit,
-        page: (page - 1) * limit,
         sortBy: "createdAt",
         sortOrder: "DESC",
       });
+
       if (response.status) {
-        const newItems = response.data;
-        setNotifications((prev) => (reset ? newItems : [...prev, ...newItems]));
-        setHasMore(newItems.total === limit);
+        const data = response.data;
+        const items = data.items || [];
+        const total = data.total || 0;
+        const totalPages = data.totalPages || 0;
+
+        setNotifications((prev) => (reset ? items : [...prev, ...items]));
+        setTotalItems(total);
+        setTotalPages(totalPages);
+
+        if (reset) {
+          initialLoadDone.current = true;
+        }
       } else {
         throw new Error(response.message);
       }
     } catch (err: any) {
       setError(err.message || "Failed to load notifications");
+      if (reset) {
+        initialLoadDone.current = false;
+      }
     } finally {
-      setLoading(false);
+      if (reset) {
+        setLoading(false);
+      } else {
+        setLoadingMore(false);
+      }
     }
   };
 
   const fetchUnreadCount = async () => {
     try {
-      // Pass userId to getUnreadCount
       const count = await notificationAPI.getUnreadCount(CURRENT_USER_ID);
       setUnreadCount(count);
     } catch (err) {
@@ -125,11 +160,11 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
     try {
       const response = await notificationAPI.delete(id);
       if (response.status) {
+        const wasUnread = notifications.find((n) => n.id === id)?.isRead === false;
         setNotifications((prev) => prev.filter((n) => n.id !== id));
-        // if it was unread, decrease count
-        const wasUnread =
-          notifications.find((n) => n.id === id)?.isRead === false;
-        if (wasUnread) setUnreadCount((prev) => Math.max(0, prev - 1));
+        if (wasUnread) {
+          setUnreadCount((prev) => Math.max(0, prev - 1));
+        }
       } else {
         throw new Error(response.message);
       }
@@ -139,7 +174,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   };
 
   const loadMore = () => {
-    if (hasMore && !loading) {
+    if (page < totalPages && !loading && !loadingMore) {
       setPage((prev) => prev + 1);
     }
   };
@@ -161,47 +196,39 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   const getTypeIcon = (type: Notification["type"]) => {
     switch (type) {
       case "success":
-        return (
-          <div className="w-2 h-2 rounded-full bg-[var(--accent-green)]" />
-        );
+        return <div className="w-2 h-2 rounded-full bg-[var(--accent-green)]" />;
       case "warning":
-        return (
-          <div className="w-2 h-2 rounded-full bg-[var(--accent-amber)]" />
-        );
+        return <div className="w-2 h-2 rounded-full bg-[var(--accent-amber)]" />;
       case "error":
         return <div className="w-2 h-2 rounded-full bg-[var(--accent-red)]" />;
       case "info":
         return <div className="w-2 h-2 rounded-full bg-[var(--accent-gold)]" />;
       case "purchase":
-        return (
-          <div className="w-2 h-2 rounded-full bg-[var(--accent-purple)]" />
-        );
+        return <div className="w-2 h-2 rounded-full bg-[var(--accent-purple)]" />;
       case "sale":
-        return (
-          <div className="w-2 h-2 rounded-full bg-[var(--accent-green)]" />
-        );
+        return <div className="w-2 h-2 rounded-full bg-[var(--accent-green)]" />;
       default:
-        return (
-          <div className="w-2 h-2 rounded-full bg-[var(--text-tertiary)]" />
-        );
+        return <div className="w-2 h-2 rounded-full bg-[var(--text-tertiary)]" />;
     }
   };
 
   if (!isOpen) return null;
 
+  const hasMore = page < totalPages;
+
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity duration-300"
         onClick={onClose}
       />
 
       {/* Drawer */}
-      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-[var(--card-bg)] border-l border-[var(--border-color)] shadow-xl transform transition-transform duration-300 ease-in-out windows-fade-in">
+      <div className="absolute right-0 top-0 h-full w-full max-w-md bg-[var(--card-bg)] border-l border-[var(--border-color)] shadow-xl transform transition-transform duration-300 ease-in-out">
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-[var(--border-color)]">
+          <div className="flex items-center justify-between p-4 border-b border-[var(--border-color)] bg-[var(--card-secondary-bg)]">
             <div className="flex items-center gap-2">
               <Bell className="w-5 h-5 text-[var(--accent-gold)]" />
               <h2 className="text-lg font-semibold text-[var(--text-primary)]">
@@ -215,7 +242,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="p-1 hover:bg-[var(--card-hover-bg)] rounded"
+              className="p-1.5 hover:bg-[var(--card-hover-bg)] rounded-lg transition-colors"
             >
               <X className="w-5 h-5 text-[var(--text-tertiary)]" />
             </button>
@@ -223,10 +250,13 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
 
           {/* Actions */}
           {notifications.length > 0 && (
-            <div className="flex items-center justify-end gap-2 p-2 border-b border-[var(--border-color)]">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)] bg-[var(--card-secondary-bg)]">
+              <span className="text-xs text-[var(--text-tertiary)]">
+                {totalItems} total
+              </span>
               <button
                 onClick={handleMarkAllAsRead}
-                className="flex items-center gap-1 px-3 py-1.5 text-sm text-[var(--accent-gold)] hover:bg-[var(--accent-gold-light)] rounded transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--accent-gold)] hover:bg-[var(--accent-gold-light)] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={unreadCount === 0}
               >
                 <CheckCheck className="w-4 h-4" />
@@ -236,7 +266,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
           )}
 
           {/* Notifications List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar">
             {loading && notifications.length === 0 ? (
               <div className="flex items-center justify-center h-32">
                 <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-gold)]" />
@@ -249,20 +279,23 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                   onClick={() => {
                     setPage(1);
                     setNotifications([]);
+                    initialLoadDone.current = false;
                     fetchNotifications(true);
                   }}
-                  className="mt-3 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded text-sm hover:bg-[var(--accent-gold-hover)] transition-colors"
+                  className="mt-3 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg text-sm hover:bg-[var(--accent-gold-hover)] transition-colors"
                 >
                   Retry
                 </button>
               </div>
             ) : notifications.length === 0 ? (
-              <div className="text-center p-6">
-                <Bell className="w-10 h-10 mx-auto mb-2 text-[var(--text-tertiary)]" />
-                <p className="text-sm text-[var(--text-primary)]">
+              <div className="flex flex-col items-center justify-center h-48 text-[var(--text-tertiary)]">
+                <div className="w-16 h-16 rounded-full bg-[var(--card-secondary-bg)] flex items-center justify-center mb-3 border border-[var(--border-color)]">
+                  <Bell className="w-8 h-8" />
+                </div>
+                <p className="text-sm font-medium text-[var(--text-primary)]">
                   No notifications yet
                 </p>
-                <p className="text-xs text-[var(--text-tertiary)] mt-1">
+                <p className="text-xs mt-1">
                   When you get notifications, they'll appear here.
                 </p>
               </div>
@@ -275,40 +308,52 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                   return (
                     <div
                       key={notification.id}
-                      className={`group relative p-3 rounded-lg border ${
+                      className={`group relative p-3 rounded-xl border transition-all duration-200 ${
                         notification.isRead
                           ? "border-[var(--border-color)] bg-[var(--card-secondary-bg)]"
-                          : "border-[var(--accent-gold)] bg-[var(--accent-gold-light)]"
-                      } hover:shadow-md transition-shadow`}
+                          : "border-[var(--accent-gold)]/50 bg-[var(--accent-gold-light)] shadow-sm"
+                      } hover:shadow-md`}
                     >
                       <div className="flex items-start gap-3">
                         <div className="flex-shrink-0 mt-1">
                           {getTypeIcon(notification.type)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p
-                            className={`text-sm font-medium ${
-                              notification.isRead
-                                ? "text-[var(--text-secondary)]"
-                                : "text-[var(--text-primary)]"
-                            }`}
-                          >
-                            {notification.title}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p
+                              className={`text-sm font-medium ${
+                                notification.isRead
+                                  ? "text-[var(--text-secondary)]"
+                                  : "text-[var(--text-primary)]"
+                              }`}
+                            >
+                              {notification.title}
+                            </p>
+                            {!notification.isRead && (
+                              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--accent-gold)] text-white flex-shrink-0">
+                                New
+                              </span>
+                            )}
+                          </div>
 
                           {/* Message with expand/collapse */}
                           <div className="mt-1">
                             <p
-                              className={`text-xs text-[var(--text-tertiary)] ${
+                              className={`text-xs leading-relaxed ${
                                 !expanded ? "line-clamp-2" : ""
                               }`}
+                              style={{
+                                color: notification.isRead
+                                  ? "var(--text-tertiary)"
+                                  : "var(--text-secondary)",
+                              }}
                             >
                               {notification.message}
                             </p>
                             {longMessage && (
                               <button
                                 onClick={() => toggleExpanded(notification.id)}
-                                className="mt-1 text-xs text-[var(--accent-gold)] hover:underline flex items-center gap-1"
+                                className="mt-1 text-xs text-[var(--accent-gold)] hover:underline flex items-center gap-1 transition-colors"
                               >
                                 {expanded ? (
                                   <>
@@ -333,8 +378,8 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
 
                           {/* Metadata - only show when expanded */}
                           {notification.metadata && expanded && (
-                            <div className="mt-2 text-xs text-[var(--text-tertiary)] bg-[var(--card-bg)] p-2 rounded border border-[var(--border-color)]">
-                              <pre className="whitespace-pre-wrap">
+                            <div className="mt-2 text-xs text-[var(--text-tertiary)] bg-[var(--card-bg)] p-2 rounded-lg border border-[var(--border-color)] overflow-auto max-h-32">
+                              <pre className="whitespace-pre-wrap break-words">
                                 {JSON.stringify(notification.metadata, null, 2)}
                               </pre>
                             </div>
@@ -342,11 +387,11 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                         </div>
 
                         {/* Action buttons */}
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                           {!notification.isRead && (
                             <button
                               onClick={() => handleMarkAsRead(notification.id)}
-                              className="p-1 hover:bg-[var(--card-hover-bg)] rounded"
+                              className="p-1.5 hover:bg-[var(--card-hover-bg)] rounded-lg transition-colors"
                               title="Mark as read"
                             >
                               <CheckCheck className="w-4 h-4 text-[var(--accent-gold)]" />
@@ -354,7 +399,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                           )}
                           <button
                             onClick={() => handleDelete(notification.id)}
-                            className="p-1 hover:bg-[var(--card-hover-bg)] rounded"
+                            className="p-1.5 hover:bg-[var(--status-cancelled-bg)] rounded-lg transition-colors"
                             title="Delete"
                           >
                             <Trash2 className="w-4 h-4 text-[var(--accent-red)]" />
@@ -369,15 +414,25 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
                 {hasMore && (
                   <button
                     onClick={loadMore}
-                    disabled={loading}
-                    className="w-full py-2 text-sm text-[var(--accent-gold)] hover:bg-[var(--accent-gold-light)] rounded transition-colors disabled:opacity-50"
+                    disabled={loadingMore}
+                    className="w-full py-2.5 text-sm font-medium text-[var(--accent-gold)] hover:bg-[var(--accent-gold-light)] rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {loading ? (
-                      <Loader2 className="w-4 h-4 animate-spin mx-auto text-[var(--accent-gold)]" />
+                    {loadingMore ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Loading...
+                      </>
                     ) : (
-                      "Load more"
+                      `Load more (${notifications.length}/${totalItems})`
                     )}
                   </button>
+                )}
+
+                {/* End of list */}
+                {!hasMore && notifications.length > 0 && (
+                  <div className="text-center py-3 text-xs text-[var(--text-tertiary)] border-t border-[var(--border-color)] mt-2">
+                    You've seen all {totalItems} notifications
+                  </div>
                 )}
               </>
             )}

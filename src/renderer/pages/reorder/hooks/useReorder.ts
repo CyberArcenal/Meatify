@@ -6,9 +6,9 @@ import supplierAPI, { type Supplier } from "../../../api/core/supplier";
 
 export interface LowStockMeat extends Meat {
   supplier: Supplier | null;
-  currentStock: number; // total remaining from all batches
-  reorderLevel: number; // default threshold (can be configured per meat)
-  reorderQty: number;   // recommended order quantity
+  currentStock: number;
+  reorderLevel: number;
+  reorderQty: number;
 }
 
 export interface SupplierGroup {
@@ -17,9 +17,22 @@ export interface SupplierGroup {
   lowStockCount: number;
 }
 
+export interface ReorderSummary {
+  totalLowStockItems: number;
+  suppliersWithLowStock: number;
+  totalReorderQty: number;
+  totalValue: number;
+}
+
 export const useReorder = (threshold?: number) => {
   const [meats, setMeats] = useState<LowStockMeat[]>([]);
   const [supplierGroups, setSupplierGroups] = useState<SupplierGroup[]>([]);
+  const [summary, setSummary] = useState<ReorderSummary>({
+    totalLowStockItems: 0,
+    suppliersWithLowStock: 0,
+    totalReorderQty: 0,
+    totalValue: 0,
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,12 +40,10 @@ export const useReorder = (threshold?: number) => {
     setLoading(true);
     setError(null);
     try {
-      // 1. Get all active meats with their suppliers
       const meatResponse = await meatAPI.getActive();
       if (!meatResponse.status) throw new Error(meatResponse.message);
       const activeMeats = meatResponse.data.items || [];
 
-      // 2. Get all batches to calculate current stock
       const batchResponse = await batchAPI.getAll({
         status: "active",
         limit: 10000,
@@ -40,14 +51,12 @@ export const useReorder = (threshold?: number) => {
       if (!batchResponse.status) throw new Error(batchResponse.message);
       const batches = batchResponse.data.items || [];
 
-      // 3. Calculate current stock per meat
       const stockMap = new Map<number, number>();
       batches.forEach((batch) => {
         const current = stockMap.get(batch.meatId) || 0;
         stockMap.set(batch.meatId, current + batch.remainingQuantity);
       });
 
-      // 4. Get all suppliers for reference
       const supplierResponse = await supplierAPI.getActive();
       const supplierMap = new Map<number, Supplier>();
       if (supplierResponse.status) {
@@ -56,13 +65,11 @@ export const useReorder = (threshold?: number) => {
         });
       }
 
-      // 5. Build low stock list with supplier info
-      const defaultThreshold = threshold || 10; // kg
+      const defaultThreshold = threshold || 10;
       const lowStockMeats: LowStockMeat[] = [];
 
       activeMeats.forEach((meat) => {
         const currentStock = stockMap.get(meat.id) || 0;
-        // Use meat-specific reorder level or default
         const reorderLevel = (meat as any).reorderLevel || defaultThreshold;
         const reorderQty = (meat as any).reorderQty || 20;
 
@@ -81,8 +88,10 @@ export const useReorder = (threshold?: number) => {
         }
       });
 
-      // 6. Group by supplier
       const groupsMap = new Map<number, SupplierGroup>();
+      let totalReorderQty = 0;
+      let totalValue = 0;
+
       lowStockMeats.forEach((meat) => {
         const supplierId = meat.supplier?.id || 0;
         const supplier = meat.supplier || {
@@ -99,15 +108,23 @@ export const useReorder = (threshold?: number) => {
           });
         }
         groupsMap.get(supplierId)!.meats.push(meat);
+        totalReorderQty += meat.reorderQty;
+        totalValue += meat.reorderQty * meat.pricePerKg;
       });
 
-      // Compute counts
       groupsMap.forEach((group) => {
         group.lowStockCount = group.meats.length;
       });
 
+      const groups = Array.from(groupsMap.values());
       setMeats(lowStockMeats);
-      setSupplierGroups(Array.from(groupsMap.values()));
+      setSupplierGroups(groups);
+      setSummary({
+        totalLowStockItems: lowStockMeats.length,
+        suppliersWithLowStock: groups.length,
+        totalReorderQty,
+        totalValue,
+      });
     } catch (err: any) {
       setError(err.message || "Failed to fetch low stock data");
     } finally {
@@ -126,6 +143,7 @@ export const useReorder = (threshold?: number) => {
   return {
     meats,
     supplierGroups,
+    summary,
     loading,
     error,
     reload,

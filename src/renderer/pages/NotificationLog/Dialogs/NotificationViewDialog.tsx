@@ -1,170 +1,147 @@
 // src/renderer/pages/system/notification-logs/Dialogs/NotificationViewDialog.tsx
 import React from "react";
-import { X, Mail, AlertCircle, FileText } from "lucide-react";
+import { Mail, AlertCircle, FileText, Calendar, User } from "lucide-react";
+import Modal from "../../../components/UI/Modal";
 import { formatDate } from "../../../utils/formatters";
-import type { NotificationLog } from "../../../api/core/notificationLog"; // ✅ correct type
+import type { NotificationLog } from "../../../api/core/notificationLog";
 
 interface NotificationViewDialogProps {
-  log: NotificationLog; // ✅ correct type
+  log: NotificationLog | null;
   isOpen: boolean;
   onClose: () => void;
 }
+
+const getStatusBadge = (status: string) => {
+  const baseClasses = "px-2.5 py-1 rounded-full text-xs font-medium";
+  switch (status) {
+    case "sent":
+      return `${baseClasses} bg-[var(--status-completed-bg)] text-[var(--status-completed)]`;
+    case "queued":
+      return `${baseClasses} bg-[var(--status-pending-bg)] text-[var(--status-pending)]`;
+    case "failed":
+      return `${baseClasses} bg-[var(--status-cancelled-bg)] text-[var(--status-cancelled)]`;
+    case "resend":
+      return `${baseClasses} bg-[var(--status-processing-bg)] text-[var(--status-processing)]`;
+    default:
+      return `${baseClasses} bg-[var(--card-secondary-bg)] text-[var(--text-tertiary)]`;
+  }
+};
 
 export const NotificationViewDialog: React.FC<NotificationViewDialogProps> = ({
   log,
   isOpen,
   onClose,
 }) => {
-  if (!isOpen) return null;
-
-  const statusColors: Record<NotificationLog["status"], string> = {
-    queued: "text-yellow-400",
-    sent: "text-green-400",
-    failed: "text-red-400",
-    resend: "text-blue-400",
-  };
+  if (!log) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-      <div className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)]/20 w-full max-w-2xl max-h-[90vh] overflow-y-auto windows-fade-in">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[var(--border-color)]/20">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[var(--primary-color)]/10 text-[var(--primary-color)]">
-              <Mail className="w-5 h-5" />
-            </div>
-            <h2 className="text-xl font-semibold text-[var(--text-primary)]">
-              Notification Details
-            </h2>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] text-[var(--text-tertiary)] transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={
+        <div className="flex items-center gap-2">
+          <Mail className="w-5 h-5 text-[var(--accent-gold)]" />
+          Notification Details #{log.id}
+        </div>
+      }
+      size="lg"
+    >
+      <div className="space-y-6">
+        {/* Status & ID */}
+        <div className="flex items-center justify-between">
+          <span className={getStatusBadge(log.status)}>
+            {log.status.toUpperCase()}
+          </span>
+          <span className="text-sm text-[var(--text-tertiary)]">ID: #{log.id}</span>
         </div>
 
-        {/* Content */}
-        <div className="p-6 space-y-6">
-          {/* Status Badge */}
-          <div className="flex items-center justify-between">
-            <span
-              className={`px-3 py-1.5 rounded-full text-xs font-medium border ${statusColors[log.status]}`}
-            >
-              {log.status.toUpperCase()}
-            </span>
-            <span className="text-sm text-[var(--text-tertiary)]">
-              ID: #{log.id}
-            </span>
+        {/* Recipient & Subject */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-[var(--card-secondary-bg)] rounded-lg p-3 border border-[var(--border-color)]">
+            <p className="text-xs text-[var(--text-tertiary)] uppercase flex items-center gap-1">
+              <User className="w-3 h-3" /> Recipient
+            </p>
+            <p className="text-sm font-medium text-[var(--text-primary)]">
+              {log.recipient_email}
+            </p>
           </div>
-
-          {/* Subject */}
-          <div className="flex items-start gap-3">
-            <Mail className="w-4 h-4 text-[var(--text-tertiary)] mt-0.5" />
-            <div className="flex-1">
-              <p className="text-xs text-[var(--text-tertiary)] uppercase">
-                Subject
-              </p>
-              <p className="text-[var(--text-primary)] font-medium">
-                {log.subject || "(No subject)"}
-              </p>
-            </div>
-          </div>
-
-          {/* Payload / Body */}
-          {log.payload && (
-            <div className="flex items-start gap-3">
-              <FileText className="w-4 h-4 text-[var(--text-tertiary)] mt-0.5" />
-              <div className="flex-1">
-                <p className="text-xs text-[var(--text-tertiary)] uppercase">
-                  Payload
-                </p>
-                <pre className="mt-1 p-3 bg-[var(--card-secondary-bg)] rounded-lg text-xs text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap">
-                  {log.payload}
-                </pre>
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
-          {log.error_message && (
-            <div className="flex items-start gap-3 bg-red-500/10 p-3 rounded-lg border border-red-500/30">
-              <AlertCircle className="w-4 h-4 text-red-400 mt-0.5" />
-              <div>
-                <p className="text-xs text-red-400 uppercase">Error</p>
-                <p className="text-sm text-red-300">{log.error_message}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Metadata */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-4 border-t border-[var(--border-color)]/10">
-            <div>
-              <p className="text-xs text-[var(--text-tertiary)] uppercase">
-                Created
-              </p>
-              <p className="text-sm text-[var(--text-primary)]">
-                {formatDate(log.created_at)}
-              </p>
-            </div>
-            {log.sent_at && (
-              <div>
-                <p className="text-xs text-[var(--text-tertiary)] uppercase">
-                  Sent
-                </p>
-                <p className="text-sm text-[var(--text-primary)]">
-                  {formatDate(log.sent_at)}
-                </p>
-              </div>
-            )}
-            {log.last_error_at && (
-              <div>
-                <p className="text-xs text-[var(--text-tertiary)] uppercase">
-                  Last Error
-                </p>
-                <p className="text-sm text-[var(--text-primary)]">
-                  {formatDate(log.last_error_at)}
-                </p>
-              </div>
-            )}
-            <div>
-              <p className="text-xs text-[var(--text-tertiary)] uppercase">
-                Retry Count
-              </p>
-              <p className="text-sm text-[var(--text-primary)]">
-                {log.retry_count}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-[var(--text-tertiary)] uppercase">
-                Resend Count
-              </p>
-              <p className="text-sm text-[var(--text-primary)]">
-                {log.resend_count}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-[var(--text-tertiary)] uppercase">
-                Updated
-              </p>
-              <p className="text-sm text-[var(--text-primary)]">
-                {formatDate(log.updated_at)}
-              </p>
-            </div>
+          <div className="bg-[var(--card-secondary-bg)] rounded-lg p-3 border border-[var(--border-color)]">
+            <p className="text-xs text-[var(--text-tertiary)] uppercase">Subject</p>
+            <p className="text-sm font-medium text-[var(--text-primary)]">
+              {log.subject || "(No subject)"}
+            </p>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end p-6 border-t border-[var(--border-color)]/20">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-[var(--card-secondary-bg)] hover:bg-[var(--card-hover-bg)] text-[var(--text-primary)] transition-colors"
-          >
-            Close
-          </button>
+        {/* Payload / Body */}
+        {log.payload && (
+          <div className="bg-[var(--card-secondary-bg)] rounded-lg p-3 border border-[var(--border-color)]">
+            <p className="text-xs text-[var(--text-tertiary)] uppercase flex items-center gap-1">
+              <FileText className="w-3 h-3" /> Payload
+            </p>
+            <pre className="mt-1 p-3 bg-[var(--input-bg)] rounded-lg text-xs text-[var(--text-secondary)] overflow-x-auto whitespace-pre-wrap max-h-60">
+              {log.payload}
+            </pre>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {log.error_message && (
+          <div className="bg-[var(--status-cancelled-bg)] border border-[var(--status-cancelled)]/30 rounded-lg p-3 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-[var(--danger-color)] flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-xs text-[var(--danger-color)] uppercase">Error</p>
+              <p className="text-sm text-[var(--text-primary)]">{log.error_message}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Metadata */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4 border-t border-[var(--border-color)]">
+          <div>
+            <p className="text-xs text-[var(--text-tertiary)] uppercase flex items-center gap-1">
+              <Calendar className="w-3 h-3" /> Created
+            </p>
+            <p className="text-sm text-[var(--text-primary)]">
+              {formatDate(log.created_at)}
+            </p>
+          </div>
+          {log.sent_at && (
+            <div>
+              <p className="text-xs text-[var(--text-tertiary)] uppercase">Sent</p>
+              <p className="text-sm text-[var(--text-primary)]">
+                {formatDate(log.sent_at)}
+              </p>
+            </div>
+          )}
+          {log.last_error_at && (
+            <div>
+              <p className="text-xs text-[var(--text-tertiary)] uppercase">Last Error</p>
+              <p className="text-sm text-[var(--text-primary)]">
+                {formatDate(log.last_error_at)}
+              </p>
+            </div>
+          )}
+          <div>
+            <p className="text-xs text-[var(--text-tertiary)] uppercase">Retry Count</p>
+            <p className="text-sm font-semibold text-[var(--text-primary)]">
+              {log.retry_count}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--text-tertiary)] uppercase">Resend Count</p>
+            <p className="text-sm font-semibold text-[var(--text-primary)]">
+              {log.resend_count}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-[var(--text-tertiary)] uppercase">Updated</p>
+            <p className="text-sm text-[var(--text-primary)]">
+              {formatDate(log.updated_at)}
+            </p>
+          </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };

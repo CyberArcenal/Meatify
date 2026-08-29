@@ -673,7 +673,7 @@ class ReturnRefundService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugDelete("ReturnRefund", id, oldData, user);
+        await auditLogger.logCreate("ReturnRefund", id, oldData, user);
       }
 
       logger.debug(`ReturnRefund cancelled: #${id}`);
@@ -721,7 +721,7 @@ class ReturnRefundService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("ReturnRefund", id, returnRefund, user);
+      await auditLogger.logCreate("ReturnRefund", id, returnRefund, user);
     }
 
     logger.debug(`ReturnRefund #${id} permanently deleted`);

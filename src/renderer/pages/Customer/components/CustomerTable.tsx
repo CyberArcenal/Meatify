@@ -1,21 +1,50 @@
 // src/renderer/pages/customer/components/CustomerTable.tsx
 import React from "react";
-import { Eye, Edit, Trash2, Users, Mail, Phone } from "lucide-react";
+import { Check, X, Users, Mail, Phone, Star } from "lucide-react";
 import { type Customer } from "../../../api/core/customer";
+import CustomerActionsDropdown from "./CustomerActionsDropdown";
 
-const getCustomerStatus = (
-  customer: Customer
-): { label: string; color: string } => {
-  switch (customer.status) {
-    case "vip":
-      return { label: "VIP", color: "var(--customer-vip)" };
-    case "elite":
-      return { label: "Elite", color: "var(--customer-loyal)" };
-    case "regular":
-      return { label: "Regular", color: "var(--customer-regular)" };
-    default:
-      return { label: "Regular", color: "var(--customer-regular)" };
-  }
+const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+  const configs: Record<string, { label: string; color: string; bg: string }> = {
+    vip: {
+      label: "VIP",
+      color: "var(--customer-vip)",
+      bg: "rgba(212, 175, 55, 0.15)",
+    },
+    elite: {
+      label: "Elite",
+      color: "var(--customer-loyal)",
+      bg: "rgba(243, 156, 18, 0.15)",
+    },
+    regular: {
+      label: "Regular",
+      color: "var(--customer-regular)",
+      bg: "rgba(52, 152, 219, 0.15)",
+    },
+  };
+  const config = configs[status] || configs.regular;
+  return (
+    <span
+      className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium"
+      style={{ backgroundColor: config.bg, color: config.color }}
+    >
+      {config.label}
+    </span>
+  );
+};
+
+const ActiveBadge: React.FC<{ active: boolean }> = ({ active }) => {
+  return active ? (
+    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-[var(--status-completed-bg)] text-[var(--status-completed)]">
+      <Check className="w-3 h-3" />
+      Active
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-[var(--status-cancelled-bg)] text-[var(--status-cancelled)]">
+      <X className="w-3 h-3" />
+      Inactive
+    </span>
+  );
 };
 
 interface CustomerTableProps {
@@ -23,6 +52,10 @@ interface CustomerTableProps {
   onView: (customer: Customer) => void;
   onEdit: (customer: Customer) => void;
   onDelete: (customer: Customer) => void;
+  onToggleStatus: (customer: Customer) => void;
+  selectedIds: number[];
+  onSelectRow: (id: number, checked: boolean) => void;
+  onSelectAll: (checked: boolean) => void;
 }
 
 export const CustomerTable: React.FC<CustomerTableProps> = ({
@@ -30,14 +63,16 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
   onView,
   onEdit,
   onDelete,
+  onToggleStatus,
+  selectedIds,
+  onSelectRow,
+  onSelectAll,
 }) => {
   if (customers.length === 0) {
     return (
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-8 text-center">
+      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl p-8 text-center">
         <Users className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
-        <p className="text-[var(--text-primary)] font-medium">
-          No customers found
-        </p>
+        <p className="text-[var(--text-primary)] font-medium">No customers found</p>
         <p className="text-sm text-[var(--text-tertiary)] mt-1">
           Try adjusting your filters or add a new customer
         </p>
@@ -45,115 +80,102 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
     );
   }
 
+  const allSelected = customers.length > 0 && customers.every((c) => selectedIds.includes(c.id));
+  const someSelected = selectedIds.length > 0 && !allSelected;
+
   return (
-    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg overflow-hidden flex flex-col">
+    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-[var(--table-header-bg)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[10%]">
-                ID
+              <th className="w-8 py-3 px-2">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(input) => {
+                    if (input) input.indeterminate = someSelected;
+                  }}
+                  onChange={(e) => onSelectAll(e.target.checked)}
+                  className="rounded border-[var(--border-color)] cursor-pointer"
+                />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[25%]">
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Name
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[30%]">
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Contact
               </th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[15%]">
+              <th className="py-3 px-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Points
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[10%]">
+              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[10%]">
+              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Active
+              </th>
+              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
-            {customers.map((customer) => {
-              const status = getCustomerStatus(customer);
-              const contactIcon = customer.email ? (
-                <Mail className="w-3 h-3" />
-              ) : customer.phone ? (
-                <Phone className="w-3 h-3" />
-              ) : null;
-              const contactText = customer.email || customer.phone || null;
-
-              return (
-                <tr
-                  key={customer.id}
-                  onClick={() => onView(customer)}
-                  className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
-                >
-                  <td className="px-4 py-3 text-sm font-mono text-[var(--text-primary)]">
-                    #{customer.id}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-[var(--text-secondary)] font-medium">
-                    {customer.name}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
-                    {contactText ? (
-                      <div className="flex items-center gap-1">
-                        {contactIcon}
-                        <span className="truncate">{contactText}</span>
-                      </div>
-                    ) : (
-                      <span className="text-[var(--text-tertiary)]">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold text-[var(--accent-purple)]">
-                    {customer.loyaltyPointsBalance}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span
-                      className="inline-flex px-2 py-1 rounded-full text-xs font-medium"
-                      style={{
-                        backgroundColor: `${status.color}20`,
-                        color: status.color,
-                      }}
-                    >
-                      {status.label}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onView(customer);
-                        }}
-                        className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-gold)]"
-                        title="View Details"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit(customer);
-                        }}
-                        className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-gold)]"
-                        title="Edit"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(customer);
-                        }}
-                        className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-red)]"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+            {customers.map((customer) => (
+              <tr
+                key={customer.id}
+                className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
+                onClick={() => onView(customer)}
+              >
+                <td className="py-2.5 px-2" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(customer.id)}
+                    onChange={(e) => onSelectRow(customer.id, e.target.checked)}
+                    className="rounded border-[var(--border-color)] cursor-pointer"
+                  />
+                </td>
+                <td className="py-2.5 px-3 text-sm font-medium text-[var(--text-primary)]">
+                  {customer.name}
+                </td>
+                <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)]">
+                  {customer.email ? (
+                    <div className="flex items-center gap-1">
+                      <Mail className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
+                      <span className="truncate max-w-[120px]">{customer.email}</span>
                     </div>
-                  </td>
-                </tr>
-              );
-            })}
+                  ) : customer.phone ? (
+                    <div className="flex items-center gap-1">
+                      <Phone className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
+                      <span>{customer.phone}</span>
+                    </div>
+                  ) : (
+                    <span className="text-[var(--text-tertiary)]">—</span>
+                  )}
+                </td>
+                <td className="py-2.5 px-3 text-right text-sm font-semibold">
+                  <span className="flex items-center justify-end gap-1 text-white">
+                    <Star className="w-3.5 h-3.5 text-[var(--accent-gold)]" />
+                    {customer.loyaltyPointsBalance}
+                  </span>
+                </td>
+                <td className="py-2.5 px-3 text-center">
+                  <StatusBadge status={customer.status} />
+                </td>
+                <td className="py-2.5 px-3 text-center">
+                  <ActiveBadge active={customer.isActive} />
+                </td>
+                <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                  <CustomerActionsDropdown
+                    customer={customer}
+                    onView={onView}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onToggleStatus={onToggleStatus}
+                  />
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>

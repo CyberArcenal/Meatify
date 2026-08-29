@@ -1,160 +1,149 @@
-import React from 'react';
-import { Filter, Search, X } from 'lucide-react';
+// src/renderer/pages/inventory/batches/components/FilterBar.tsx
+import React from "react";
+import { Search, RefreshCw, X } from "lucide-react";
+import type { BatchFilters } from "../hooks/useBatches";
 
-interface Props {
-  search: string;
-  meatId?: number;
-  supplierId?: number;
-  status: string;
-  expiryFrom: string;
-  expiryTo: string;
-  minRemaining?: number;
-  maxRemaining?: number;
-  onFilterChange: (filters: any) => void;
+interface FilterBarProps {
+  filters: BatchFilters;
+  onFilterChange: <K extends keyof BatchFilters>(key: K, value: BatchFilters[K]) => void;
+  hasFilters: boolean;
+  onReset: () => void;
+  onReload: () => void;
 }
 
-const FilterBar: React.FC<Props> = ({
-  search,
-  meatId,
-  supplierId,
-  status,
-  expiryFrom,
-  expiryTo,
-  minRemaining,
-  maxRemaining,
+const STATUS_OPTIONS = [
+  { value: "", label: "All Status" },
+  { value: "active", label: "Active" },
+  { value: "depleted", label: "Depleted" },
+  { value: "expired", label: "Expired" },
+  { value: "on_hold", label: "On Hold" },
+];
+
+export const FilterBar: React.FC<FilterBarProps> = ({
+  filters,
   onFilterChange,
+  hasFilters,
+  onReset,
+  onReload,
 }) => {
-  const statuses = ['', 'active', 'depleted', 'expired', 'on_hold'];
-
-  const handleChange = (name: string, value: string | number | undefined) => {
-    onFilterChange({
-      search: name === 'search' ? value : search,
-      meatId: name === 'meatId' ? value : meatId,
-      supplierId: name === 'supplierId' ? value : supplierId,
-      status: name === 'status' ? value : status,
-      expiryFrom: name === 'expiryFrom' ? value : expiryFrom,
-      expiryTo: name === 'expiryTo' ? value : expiryTo,
-      minRemaining: name === 'minRemaining' ? value : minRemaining,
-      maxRemaining: name === 'maxRemaining' ? value : maxRemaining,
-    });
-  };
-
-  const handleClear = () => {
-    onFilterChange({
-      search: '',
-      meatId: undefined,
-      supplierId: undefined,
-      status: '',
-      expiryFrom: '',
-      expiryTo: '',
-      minRemaining: undefined,
-      maxRemaining: undefined,
-    });
-  };
-
-  const hasFilters = search || meatId || supplierId || status || expiryFrom || expiryTo || minRemaining || maxRemaining;
-
   return (
-    <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-      <div className="flex items-center gap-2 mb-4">
-        <Filter className="w-5 h-5 text-[var(--text-secondary)]" />
-        <h3 className="text-lg font-semibold text-[var(--text-primary)]">Filters</h3>
-        {hasFilters && (
+    <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-[var(--text-secondary)] flex items-center gap-2">
+          <Search className="w-4 h-4" /> Filters
+        </span>
+        <div className="flex items-center gap-2">
+          {hasFilters && (
+            <button
+              onClick={onReset}
+              className="text-xs text-[var(--primary-color)] hover:underline flex items-center gap-1"
+            >
+              <X className="w-3 h-3" /> Clear all
+            </button>
+          )}
           <button
-            onClick={handleClear}
-            className="ml-auto flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-[var(--danger-color)]"
+            onClick={onReload}
+            className="p-1.5 rounded hover:bg-[var(--card-hover-bg)] transition-colors"
+            title="Refresh"
           >
-            <X className="w-4 h-4" /> Clear
+            <RefreshCw className="w-4 h-4 text-[var(--text-secondary)]" />
           </button>
-        )}
+        </div>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div>
-          <label className="block text-sm text-[var(--text-secondary)] mb-1">Search</label>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => handleChange('search', e.target.value)}
-              placeholder="Batch code, note..."
-              className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-9 pr-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--input-focus)]"
-            />
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm text-[var(--text-secondary)] mb-1">Meat ID</label>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
           <input
-            type="number"
-            value={meatId || ''}
-            onChange={(e) => handleChange('meatId', e.target.value ? Number(e.target.value) : undefined)}
-            placeholder="e.g., 3"
-            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--input-focus)]"
+            type="text"
+            placeholder="Search by batch code..."
+            value={filters.search}
+            onChange={(e) => onFilterChange("search", e.target.value)}
+            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-9 pr-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
           />
         </div>
-        <div>
-          <label className="block text-sm text-[var(--text-secondary)] mb-1">Supplier ID</label>
-          <input
-            type="number"
-            value={supplierId || ''}
-            onChange={(e) => handleChange('supplierId', e.target.value ? Number(e.target.value) : undefined)}
-            placeholder="e.g., 2"
-            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--input-focus)]"
-          />
-        </div>
-        <div>
-          <label className="block text-sm text-[var(--text-secondary)] mb-1">Status</label>
-          <select
-            value={status}
-            onChange={(e) => handleChange('status', e.target.value)}
-            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--input-focus)]"
-          >
-            {statuses.map(s => (
-              <option key={s} value={s}>{s || 'All'}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm text-[var(--text-secondary)] mb-1">Expiry From</label>
+
+        {/* Status */}
+        <select
+          value={filters.status}
+          onChange={(e) => onFilterChange("status", e.target.value)}
+          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
+        >
+          {STATUS_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        {/* Meat ID */}
+        <input
+          type="number"
+          placeholder="Meat ID"
+          value={filters.meatId || ""}
+          onChange={(e) =>
+            onFilterChange("meatId", e.target.value ? Number(e.target.value) : undefined)
+          }
+          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
+        />
+
+        {/* Supplier ID */}
+        <input
+          type="number"
+          placeholder="Supplier ID"
+          value={filters.supplierId || ""}
+          onChange={(e) =>
+            onFilterChange("supplierId", e.target.value ? Number(e.target.value) : undefined)
+          }
+          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
+        />
+
+        {/* Expiry Range */}
+        <div className="flex items-center gap-1">
           <input
             type="date"
-            value={expiryFrom}
-            onChange={(e) => handleChange('expiryFrom', e.target.value)}
-            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--input-focus)]"
+            value={filters.expiryDateFrom || ""}
+            onChange={(e) => onFilterChange("expiryDateFrom", e.target.value || undefined)}
+            className="flex-1 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-2 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
+            placeholder="From"
           />
-        </div>
-        <div>
-          <label className="block text-sm text-[var(--text-secondary)] mb-1">Expiry To</label>
+          <span className="text-[var(--text-tertiary)] text-xs">to</span>
           <input
             type="date"
-            value={expiryTo}
-            onChange={(e) => handleChange('expiryTo', e.target.value)}
-            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:border-[var(--input-focus)]"
+            value={filters.expiryDateTo || ""}
+            onChange={(e) => onFilterChange("expiryDateTo", e.target.value || undefined)}
+            className="flex-1 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-2 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
+            placeholder="To"
           />
         </div>
-        <div>
-          <label className="block text-sm text-[var(--text-secondary)] mb-1">Min Remaining</label>
+      </div>
+
+      {/* Remaining Range */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-[var(--text-secondary)] whitespace-nowrap">Remaining:</label>
           <input
             type="number"
-            value={minRemaining || ''}
-            onChange={(e) => handleChange('minRemaining', e.target.value ? Number(e.target.value) : undefined)}
-            placeholder="0"
-            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--input-focus)]"
+            placeholder="Min"
+            value={filters.minRemaining || ""}
+            onChange={(e) =>
+              onFilterChange("minRemaining", e.target.value ? Number(e.target.value) : undefined)
+            }
+            className="flex-1 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
           />
-        </div>
-        <div>
-          <label className="block text-sm text-[var(--text-secondary)] mb-1">Max Remaining</label>
+          <span className="text-[var(--text-tertiary)] text-xs">to</span>
           <input
             type="number"
-            value={maxRemaining || ''}
-            onChange={(e) => handleChange('maxRemaining', e.target.value ? Number(e.target.value) : undefined)}
-            placeholder="1000"
-            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:border-[var(--input-focus)]"
+            placeholder="Max"
+            value={filters.maxRemaining || ""}
+            onChange={(e) =>
+              onFilterChange("maxRemaining", e.target.value ? Number(e.target.value) : undefined)
+            }
+            className="flex-1 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
           />
         </div>
       </div>
     </div>
   );
 };
-
-export default FilterBar;

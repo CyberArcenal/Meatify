@@ -1,9 +1,10 @@
 // src/renderer/pages/category/components/CategoryViewDialog.tsx
 import React from "react";
-import { X, Package, Loader2 } from "lucide-react";
+import { Package, Loader2, Beef } from "lucide-react";
+import Modal from "../../../components/UI/Modal";
+import Decimal from "decimal.js";
 import type { Category } from "../../../api/core/category";
 import type { Meat } from "../../../api/core/meat";
-import Decimal from "decimal.js";
 
 interface CategoryViewDialogProps {
   category: Category | null;
@@ -20,101 +21,97 @@ export const CategoryViewDialog: React.FC<CategoryViewDialogProps> = ({
   isOpen,
   onClose,
 }) => {
-  if (!isOpen || !category) return null;
+  if (!category) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-2xl p-6 shadow-xl border border-[var(--border-color)] max-h-[90vh] overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-[var(--text-primary)]">
-              Category Details: {category.name}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-1 hover:bg-[var(--card-hover-bg)] rounded"
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={
+        <div className="flex items-center gap-2">
+          <Package className="w-5 h-5 text-[var(--accent-gold)]" />
+          Category Details: {category.name}
+        </div>
+      }
+      size="lg"
+    >
+      <div className="space-y-6">
+        {/* Basic Info */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="bg-[var(--card-secondary-bg)] rounded-lg p-4 border border-[var(--border-color)]">
+            <p className="text-xs text-[var(--text-tertiary)] uppercase">Name</p>
+            <p className="text-lg font-semibold text-[var(--text-primary)]">{category.name}</p>
+          </div>
+          <div className="bg-[var(--card-secondary-bg)] rounded-lg p-4 border border-[var(--border-color)]">
+            <p className="text-xs text-[var(--text-tertiary)] uppercase">Status</p>
+            <p
+              className={`text-lg font-semibold ${
+                category.isActive ? "text-[var(--status-completed)]" : "text-[var(--status-cancelled)]"
+              }`}
             >
-              <X className="w-5 h-5 text-[var(--text-tertiary)]" />
-            </button>
+              {category.isActive ? "Active" : "Inactive"}
+            </p>
+          </div>
+          {category.description && (
+            <div className="col-span-2 bg-[var(--card-secondary-bg)] rounded-lg p-4 border border-[var(--border-color)]">
+              <p className="text-xs text-[var(--text-tertiary)] uppercase">Description</p>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">{category.description}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Products List */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+              <Beef className="w-4 h-4 text-[var(--accent-gold)]" />
+              Meats in this Category ({products.length})
+            </h3>
           </div>
 
-          {/* Basic Info */}
-          <div className="grid grid-cols-2 gap-4 mb-6">
-            <div className="bg-[var(--card-secondary-bg)] p-4 rounded-lg">
-              <p className="text-sm text-[var(--text-tertiary)]">Name</p>
-              <p className="text-lg font-semibold text-[var(--text-primary)]">
-                {category.name}
-              </p>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-gold)]" />
             </div>
-            <div className="bg-[var(--card-secondary-bg)] p-4 rounded-lg">
-              <p className="text-sm text-[var(--text-tertiary)]">Status</p>
-              <p
-                className={`text-lg font-semibold ${
-                  category.isActive
-                    ? "text-[var(--status-completed)]"
-                    : "text-[var(--status-cancelled)]"
-                }`}
-              >
-                {category.isActive ? "Active" : "Inactive"}
-              </p>
+          ) : products.length === 0 ? (
+            <div className="text-center py-8 text-[var(--text-tertiary)] border border-dashed border-[var(--border-color)] rounded-lg">
+              <Beef className="w-10 h-10 mx-auto mb-2 text-[var(--text-tertiary)]" />
+              No meats in this category.
             </div>
-            <div className="col-span-2 bg-[var(--card-secondary-bg)] p-4 rounded-lg">
-              <p className="text-sm text-[var(--text-tertiary)]">Description</p>
-              <p className="text-[var(--text-primary)]">
-                {category.description || "—"}
-              </p>
-            </div>
-          </div>
-
-          {/* Products List */}
-          <h3 className="text-lg font-medium text-[var(--text-primary)] mb-2 flex items-center gap-2">
-            <Package className="w-4 h-4" />
-            Meats in this Category ({products.length})
-          </h3>
-
-          <div className="flex-1 overflow-y-auto">
-            {loading ? (
-              <div className="flex items-center justify-center h-32">
-                <Loader2 className="w-6 h-6 animate-spin text-[var(--accent-gold)]" />
-              </div>
-            ) : products.length === 0 ? (
-              <p className="text-center text-[var(--text-tertiary)] py-8">
-                No meats in this category.
-              </p>
-            ) : (
-              <table className="w-full">
-                <thead>
+          ) : (
+            <div className="overflow-x-auto max-h-60 overflow-y-auto custom-scrollbar">
+              <table className="w-full text-sm">
+                <thead className="bg-[var(--card-secondary-bg)] sticky top-0">
                   <tr className="border-b border-[var(--border-color)]">
-                    <th className="text-left py-2 text-xs font-medium text-[var(--text-tertiary)]">
+                    <th className="text-left py-2 px-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                       SKU
                     </th>
-                    <th className="text-left py-2 text-xs font-medium text-[var(--text-tertiary)]">
+                    <th className="text-left py-2 px-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                       Name
                     </th>
-                    <th className="text-right py-2 text-xs font-medium text-[var(--text-tertiary)]">
+                    <th className="text-right py-2 px-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                       Price / kg
                     </th>
-                    <th className="text-right py-2 text-xs font-medium text-[var(--text-tertiary)]">
+                    <th className="text-right py-2 px-3 text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                       Status
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border-color)]">
                   {products.map((meat) => (
-                    <tr key={meat.id}>
-                      <td className="py-2 text-sm font-mono text-[var(--text-primary)]">
+                    <tr key={meat.id} className="hover:bg-[var(--card-hover-bg)] transition-colors">
+                      <td className="py-2 px-3 text-sm font-mono text-[var(--text-primary)]">
                         {meat.sku}
                       </td>
-                      <td className="py-2 text-sm text-[var(--text-secondary)]">
+                      <td className="py-2 px-3 text-sm text-[var(--text-secondary)]">
                         {meat.name}
                       </td>
-                      <td className="py-2 text-right text-sm text-[var(--accent-gold)]">
+                      <td className="py-2 px-3 text-right text-sm font-semibold text-[var(--accent-gold)]">
                         ₱{new Decimal(meat.pricePerKg).toFixed(2)}
                       </td>
-                      <td className="py-2 text-right text-sm">
+                      <td className="py-2 px-3 text-right">
                         <span
-                          className={`px-2 py-1 text-xs rounded-full ${
+                          className={`px-2 py-0.5 text-xs rounded-full ${
                             meat.isActive
                               ? "bg-[var(--status-completed-bg)] text-[var(--status-completed)]"
                               : "bg-[var(--status-cancelled-bg)] text-[var(--status-cancelled)]"
@@ -127,10 +124,18 @@ export const CategoryViewDialog: React.FC<CategoryViewDialogProps> = ({
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          )}
+        </div>
+
+        {/* Metadata */}
+        <div className="pt-4 border-t border-[var(--border-color)] flex justify-between text-xs text-[var(--text-tertiary)]">
+          <span>Created: {new Date(category.createdAt).toLocaleString()}</span>
+          {category.updatedAt && (
+            <span>Updated: {new Date(category.updatedAt).toLocaleString()}</span>
+          )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };

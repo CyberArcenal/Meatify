@@ -6,7 +6,7 @@ import React, {
   useCallback,
   useState,
 } from "react";
-import { ShoppingCart, Trash2 } from "lucide-react";
+import { ShoppingCart, Trash2, ArrowRight } from "lucide-react";
 import Decimal from "decimal.js";
 import type {
   CartItem as CartItemType,
@@ -86,7 +86,7 @@ const Cart: React.FC<CartProps> = ({
   onClearCart,
 }) => {
   const cartContainerRef = useRef<HTMLDivElement | null>(null);
-  const prevCartLengthRef = useRef(cart.length); // ✅ Track previous length
+  const prevCartLengthRef = useRef(cart.length);
 
   const discountEnabled = useDiscountEnabled();
   const isPointEnabled = useLoyaltyPointsEnabled();
@@ -135,11 +135,9 @@ const Cart: React.FC<CartProps> = ({
     }
   };
 
-  // ✅ Auto-scroll ONLY when a new item is added (length increases)
   useEffect(() => {
     const currentLength = cart.length;
     if (currentLength > prevCartLengthRef.current) {
-      // May bagong item na na-add
       if (cartContainerRef.current) {
         cartContainerRef.current.scrollTo({
           top: cartContainerRef.current.scrollHeight,
@@ -158,30 +156,39 @@ const Cart: React.FC<CartProps> = ({
   );
 
   return (
-    <div className="flex flex-col h-full bg-[var(--cart-bg)] border-l border-[var(--border-color)]">
-      <div className="p-4 border-b border-[var(--border-color)] flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
-          <ShoppingCart className="w-5 h-5" />
+    <div className="flex flex-col h-full bg-[var(--card-bg)] border-l border-[var(--border-color)]">
+      {/* Header */}
+      <div className="flex-shrink-0 px-4 py-3 border-b border-[var(--border-color)] bg-[var(--card-secondary-bg)] flex justify-between items-center">
+        <h2 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+          <ShoppingCart className="w-5 h-5 text-[var(--accent-gold)]" />
           Current Sale
+          {cart.length > 0 && (
+            <span className="text-xs font-medium text-[var(--text-secondary)] bg-[var(--card-bg)] px-2 py-0.5 rounded-full">
+              {cart.length}
+            </span>
+          )}
         </h2>
         <button
           onClick={handleClearCart}
           disabled={cart.length === 0}
-          className="p-1.5 rounded-md text-[var(--text-tertiary)] hover:bg-[var(--card-hover-bg)] hover:text-[var(--accent-red)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="p-1.5 rounded-md text-[var(--text-tertiary)] hover:bg-[var(--status-cancelled-bg)] hover:text-[var(--danger-color)] transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
           title="Clear cart"
         >
-          <Trash2 className="w-5 h-5" />
+          <Trash2 className="w-4 h-4" />
         </button>
       </div>
 
+      {/* Cart Items */}
       <div
         ref={cartContainerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-3"
+        className="flex-1 overflow-y-auto p-3 space-y-2 custom-scrollbar"
       >
         {cart.length === 0 ? (
-          <div className="text-center text-[var(--text-tertiary)] py-8">
-            <ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>Cart is empty</p>
+          <div className="flex flex-col items-center justify-center h-full text-[var(--text-tertiary)]">
+            <div className="w-16 h-16 rounded-full bg-[var(--card-secondary-bg)] flex items-center justify-center mb-3 border border-[var(--border-color)]">
+              <ShoppingCart className="w-8 h-8" />
+            </div>
+            <p className="font-medium text-[var(--text-secondary)]">Cart is empty</p>
             <p className="text-sm">Click products to add</p>
           </div>
         ) : (
@@ -200,7 +207,8 @@ const Cart: React.FC<CartProps> = ({
         )}
       </div>
 
-      <div className="p-4 border-t border-[var(--border-color)] space-y-3">
+      {/* Footer */}
+      <div className="flex-shrink-0 px-4 py-3 border-t border-[var(--border-color)] bg-[var(--card-secondary-bg)] space-y-3">
         <CustomerSelect
           value={selectedCustomer?.id || null}
           onChange={(customerId, customer) => {
@@ -209,17 +217,19 @@ const Cart: React.FC<CartProps> = ({
               customer === undefined ? null : customer
             );
           }}
-          placeholder="Select customer..."
+          placeholder="Select customer (optional)"
+          className="w-full"
         />
 
         {selectedCustomer && isPointEnabled && (
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-[var(--text-tertiary)]">Loyalty points:</span>
-            <span className="font-medium text-[var(--accent-purple)]">
+          <div className="flex items-center justify-between text-xs px-1">
+            <span className="text-[var(--text-tertiary)]">Loyalty points available:</span>
+            <span className="font-semibold text-[var(--accent-purple)]">
               {loyaltyPointsAvailable}
             </span>
           </div>
         )}
+
         {isPointEnabled && (
           <LoyaltyRedemption
             selectedCustomer={!!selectedCustomer}
@@ -239,7 +249,7 @@ const Cart: React.FC<CartProps> = ({
 
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <label className="block text-xs text-[var(--text-tertiary)] mb-1">
+            <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">
               Discount % {discountEnabled ? "" : "(Disabled)"}
             </label>
             <input
@@ -253,11 +263,11 @@ const Cart: React.FC<CartProps> = ({
                   Math.min(maxDiscount, parseFloat(e.target.value) || 0)
                 )
               }
-              className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-[var(--text-primary)]"
+              className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-gold)] disabled:opacity-50"
             />
           </div>
           <div>
-            <label className="block text-xs text-[var(--text-tertiary)] mb-1">
+            <label className="block text-xs font-medium text-[var(--text-tertiary)] mb-1">
               Notes
             </label>
             <input
@@ -265,13 +275,11 @@ const Cart: React.FC<CartProps> = ({
               value={notes}
               onChange={(e) => onNotesChange(e.target.value)}
               placeholder="Optional notes"
-              className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-[var(--text-primary)] placeholder-[var(--text-tertiary)]"
+              className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-gold)]"
             />
           </div>
         </div>
-      </div>
 
-      <div className="p-4 border-t border-[var(--border-color)] bg-[var(--cart-header)]">
         <TotalsDisplay
           subtotal={subtotal}
           globalDiscount={globalDiscount}

@@ -23,51 +23,53 @@ const BatchSelect: React.FC<BatchSelectProps> = ({
   placeholder = "Select batch...",
   meatId,
   statusFilter = "active",
-  className = "w-full max-w-md",
+  className = "",
 }) => {
   const [batches, setBatches] = useState<Batch[]>([]);
   const [filteredBatches, setFilteredBatches] = useState<Batch[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState({ top: 0, left: 0, width: 0 });
+  const [dropdownStyle, setDropdownStyle] = useState({
+    top: 0,
+    left: 0,
+    width: 0,
+    maxHeight: 250,
+  });
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-useEffect(() => {
-  const loadBatches = async () => {
-    setLoading(true);
-    try {
-      const params: any = {
-        limit: 1000,
-        sortBy: "expiryDate",
-        sortOrder: "ASC",
-      };
-      if (meatId) params.meatId = meatId;
-      if (statusFilter !== "all") params.status = statusFilter;
+  // Load batches
+  useEffect(() => {
+    const loadBatches = async () => {
+      setLoading(true);
+      try {
+        const params: any = {
+          limit: 1000,
+          sortBy: "expiryDate",
+          sortOrder: "ASC",
+        };
+        if (meatId) params.meatId = meatId;
+        if (statusFilter !== "all") params.status = statusFilter;
 
-      console.log("[BatchSelect] Fetching batches with params:", params); // ✅
-
-      const response = await batchAPI.getAll(params);
-      console.log("[BatchSelect] Response:", response); // ✅
-
-      if (response.status && response.data) {
-        const list = response.data.items || [];
-        console.log("[BatchSelect] Batches received:", list.map(b => ({ id: b.id, meatId: b.meatId, code: b.batchCode }))); // ✅
-        setBatches(list);
-        setFilteredBatches(list);
+        const response = await batchAPI.getAll(params);
+        if (response.status && response.data) {
+          const list = response.data.items || [];
+          setBatches(list);
+          setFilteredBatches(list);
+        }
+      } catch (error) {
+        console.error("Failed to load batches:", error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to load batches:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-  loadBatches();
-}, [meatId, statusFilter]);
+    };
+    loadBatches();
+  }, [meatId, statusFilter]);
 
+  // Filter batches based on search
   useEffect(() => {
     if (!searchTerm.trim()) {
       setFilteredBatches(batches);
@@ -84,23 +86,42 @@ useEffect(() => {
     );
   }, [searchTerm, batches]);
 
+  // Focus search input when dropdown opens
   useEffect(() => {
     if (isOpen && searchInputRef.current) {
       setTimeout(() => searchInputRef.current?.focus(), 100);
     }
   }, [isOpen]);
 
+  // Calculate dropdown position and max height
   const updateDropdownPosition = () => {
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setDropdownStyle({
-        top: rect.bottom + window.scrollY,
-        left: rect.left + window.scrollX,
-        width: rect.width,
-      });
+    if (!triggerRef.current) return;
+
+    const rect = triggerRef.current.getBoundingClientRect();
+    const viewportHeight = window.innerHeight;
+    const spaceBelow = viewportHeight - rect.bottom - 10;
+    const spaceAbove = rect.top - 10;
+
+    let maxHeight = Math.min(300, Math.max(150, Math.floor(spaceBelow - 10)));
+    let top: number;
+
+    if (spaceBelow < 200 && spaceAbove > 150) {
+      top = rect.top + window.scrollY - Math.min(spaceAbove - 10, 300);
+      maxHeight = Math.min(300, Math.max(150, Math.floor(spaceAbove - 10)));
+    } else {
+      top = rect.bottom + window.scrollY + 4;
+      maxHeight = Math.min(300, Math.max(150, Math.floor(spaceBelow - 10)));
     }
+
+    setDropdownStyle({
+      top,
+      left: rect.left + window.scrollX,
+      width: rect.width,
+      maxHeight,
+    });
   };
 
+  // Update position when dropdown opens or window resizes/scrolls
   useEffect(() => {
     if (isOpen) {
       updateDropdownPosition();
@@ -113,6 +134,7 @@ useEffect(() => {
     };
   }, [isOpen]);
 
+  // Close on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -156,69 +178,62 @@ useEffect(() => {
     }
   };
 
-  const getStatusBg = (status: string) => {
-    switch (status) {
-      case "active":
-        return "var(--status-completed-bg)";
-      case "depleted":
-        return "var(--stock-outstock-bg)";
-      case "expired":
-        return "var(--status-cancelled-bg)";
-      case "on_hold":
-        return "var(--status-pending-bg)";
-      default:
-        return "var(--card-secondary-bg)";
-    }
-  };
-
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative min-w-0 ${className}`}>
       <button
         ref={triggerRef}
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
-        className="w-full px-4 py-2 rounded-lg text-left flex items-center gap-2 transition-colors duration-200"
+        className="w-full px-2 py-1 rounded-lg text-left flex items-center gap-1 transition-colors duration-200 overflow-hidden"
         style={{
           backgroundColor: "var(--card-bg)",
           border: "1px solid var(--border-color)",
           color: "var(--text-primary)",
-          minHeight: "42px",
+          minHeight: "32px",
         }}
       >
-        <Package className="w-4 h-4 flex-shrink-0" style={{ color: "var(--accent-gold)" }} />
-        <div className="flex-1 min-w-0 flex items-center gap-2">
+        <Package className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--accent-gold)" }} />
+        
+        <div className="flex-1 min-w-0 flex items-center gap-1 overflow-hidden">
           {selectedBatch ? (
             <>
-              <span className="font-medium truncate">{selectedBatch.batchCode}</span>
-              {selectedBatch.meat && (
-                <span className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
-                  ({selectedBatch.meat.name})
-                </span>
-              )}
-              <span className="text-xs" style={{ color: getStatusColor(selectedBatch.status) }}>
+              <span 
+                className="text-xs font-medium truncate flex-1 min-w-0" 
+                style={{ color: "var(--text-primary)" }}
+                title={selectedBatch.batchCode}
+              >
+                {selectedBatch.batchCode}
+              </span>
+              <span 
+                className="text-[10px] flex-shrink-0 font-medium" 
+                style={{ color: getStatusColor(selectedBatch.status) }}
+              >
                 {selectedBatch.remainingQuantity}kg
               </span>
             </>
           ) : (
-            <span className="truncate" style={{ color: "var(--text-secondary)" }}>
+            <span className="text-xs truncate" style={{ color: "var(--text-secondary)" }}>
               {placeholder}
             </span>
           )}
         </div>
+
         {selectedBatch && !disabled && (
           <button
             type="button"
             onClick={handleClear}
-            className="p-1 rounded-full hover:bg-gray-700 transition-colors flex-shrink-0"
+            className="p-0.5 rounded-full hover:bg-[var(--card-hover-bg)] transition-colors flex-shrink-0"
             style={{ color: "var(--text-secondary)" }}
             title="Remove selected"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3 h-3" />
           </button>
         )}
         <ChevronDown
-          className={`w-4 h-4 transition-transform duration-200 flex-shrink-0 ${isOpen ? "rotate-180" : ""}`}
+          className={`w-3.5 h-3.5 transition-transform duration-200 flex-shrink-0 ${
+            isOpen ? "rotate-180" : ""
+          }`}
           style={{ color: "var(--text-secondary)" }}
         />
       </button>
@@ -227,17 +242,16 @@ useEffect(() => {
         createPortal(
           <div
             ref={dropdownRef}
-            className="fixed z-[9999] rounded-lg shadow-lg overflow-hidden"
+            className="fixed z-[9999] rounded-lg shadow-xl overflow-hidden border border-[var(--border-color)] bg-[var(--card-bg)]"
             style={{
               top: dropdownStyle.top,
               left: dropdownStyle.left,
               width: dropdownStyle.width,
-              backgroundColor: "var(--card-bg)",
-              border: "1px solid var(--border-color)",
-              maxHeight: "350px",
+              maxHeight: dropdownStyle.maxHeight + 60,
             }}
           >
-            <div className="p-2 border-b" style={{ borderColor: "var(--border-color)" }}>
+            {/* Search input */}
+            <div className="p-2 border-b border-[var(--border-color)] bg-[var(--card-secondary-bg)]">
               <div className="relative">
                 <Search
                   className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4"
@@ -251,15 +265,20 @@ useEffect(() => {
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-8 pr-3 py-1.5 rounded text-sm"
                   style={{
-                    backgroundColor: "var(--card-secondary-bg)",
-                    border: "1px solid var(--border-color)",
+                    backgroundColor: "var(--input-bg)",
+                    border: "1px solid var(--input-border)",
                     color: "var(--text-primary)",
+                    outline: "none",
                   }}
                 />
               </div>
             </div>
 
-            <div className="overflow-y-auto" style={{ maxHeight: "250px" }}>
+            {/* Options list */}
+            <div
+              className="overflow-y-auto custom-scrollbar"
+              style={{ maxHeight: dropdownStyle.maxHeight }}
+            >
               {loading && batches.length === 0 ? (
                 <div className="p-3 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
                   Loading...
@@ -279,20 +298,29 @@ useEffect(() => {
                     }`}
                     style={{ borderBottom: "1px solid var(--border-color)" }}
                   >
-                    <Package className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--accent-gold)" }} />
+                    <Package
+                      className="w-3.5 h-3.5 flex-shrink-0"
+                      style={{ color: "var(--accent-gold)" }}
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                        <span
+                          className="font-medium truncate"
+                          style={{ color: "var(--text-primary)" }}
+                        >
                           {batch.batchCode}
                         </span>
-                        <span className="text-xs" style={{ color: getStatusColor(batch.status) }}>
+                        <span className="text-xs flex-shrink-0" style={{ color: getStatusColor(batch.status) }}>
                           {batch.status}
                         </span>
                       </div>
-                      <div className="flex items-center gap-3 text-xs" style={{ color: "var(--text-tertiary)" }}>
-                        {batch.meat && <span>{batch.meat.name}</span>}
-                        <span>{batch.remainingQuantity}kg</span>
-                        <span className="flex items-center gap-1">
+                      <div
+                        className="flex items-center gap-3 text-xs"
+                        style={{ color: "var(--text-tertiary)" }}
+                      >
+                        {batch.meat && <span className="truncate">{batch.meat.name}</span>}
+                        <span className="flex-shrink-0">{batch.remainingQuantity}kg</span>
+                        <span className="flex items-center gap-1 flex-shrink-0">
                           <Calendar className="w-3 h-3" />
                           {format(new Date(batch.expiryDate), "MMM dd, yyyy")}
                         </span>

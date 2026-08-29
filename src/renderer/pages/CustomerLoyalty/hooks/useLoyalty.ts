@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from "react";
 import loyaltyAPI, {
   type LoyaltyTransaction,
   type TransactionStatistics,
-  type PaginatedTransactions,
 } from "../../../api/core/loyaltyTransaction";
 import customerAPI, { type Customer } from "../../../api/core/customer";
 
@@ -15,114 +14,99 @@ export interface LoyaltyFilters {
   search: string;
 }
 
-interface PointsDistribution {
+export interface PointsDistribution {
   range: string;
   count: number;
 }
 
-interface TopCustomer {
+export interface TopCustomer {
   customerId: number;
   name: string;
   netPoints: number;
   transactionCount: number;
 }
 
-interface MonthlyTrend {
+export interface MonthlyTrend {
   month: string;
   earned: number;
   redeemed: number;
   count: number;
 }
 
-export const useLoyalty = (initialFilters: LoyaltyFilters) => {
+export const useLoyalty = (initialFilters?: Partial<LoyaltyFilters>) => {
   const [transactions, setTransactions] = useState<LoyaltyTransaction[]>([]);
-  const [statistics, setStatistics] = useState<TransactionStatistics | null>(
-    null
-  );
-  const [filters, setFilters] = useState<LoyaltyFilters>(initialFilters);
+  const [statistics, setStatistics] = useState<TransactionStatistics | null>(null);
+  const [filters, setFilters] = useState<LoyaltyFilters>({
+    type: "all",
+    customerId: undefined,
+    startDate: undefined,
+    endDate: undefined,
+    search: "",
+    ...initialFilters,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalItems, setTotalItems] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
   const [topCustomers, setTopCustomers] = useState<TopCustomer[]>([]);
-  const [pointsDistribution, setPointsDistribution] = useState<
-    PointsDistribution[]
-  >([]);
+  const [pointsDistribution, setPointsDistribution] = useState<PointsDistribution[]>([]);
   const [monthlyTrends, setMonthlyTrends] = useState<MonthlyTrend[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   const fetchAll = useCallback(
     async (options?: { page?: number; limit?: number }) => {
-      const page = options?.page || 1;
-      const limit = options?.limit || 10;
+      const p = options?.page ?? page;
+      const l = options?.limit ?? limit;
 
       setLoading(true);
       setError(null);
+
       try {
-        // Build params for getAllTransactions
         const params: any = {
-          page,
-          limit,
+          page: p,
+          limit: l,
           customerId: filters.customerId,
           startDate: filters.startDate,
           endDate: filters.endDate,
           search: filters.search || undefined,
         };
 
-        // Map type filter to transactionType
         if (filters.type !== "all") {
-          params.transactionType = filters.type; // 'earn' or 'redeem'
+          params.transactionType = filters.type;
         }
 
-        // Fetch transactions
         const txResponse = await loyaltyAPI.getAll(params);
         if (!txResponse.status) throw new Error(txResponse.message);
-        const paginated: PaginatedTransactions = txResponse.data;
-        setTransactions(paginated.items || []);
-        setTotalItems(paginated.total || 0);
 
-        // Fetch statistics – this gives aggregated data
+        const data = txResponse.data;
+        setTransactions(data.items || []);
+        setTotalItems(data.total || 0);
+        if (options?.page !== undefined) setPage(p);
+        if (options?.limit !== undefined) setLimit(l);
+
+        // Fetch statistics
         const statsResponse = await loyaltyAPI.getStatistics();
         if (statsResponse.status) {
-          const stats = statsResponse.data;
-          setStatistics(stats);
-
-          // Build monthly trends from stats if available
-          // Since stats doesn't have monthlyTrends, we can compute from transactions if needed,
-          // but we'll just use empty arrays for now and rely on component to compute or we'll compute client-side.
-          // For now, we'll try to build trends from transactions:
-          const trendsMap: Record<string, { earned: number; redeemed: number; count: number }> = {};
-          paginated.items.forEach((tx) => {
-            const month = new Date(tx.timestamp).toISOString().slice(0, 7); // YYYY-MM
-            if (!trendsMap[month]) {
-              trendsMap[month] = { earned: 0, redeemed: 0, count: 0 };
-            }
-            trendsMap[month].count += 1;
-            if (tx.pointsChange > 0) {
-              trendsMap[month].earned += tx.pointsChange;
-            } else {
-              trendsMap[month].redeemed += Math.abs(tx.pointsChange);
-            }
-          });
-          const trends = Object.entries(trendsMap)
-            .map(([month, data]) => ({ month, ...data }))
-            .sort((a, b) => a.month.localeCompare(b.month));
-          setMonthlyTrends(trends);
+          setStatistics(statsResponse.data);
         }
 
-        // Fetch all customers to build points distribution and top customers
+        // Fetch customers for distribution and top customers
         const custResponse = await customerAPI.getAll({
           limit: 1000,
           sortBy: "loyaltyPointsBalance",
           sortOrder: "DESC",
         });
         if (custResponse.status) {
-          const customers: Customer[] = custResponse.data.items || [];
+          const customerList = custResponse.data.items || [];
+          setCustomers(customerList);
 
           // Top customers by points
-          const top = customers.slice(0, 5).map((c) => ({
+          const top = customerList.slice(0, 5).map((c) => ({
             customerId: c.id,
             name: c.name,
             netPoints: c.loyaltyPointsBalance,
-            transactionCount: 0, // not available here
+            transactionCount: 0,
           }));
           setTopCustomers(top);
 
@@ -135,7 +119,7 @@ export const useLoyalty = (initialFilters: LoyaltyFilters) => {
           ];
           const distribution = ranges.map((r) => ({
             range: r.label,
-            count: customers.filter(
+            count: customerList.filter(
               (c) =>
                 c.loyaltyPointsBalance >= r.min &&
                 c.loyaltyPointsBalance <= r.max
@@ -143,6 +127,25 @@ export const useLoyalty = (initialFilters: LoyaltyFilters) => {
           }));
           setPointsDistribution(distribution);
         }
+
+        // Build monthly trends from transactions
+        const trendsMap: Record<string, { earned: number; redeemed: number; count: number }> = {};
+        data.items.forEach((tx) => {
+          const month = new Date(tx.timestamp).toISOString().slice(0, 7);
+          if (!trendsMap[month]) {
+            trendsMap[month] = { earned: 0, redeemed: 0, count: 0 };
+          }
+          trendsMap[month].count += 1;
+          if (tx.pointsChange > 0) {
+            trendsMap[month].earned += tx.pointsChange;
+          } else {
+            trendsMap[month].redeemed += Math.abs(tx.pointsChange);
+          }
+        });
+        const trends = Object.entries(trendsMap)
+          .map(([month, data]) => ({ month, ...data }))
+          .sort((a, b) => a.month.localeCompare(b.month));
+        setMonthlyTrends(trends);
       } catch (err: any) {
         setError(err.message);
         setTotalItems(0);
@@ -150,12 +153,18 @@ export const useLoyalty = (initialFilters: LoyaltyFilters) => {
         setLoading(false);
       }
     },
-    [filters]
+    [filters, page, limit]
   );
 
+  // Auto-fetch when filters change
   useEffect(() => {
-    fetchAll({ page: 1, limit: 10 });
-  }, [fetchAll]);
+    fetchAll({ page: 1, limit });
+  }, [filters]);
+
+  // Re-fetch when page/limit change
+  useEffect(() => {
+    fetchAll({ page, limit });
+  }, [page, limit]);
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
@@ -163,6 +172,26 @@ export const useLoyalty = (initialFilters: LoyaltyFilters) => {
     },
     [fetchAll]
   );
+
+  const goToPage = useCallback((newPage: number) => {
+    if (newPage >= 1) setPage(newPage);
+  }, []);
+
+  const changeLimit = useCallback((newLimit: number) => {
+    setLimit(newLimit);
+    setPage(1);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setFilters({
+      type: "all",
+      customerId: undefined,
+      startDate: undefined,
+      endDate: undefined,
+      search: "",
+    });
+    setPage(1);
+  }, []);
 
   return {
     transactions,
@@ -172,9 +201,15 @@ export const useLoyalty = (initialFilters: LoyaltyFilters) => {
     loading,
     error,
     totalItems,
-    reload,
+    page,
+    limit,
     topCustomers,
     pointsDistribution,
     monthlyTrends,
+    customers,
+    reload,
+    goToPage,
+    changeLimit,
+    resetFilters,
   };
 };

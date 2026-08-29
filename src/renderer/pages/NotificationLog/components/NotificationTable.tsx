@@ -1,29 +1,52 @@
 // src/renderer/pages/system/notification-logs/components/NotificationTable.tsx
 import React from "react";
-import {
-  Eye,
-  RefreshCw,
-  Send,
-  Trash2,
-  Clock,
-  CheckCircle,
-  XCircle,
-  RotateCw,
-  Mail,
-  Loader2,
-} from "lucide-react";
+import { Mail, CheckCircle, XCircle, Clock, RotateCw } from "lucide-react";
 import { formatDate } from "../../../utils/formatters";
-import type { NotificationLog } from "../../../api/core/notificationLog"; // ✅ import the correct type
+import type { NotificationLog } from "../../../api/core/notificationLog";
+import NotificationActionsDropdown from "./NotificationActionsDropdown";
 
 interface NotificationTableProps {
-  logs: NotificationLog[]; // ✅ corrected type
+  logs: NotificationLog[];
   onView: (log: NotificationLog) => void;
   onRetry: (id: number) => void;
   onResend: (id: number) => void;
   onDelete: (id: number) => void;
-  isLoading?: boolean;
-  sendingIds?: Set<number>;
+  sendingIds: Set<number>;
+  selectedIds: number[];
+  onSelectRow: (id: number, checked: boolean) => void;
+  onSelectAll: (checked: boolean) => void;
 }
+
+const getStatusBadge = (status: string) => {
+  const baseClasses = "px-2 py-1 text-xs font-medium rounded-full inline-flex items-center gap-1";
+  switch (status) {
+    case "sent":
+      return `${baseClasses} bg-[var(--status-completed-bg)] text-[var(--status-completed)] border border-[var(--status-completed)]/20`;
+    case "queued":
+      return `${baseClasses} bg-[var(--status-pending-bg)] text-[var(--status-pending)] border border-[var(--status-pending)]/20`;
+    case "failed":
+      return `${baseClasses} bg-[var(--status-cancelled-bg)] text-[var(--status-cancelled)] border border-[var(--status-cancelled)]/20`;
+    case "resend":
+      return `${baseClasses} bg-[var(--status-processing-bg)] text-[var(--status-processing)] border border-[var(--status-processing)]/20`;
+    default:
+      return `${baseClasses} bg-[var(--card-secondary-bg)] text-[var(--text-tertiary)] border border-[var(--border-color)]/20`;
+  }
+};
+
+const getStatusIcon = (status: string) => {
+  switch (status) {
+    case "sent":
+      return <CheckCircle className="w-3 h-3" />;
+    case "queued":
+      return <Clock className="w-3 h-3" />;
+    case "failed":
+      return <XCircle className="w-3 h-3" />;
+    case "resend":
+      return <RotateCw className="w-3 h-3" />;
+    default:
+      return null;
+  }
+};
 
 export const NotificationTable: React.FC<NotificationTableProps> = ({
   logs,
@@ -31,173 +54,126 @@ export const NotificationTable: React.FC<NotificationTableProps> = ({
   onRetry,
   onResend,
   onDelete,
-  isLoading,
-  sendingIds = new Set(),
+  sendingIds,
+  selectedIds,
+  onSelectRow,
+  onSelectAll,
 }) => {
-  const getStatusBadge = (status: string) => {
-    const baseClasses =
-      "px-2 py-1 text-xs font-medium rounded-full inline-flex items-center gap-1";
-    switch (status) {
-      case "sent":
-        return `${baseClasses} bg-green-500/20 text-green-400 border border-green-500/30`;
-      case "queued":
-        return `${baseClasses} bg-yellow-500/20 text-yellow-400 border border-yellow-500/30`;
-      case "failed":
-        return `${baseClasses} bg-red-500/20 text-red-400 border border-red-500/30`;
-      case "resend":
-        return `${baseClasses} bg-blue-500/20 text-blue-400 border border-blue-500/30`;
-      default:
-        return `${baseClasses} bg-gray-500/20 text-gray-400 border border-gray-500/30`;
-    }
-  };
-
-  if (isLoading) {
+  if (logs.length === 0) {
     return (
-      <div className="flex justify-center items-center py-20">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[var(--primary-color)]"></div>
-      </div>
-    );
-  }
-
-  if (logs?.length === 0) {
-    return (
-      <div className="text-center py-16 bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)]/20">
-        <Mail className="w-16 h-16 mx-auto text-[var(--text-tertiary)] mb-4" />
-        <h3 className="text-xl font-medium mb-2 text-[var(--text-primary)]">
-          No notifications found
-        </h3>
-        <p className="text-[var(--text-secondary)]">
-          Try adjusting your filters or check back later.
+      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl p-8 text-center">
+        <Mail className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
+        <p className="text-[var(--text-primary)] font-medium">No notifications found</p>
+        <p className="text-sm text-[var(--text-tertiary)] mt-1">
+          Try adjusting your filters
         </p>
       </div>
     );
   }
 
+  const allSelected = logs.length > 0 && logs.every((l) => selectedIds.includes(l.id));
+  const someSelected = selectedIds.length > 0 && !allSelected;
+
   return (
-    <div className="overflow-x-auto bg-[var(--card-bg)] rounded-lg border border-[var(--border-color)]/20">
-      <table className="w-full text-sm">
-        <thead className="bg-[var(--card-secondary-bg)] border-b border-[var(--border-color)]/20">
-          <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              ID
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Recipient
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Subject
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Status
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Retries
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Sent At
-            </th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Created
-            </th>
-            <th className="px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-              Actions
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--border-color)]/10">
-          {logs?.map((log) => {
-            const isSending = sendingIds.has(log.id);
-            return (
-              <tr
-                key={log.id}
-                className={`hover:bg-[var(--card-hover-bg)]/20 transition-colors ${
-                  isSending ? "sending-row" : ""
-                }`}
-              >
-                <td className="px-4 py-3 text-[var(--text-primary)] whitespace-nowrap">
-                  #{log.id}
-                </td>
-                <td className="px-4 py-3 text-[var(--text-primary)] whitespace-nowrap">
-                  {log.recipient_email}
-                </td>
-                <td className="px-4 py-3 text-[var(--text-secondary)] max-w-[200px] truncate">
-                  {log.subject || "—"}
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap">
-                  <span className={getStatusBadge(log.status)}>
-                    {log.status === "resend" && (
-                      <RotateCw className="w-3 h-3" />
-                    )}
-                    {log.status === "sent" && (
-                      <CheckCircle className="w-3 h-3" />
-                    )}
-                    {log.status === "queued" && <Clock className="w-3 h-3" />}
-                    {log.status === "failed" && <XCircle className="w-3 h-3" />}
-                    {log.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-[var(--text-secondary)] whitespace-nowrap">
-                  {log.retry_count} / {log.resend_count}
-                </td>
-                <td className="px-4 py-3 text-[var(--text-secondary)] whitespace-nowrap">
-                  {log.sent_at ? formatDate(log.sent_at) : "—"}
-                </td>
-                <td className="px-4 py-3 text-[var(--text-secondary)] whitespace-nowrap">
-                  {formatDate(log.created_at)}
-                </td>
-                <td className="px-4 py-3 whitespace-nowrap text-right">
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => onView(log)}
-                      disabled={isSending}
-                      className="p-1.5 rounded-md hover:bg-[var(--card-hover-bg)] text-[var(--text-tertiary)] hover:text-[var(--primary-color)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="View details"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    {log.status === "failed" && (
-                      <button
-                        onClick={() => onRetry(log.id)}
-                        disabled={isSending}
-                        className="p-1.5 rounded-md hover:bg-[var(--card-hover-bg)] text-[var(--text-tertiary)] hover:text-[var(--primary-color)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Retry failed"
-                      >
-                        {isSending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-4 h-4" />
-                        )}
-                      </button>
-                    )}
-                    {(log.status === "sent" || log.status === "resend") && (
-                      <button
-                        onClick={() => onResend(log.id)}
-                        disabled={isSending}
-                        className="p-1.5 rounded-md hover:bg-[var(--card-hover-bg)] text-[var(--text-tertiary)] hover:text-[var(--primary-color)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Resend"
-                      >
-                        {isSending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Send className="w-4 h-4" />
-                        )}
-                      </button>
-                    )}
-                    <button
-                      onClick={() => onDelete(log.id)}
-                      disabled={isSending}
-                      className="p-1.5 rounded-md hover:bg-red-500/10 text-[var(--text-tertiary)] hover:text-red-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Delete"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
+            <tr>
+              <th className="w-8 py-3 px-2">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(input) => {
+                    if (input) input.indeterminate = someSelected;
+                  }}
+                  onChange={(e) => onSelectAll(e.target.checked)}
+                  className="rounded border-[var(--border-color)] cursor-pointer"
+                />
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                ID
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Recipient
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Subject
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Status
+              </th>
+              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Retries
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Sent At
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Created
+              </th>
+              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--border-color)]">
+            {logs.map((log) => {
+              const isSending = sendingIds.has(log.id);
+              return (
+                <tr
+                  key={log.id}
+                  className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
+                  onClick={() => onView(log)}
+                >
+                  <td className="py-2.5 px-2" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(log.id)}
+                      onChange={(e) => onSelectRow(log.id, e.target.checked)}
+                      className="rounded border-[var(--border-color)] cursor-pointer"
+                    />
+                  </td>
+                  <td className="py-2.5 px-3 text-sm font-mono text-[var(--text-primary)]">
+                    #{log.id}
+                  </td>
+                  <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)]">
+                    {log.recipient_email}
+                  </td>
+                  <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)] truncate max-w-[150px]">
+                    {log.subject || "—"}
+                  </td>
+                  <td className="py-2.5 px-3 text-sm">
+                    <span className={getStatusBadge(log.status)}>
+                      {getStatusIcon(log.status)}
+                      {log.status}
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-3 text-center text-sm text-[var(--text-secondary)]">
+                    {log.retry_count} / {log.resend_count}
+                  </td>
+                  <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)]">
+                    {log.sent_at ? formatDate(log.sent_at) : "—"}
+                  </td>
+                  <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)]">
+                    {formatDate(log.created_at)}
+                  </td>
+                  <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                    <NotificationActionsDropdown
+                      log={log}
+                      onView={onView}
+                      onRetry={onRetry}
+                      onResend={onResend}
+                      onDelete={onDelete}
+                      isSending={isSending}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };

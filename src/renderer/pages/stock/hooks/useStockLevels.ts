@@ -20,6 +20,14 @@ export interface StockMeat extends Meat {
   reorderQty: number;
 }
 
+export interface StockSummary {
+  totalMeats: number;
+  totalStockValue: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  inStockCount: number;
+}
+
 export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
   const [meats, setMeats] = useState<StockMeat[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -27,6 +35,15 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalItems, setTotalItems] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [summary, setSummary] = useState<StockSummary>({
+    totalMeats: 0,
+    totalStockValue: 0,
+    lowStockCount: 0,
+    outOfStockCount: 0,
+    inStockCount: 0,
+  });
   const [filters, setFilters] = useState<StockFilters>({
     search: "",
     supplierId: undefined,
@@ -37,7 +54,6 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
     ...initialFilters,
   });
 
-  // Fetch suppliers and categories for filter dropdowns
   const fetchFilterData = useCallback(async () => {
     try {
       const [suppliersRes, categoriesRes] = await Promise.all([
@@ -57,17 +73,16 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
 
   const fetchStockData = useCallback(
     async (options?: { page?: number; limit?: number }) => {
-      const page = options?.page || 1;
-      const limit = options?.limit || 10;
+      const p = options?.page ?? page;
+      const l = options?.limit ?? limit;
 
       setLoading(true);
       setError(null);
 
       try {
-        // 1. Get all meats with filters
         const meatParams: any = {
-          page,
-          limit,
+          page: p,
+          limit: l,
           search: filters.search || undefined,
           categoryId: filters.categoryId,
           supplierId: filters.supplierId,
@@ -80,7 +95,6 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
         const meatItems = meatResponse.data.items || [];
         const total = meatResponse.data.total || 0;
 
-        // 2. Get all batches to calculate current stock
         const batchResponse = await batchAPI.getAll({
           status: "active",
           limit: 10000,
@@ -88,15 +102,13 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
         if (!batchResponse.status) throw new Error(batchResponse.message);
         const batches = batchResponse.data.items || [];
 
-        // 3. Calculate current stock per meat
         const stockMap = new Map<number, number>();
         batches.forEach((batch) => {
           const current = stockMap.get(batch.meatId) || 0;
           stockMap.set(batch.meatId, current + batch.remainingQuantity);
         });
 
-        // 4. Build stock meat list with computed stock
-        const defaultThreshold = 10; // kg
+        const defaultThreshold = 10;
         const stockMeats: StockMeat[] = meatItems.map((meat) => {
           const currentStock = stockMap.get(meat.id) || 0;
           const reorderLevel = (meat as any).reorderLevel || defaultThreshold;
@@ -110,7 +122,6 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
           };
         });
 
-        // 5. Apply stock status filter (client-side)
         let filteredMeats = stockMeats;
         if (filters.stockStatus !== "all") {
           filteredMeats = stockMeats.filter((m) => {
@@ -124,6 +135,27 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
 
         setMeats(filteredMeats);
         setTotalItems(filteredMeats.length);
+        if (options?.page !== undefined) setPage(p);
+        if (options?.limit !== undefined) setLimit(l);
+
+        // Compute summary
+        const totalStockValue = filteredMeats.reduce(
+          (sum, m) => sum + m.currentStock * m.pricePerKg,
+          0
+        );
+        const lowStockCount = filteredMeats.filter(
+          (m) => m.currentStock > 0 && m.currentStock <= m.reorderLevel
+        ).length;
+        const outOfStockCount = filteredMeats.filter((m) => m.currentStock === 0).length;
+        const inStockCount = filteredMeats.filter((m) => m.currentStock > m.reorderLevel).length;
+
+        setSummary({
+          totalMeats: filteredMeats.length,
+          totalStockValue,
+          lowStockCount,
+          outOfStockCount,
+          inStockCount,
+        });
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Failed to fetch stock data";
         setError(message);
@@ -132,16 +164,22 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
         setLoading(false);
       }
     },
-    [filters]
+    [filters, page, limit]
   );
 
   useEffect(() => {
     fetchFilterData();
   }, [fetchFilterData]);
 
+  // Auto-fetch when filters change
   useEffect(() => {
-    fetchStockData({ page: 1, limit: 10 });
-  }, [fetchStockData]);
+    fetchStockData({ page: 1, limit });
+  }, [filters]);
+
+  // Re-fetch when page/limit change
+  useEffect(() => {
+    fetchStockData({ page, limit });
+  }, [page, limit]);
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
@@ -150,15 +188,42 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
     [fetchStockData]
   );
 
+  const goToPage = useCallback((newPage: number) => {
+    if (newPage >= 1) setPage(newPage);
+  }, []);
+
+  const changeLimit = useCallback((newLimit: number) => {
+    setLimit(newLimit);
+    setPage(1);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setFilters({
+      search: "",
+      supplierId: undefined,
+      categoryId: undefined,
+      stockStatus: "all",
+      sortBy: "name",
+      sortOrder: "ASC",
+    });
+    setPage(1);
+  }, []);
+
   return {
     meats,
     suppliers,
     categories,
+    filters,
+    setFilters,
     loading,
     error,
     totalItems,
-    filters,
-    setFilters,
+    page,
+    limit,
+    summary,
     reload,
+    goToPage,
+    changeLimit,
+    resetFilters,
   };
 };

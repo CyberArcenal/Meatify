@@ -1,5 +1,5 @@
 // src/renderer/layouts/Sidebar/hooks/useMenuItems.ts
-import { useMemo } from 'react';
+import { useMemo } from "react";
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -30,84 +30,99 @@ import {
   ComputerIcon,
   Calculator,
   Beef,
-} from 'lucide-react';
-import type { MenuItem } from '../types';
+  BoxIcon,
+} from "lucide-react";
+import type { MenuItem } from "../types";
 
 // Menu items for Meatify (Offline POS - No role-based filtering)
 const MENU_ITEMS: MenuItem[] = [
-  { path: '/dashboard', name: 'Dashboard', icon: LayoutDashboard, category: 'core' },
+  {
+    path: "/dashboard",
+    name: "Dashboard",
+    icon: LayoutDashboard,
+    category: "core",
+  },
 
   {
-    path: '/pos',
-    name: 'Point of Sale',
+    path: "/pos",
+    name: "Point of Sale",
     icon: ShoppingCart,
-    category: 'core',
+    category: "core",
     children: [
-      { path: '/pos/cashier', name: 'Cashier', icon: Calculator },
-      { path: '/pos/transactions', name: 'Transactions', icon: Receipt },
-      { path: '/inventory/products', name: 'Meat Products', icon: Beef },
+      { path: "/pos/cashier", name: "Cashier", icon: Calculator },
+      { path: "/pos/transactions", name: "Transactions", icon: Receipt },
+      { path: "/inventory/products", name: "Meat Products", icon: Beef },
     ],
   },
 
   {
-    path: '/customers',
-    name: 'Customers',
+    path: "/customers",
+    name: "Customers",
     icon: Users,
-    category: 'core',
+    category: "core",
     children: [
-      { path: '/customers/list', name: 'Customer Directory', icon: Users2 },
-      { path: '/customers/loyalty', name: 'Loyalty Program', icon: Trophy },
+      { path: "/customers/list", name: "Customer Directory", icon: Users2 },
+      { path: "/customers/loyalty", name: "Loyalty Program", icon: Trophy },
     ],
   },
 
   {
-    path: '/sales',
-    name: 'Sales',
+    path: "/sales",
+    name: "Sales",
     icon: TrendingUp,
-    category: 'core',
+    category: "core",
     children: [
-      { path: '/sales/daily', name: 'Daily Sales', icon: CalendarDays },
-      { path: '/sales/reports', name: 'Sales Reports', icon: BarChart2 },
-      { path: '/sales/returns', name: 'Returns & Refunds', icon: RotateCcw },
+      { path: "/sales/daily", name: "Daily Sales", icon: CalendarDays },
+      { path: "/sales/reports", name: "Sales Reports", icon: BarChart2 },
+      { path: "/sales/returns", name: "Returns & Refunds", icon: RotateCcw },
     ],
   },
 
   {
-    path: '/inventory',
-    name: 'Inventory',
+    path: "/inventory",
+    name: "Inventory",
     icon: Boxes,
-    category: 'core',
+    category: "core",
     children: [
-      { path: '/inventory/stock', name: 'Stock Levels', icon: Layers },
-      { path: '/inventory/movements', name: 'Movements', icon: Shuffle },
-      { path: '/inventory/purchases', name: 'Purchases', icon: ClipboardCheck },
-      { path: '/inventory/suppliers', name: 'Suppliers', icon: Building2 },
-      { path: '/inventory/categories', name: 'Categories', icon: Tags },
+      { path: "/inventory/batches", name: "Batches", icon: BoxIcon },
+      { path: "/inventory/stock", name: "Stock Levels", icon: Layers },
+      { path: "/inventory/movements", name: "Movements", icon: Shuffle },
+      { path: "/inventory/purchases", name: "Purchases", icon: ClipboardCheck },
+      { path: "/inventory/suppliers", name: "Suppliers", icon: Building2 },
+      { path: "/inventory/categories", name: "Categories", icon: Tags },
     ],
   },
 
   {
-    path: '/reports',
-    name: 'Reports',
+    path: "/reports",
+    name: "Reports",
     icon: FileBarChart,
-    category: 'analytics',
+    category: "analytics",
     children: [
-      { path: '/reports/financial', name: 'Financial Reports', icon: DollarSign },
-      { path: '/reports/inventory', name: 'Inventory Reports', icon: ClipboardList },
-      { path: '/reports/customer', name: 'Customer Insights', icon: UserCheck },
+      {
+        path: "/reports/financial",
+        name: "Financial Reports",
+        icon: DollarSign,
+      },
+      {
+        path: "/reports/inventory",
+        name: "Inventory Reports",
+        icon: ClipboardList,
+      },
+      { path: "/reports/customer", name: "Customer Insights", icon: UserCheck },
     ],
   },
 
   {
-    path: '/system',
-    name: 'System',
+    path: "/system",
+    name: "System",
     icon: Settings,
-    category: 'system',
+    category: "system",
     children: [
-      { path: '/system/audit', name: 'Audit Trail', icon: ListChecks },
-      { path: '/notification-logs', name: 'Notification Logs', icon: Bell },
-      { path: '/devices', name: 'Device Manager', icon: ComputerIcon },
-      { path: '/system/settings', name: 'System Settings', icon: Sliders },
+      { path: "/system/audit", name: "Audit Trail", icon: ListChecks },
+      { path: "/notification-logs", name: "Notification Logs", icon: Bell },
+      { path: "/devices", name: "Device Manager", icon: ComputerIcon },
+      { path: "/system/settings", name: "System Settings", icon: Sliders },
     ],
   },
 ];
@@ -142,11 +157,11 @@ export const useMenuItems = () => {
     menuItems: filteredMenuItems,
     groupedItems,
     categories: [
-      { id: 'core', name: 'Core Modules' },
-      { id: 'analytics', name: 'Analytics & Reports' },
-      { id: 'system', name: 'System' },
+      { id: "core", name: "Core Modules" },
+      { id: "analytics", name: "Analytics & Reports" },
+      { id: "system", name: "System" },
     ].filter(
-      (cat) => groupedItems[cat.id as keyof typeof groupedItems]?.length > 0
+      (cat) => groupedItems[cat.id as keyof typeof groupedItems]?.length > 0,
     ),
   };
 };

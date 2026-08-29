@@ -4,7 +4,7 @@ import { type Category } from "../../../api/core/category";
 
 export type FormMode = "add" | "edit";
 
-export function useCategoryForm() {
+export const useCategoryForm = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<FormMode>("add");
   const [categoryId, setCategoryId] = useState<number | undefined>();
@@ -40,4 +40,4 @@ export function useCategoryForm() {
     openEdit,
     close,
   };
-}
+};

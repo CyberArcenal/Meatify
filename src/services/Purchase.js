@@ -563,7 +563,7 @@ class PurchaseService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("Purchase", id, purchase, user);
+      await auditLogger.logCreate("Purchase", id, purchase, user);
     }
 
     logger.debug(`Purchase #${id} permanently deleted`);

@@ -425,7 +425,7 @@ class ReturnRefundItemService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("ReturnRefundItem", id, item, user);
+      await auditLogger.logCreate("ReturnRefundItem", id, item, user);
     }
 
     logger.debug(`ReturnRefundItem #${id} permanently deleted`);
@@ -794,7 +794,7 @@ class ReturnRefundItemService {
 
         const auditEnabled = await this._isAuditEnabled(qr);
         if (auditEnabled) {
-          await auditLogger.debugDelete("ReturnRefundItem", item.id, item, user);
+          await auditLogger.logCreate("ReturnRefundItem", item.id, item, user);
         }
 
         deletedCount++;

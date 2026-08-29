@@ -379,7 +379,7 @@ class PurchaseItemService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("PurchaseItem", id, item, user);
+      await auditLogger.logCreate("PurchaseItem", id, item, user);
     }
 
     logger.debug(`PurchaseItem #${id} permanently deleted`);
@@ -722,7 +722,7 @@ class PurchaseItemService {
 
         const auditEnabled = await this._isAuditEnabled(qr);
         if (auditEnabled) {
-          await auditLogger.debugDelete("PurchaseItem", item.id, item, user);
+          await auditLogger.logCreate("PurchaseItem", item.id, item, user);
         }
 
         deletedCount++;

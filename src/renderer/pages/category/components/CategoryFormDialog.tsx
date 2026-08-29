@@ -1,7 +1,8 @@
 // src/renderer/pages/category/components/CategoryFormDialog.tsx
 import React, { useEffect } from "react";
 import { useForm, type SubmitHandler } from "react-hook-form";
-import { X, Loader2 } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
+import Modal from "../../../components/UI/Modal";
 import categoryAPI, { type Category } from "../../../api/core/category";
 import { dialogs } from "../../../utils/dialogs";
 import { type FormMode } from "../hooks/useCategoryForm";
@@ -85,87 +86,83 @@ export const CategoryFormDialog: React.FC<CategoryFormDialogProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative bg-[var(--card-bg)] rounded-lg w-full max-w-md p-6 shadow-xl border border-[var(--border-color)]">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-[var(--text-primary)]">
-              {mode === "add" ? "Add Category" : "Edit Category"}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-1 hover:bg-[var(--card-hover-bg)] rounded"
-            >
-              <X className="w-5 h-5 text-[var(--text-tertiary)]" />
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                Name <span className="text-[var(--accent-red)]">*</span>
-              </label>
-              <input
-                {...register("name", { required: "Name is required" })}
-                className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
-              />
-              {errors.name && (
-                <p className="mt-1 text-xs text-[var(--accent-red)]">
-                  {errors.name.message}
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1">
-                Description
-              </label>
-              <textarea
-                {...register("description")}
-                rows={3}
-                className="w-full px-3 py-2 bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent resize-none"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                {...register("isActive")}
-                id="isActive"
-                className="rounded border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--accent-gold)] focus:ring-[var(--accent-gold)]"
-              />
-              <label
-                htmlFor="isActive"
-                className="text-sm text-[var(--text-primary)]"
-              >
-                Active
-              </label>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t border-[var(--border-color)]">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 border border-[var(--border-color)] rounded-lg text-sm text-[var(--text-primary)] hover:bg-[var(--card-hover-bg)]"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg text-sm hover:bg-[var(--accent-gold-hover)] disabled:opacity-50 flex items-center gap-2"
-              >
-                {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
-                {mode === "add" ? "Create" : "Update"}
-              </button>
-            </div>
-          </form>
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={mode === "add" ? "Add Category" : "Edit Category"}
+      size="sm"
+      closeOnClickOutside={!isSubmitting}
+      closeOnEsc={!isSubmitting}
+    >
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div>
+          <label className="block text-sm font-semibold text-[var(--text-primary)] mb-1">
+            Name <span className="text-[var(--accent-red)]">*</span>
+          </label>
+          <input
+            {...register("name", { required: "Name is required" })}
+            className={`w-full bg-[var(--input-bg)] border ${
+              errors.name ? "border-[var(--accent-red)]" : "border-[var(--input-border)]"
+            } rounded-lg px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent`}
+          />
+          {errors.name && (
+            <p className="mt-1 text-xs text-[var(--accent-red)]">{errors.name.message}</p>
+          )}
         </div>
-      </div>
-    </div>
+
+        <div>
+          <label className="block text-sm font-semibold text-[var(--text-primary)] mb-1">
+            Description
+          </label>
+          <textarea
+            {...register("description")}
+            rows={3}
+            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent resize-none"
+            placeholder="Optional description for this category..."
+          />
+        </div>
+
+        <div className="flex items-center gap-3 pt-2">
+          <input
+            type="checkbox"
+            {...register("isActive")}
+            id="isActive"
+            className="w-4 h-4 rounded border-[var(--border-color)] bg-[var(--input-bg)] text-[var(--accent-gold)] focus:ring-[var(--accent-gold)]"
+          />
+          <label htmlFor="isActive" className="text-sm text-[var(--text-primary)]">
+            Active (visible in dropdowns and filters)
+          </label>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-[var(--border-color)]">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="px-5 py-2.5 border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] hover:bg-[var(--card-hover-bg)] transition-colors font-medium disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="px-6 py-2.5 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 font-semibold shadow-sm"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                {mode === "add" ? "Create Category" : "Update Category"}
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 };

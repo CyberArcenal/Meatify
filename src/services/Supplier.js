@@ -417,7 +417,7 @@ class SupplierService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugDelete("Supplier", id, oldData, user);
+        await auditLogger.logCreate("Supplier", id, oldData, user);
       }
 
       logger.debug(`Supplier deactivated: #${id}`);
@@ -527,7 +527,7 @@ class SupplierService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("Supplier", id, supplier, user);
+      await auditLogger.logCreate("Supplier", id, supplier, user);
     }
 
     logger.debug(`Supplier #${id} permanently deleted`);

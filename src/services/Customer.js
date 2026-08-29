@@ -399,7 +399,7 @@ class CustomerService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugDelete("Customer", id, oldData, user);
+        await auditLogger.logCreate("Customer", id, oldData, user);
       }
 
       logger.debug(`Customer deactivated: #${id}`);
@@ -495,7 +495,7 @@ class CustomerService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("Customer", id, customer, user);
+      await auditLogger.logCreate("Customer", id, customer, user);
     }
 
     logger.debug(`Customer #${id} permanently deleted`);

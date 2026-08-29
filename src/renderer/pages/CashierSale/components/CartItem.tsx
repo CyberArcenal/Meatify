@@ -1,6 +1,6 @@
 // src/renderer/pages/Cashier/components/CartItem.tsx
 import React, { useCallback, useMemo } from "react";
-import { Trash2, Tag, Percent } from "lucide-react";
+import { Trash2, Tag, Percent, Package } from "lucide-react";
 import Decimal from "decimal.js";
 import type { CartItem as CartItemType } from "../types";
 import { calculateLineTotal } from "../utils";
@@ -46,97 +46,105 @@ const CartItem: React.FC<CartItemProps> = ({
     onUpdateTax(item.id, Math.min(100, Math.max(0, val)));
   };
 
-const handleBatchChange = (batchId: number | null, batch?: Batch) => {
-  console.log("[CartItem] Batch changed for meat", item.id, "to", batchId, batch); // ✅
-  const newBatchId = batchId;
-  const newBatchCode = batch?.batchCode || null;
-  onUpdateBatch(item.id, newBatchId, newBatchCode);
+  const handleBatchChange = (batchId: number | null, batch?: Batch) => {
+    const newBatchId = batchId;
+    const newBatchCode = batch?.batchCode || null;
+    onUpdateBatch(item.id, newBatchId, newBatchCode);
 
-  if (newBatchId !== null && newBatchCode !== null) {
-    setBatchForMeat(item.id, newBatchId, newBatchCode);
-  }
-};
+    if (newBatchId !== null && newBatchCode !== null) {
+      setBatchForMeat(item.id, newBatchId, newBatchCode);
+    }
+  };
 
   const hasBatch = item.batchId !== null && item.batchId !== undefined;
 
   return (
-    <div className="relative bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-3 hover:border-[var(--accent-blue)] transition-colors overflow-hidden">
-      <div className="relative z-10">
-        <div className="flex justify-between items-start">
-          <div className="flex-1">
-            <h4 className="font-medium text-[var(--text-primary)]">{item.name}</h4>
-            <p className="text-xs text-[var(--text-tertiary)]">{item.sku}</p>
-          </div>
-          <button
-            onClick={() => onRemove(item.id)}
-            className="text-[var(--text-tertiary)] hover:text-[var(--accent-red)] p-1"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="mt-2 flex items-center justify-between">
+    <div className="bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-xl p-3 hover:border-[var(--accent-gold)] transition-all duration-200 group">
+      <div className="flex justify-between items-start">
+        <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-[var(--text-tertiary)]">Weight</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={item.weightKg}
-              onChange={handleWeightChange}
-              className="w-20 bg-[var(--input-bg)]/80 border border-[var(--input-border)] rounded px-2 py-1 text-sm text-[var(--text-primary)]"
-            />
-            <span className="text-xs text-[var(--text-tertiary)]">kg</span>
+            <h4 className="font-semibold text-sm text-[var(--text-primary)] truncate group-hover:text-[var(--accent-gold)] transition-colors">
+              {item.name}
+            </h4>
+            {!hasBatch && (
+              <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-[var(--status-cancelled-bg)] text-[var(--status-cancelled)] flex-shrink-0">
+                No batch
+              </span>
+            )}
           </div>
-          <span className="font-bold text-[var(--accent-green)]">
+          <p className="text-xs text-[var(--text-tertiary)] font-mono">{item.sku}</p>
+        </div>
+        <button
+          onClick={() => onRemove(item.id)}
+          className="text-[var(--text-tertiary)] hover:text-[var(--danger-color)] p-1 rounded-md hover:bg-[var(--status-cancelled-bg)] transition-colors flex-shrink-0 ml-2"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[var(--text-tertiary)] font-medium">Weight</span>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={item.weightKg}
+            onChange={handleWeightChange}
+            className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-2 py-1 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-gold)]"
+          />
+          <span className="text-xs text-[var(--text-tertiary)] flex-shrink-0">kg</span>
+        </div>
+        <div className="flex items-center justify-end">
+          <span className="text-sm font-bold text-[var(--accent-gold)]">
             {formatCurrency(lineTotal.toFixed(2))}
           </span>
         </div>
+      </div>
 
-        {/* Batch Select + indicator */}
-        <div className="mt-2 flex items-center gap-2">
-          <span className="text-xs text-[var(--text-tertiary)]">Batch:</span>
-          <BatchSelect
-            meatId={item.id}
-            statusFilter="active"
-            value={item.batchId}
-            onChange={handleBatchChange}
-            className="w-48"
-            placeholder="Select batch"
+      {/* Batch Select */}
+      <div className="mt-2 flex items-center gap-2">
+        <Package className="w-3.5 h-3.5 text-[var(--text-tertiary)] flex-shrink-0" />
+        <BatchSelect
+          meatId={item.id}
+          statusFilter="active"
+          value={item.batchId}
+          onChange={handleBatchChange}
+          className="flex-1"
+          placeholder="Select batch..."
+        />
+        {item.batchCode && (
+          <span className="text-xs text-[var(--text-secondary)] font-mono flex-shrink-0">
+            {item.batchCode}
+          </span>
+        )}
+      </div>
+
+      {/* Discount & Tax */}
+      <div className="mt-2 flex gap-3 text-xs">
+        <div className="flex items-center gap-1 bg-[var(--input-bg)] rounded-lg px-2 py-1 border border-[var(--border-color)]">
+          <Tag className="w-3 h-3 text-[var(--accent-amber)]" />
+          <input
+            type="number"
+            min="0"
+            max={maxDiscount}
+            value={item.lineDiscount}
+            onChange={handleDiscountChange}
+            className="w-14 bg-transparent text-[var(--text-primary)] focus:outline-none"
           />
-          {item.batchCode && (
-            <span className="text-xs text-[var(--text-secondary)]">{item.batchCode}</span>
-          )}
-          {!hasBatch && (
-            <span className="text-xs text-[var(--accent-red)]">⚠️ No batch selected</span>
-          )}
+          <span className="text-[var(--text-tertiary)]">%</span>
         </div>
-
-        <div className="mt-2 flex gap-2 text-xs">
-          <div className="flex items-center gap-1">
-            <Tag className="w-3 h-3 text-[var(--accent-amber)]" />
-            <input
-              type="number"
-              min="0"
-              max={maxDiscount}
-              value={item.lineDiscount}
-              onChange={handleDiscountChange}
-              className="w-16 bg-[var(--input-bg)]/80 border border-[var(--input-border)] rounded px-1 py-0.5 text-[var(--text-primary)]"
-            />
-            <span className="text-[var(--text-tertiary)]">%</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Percent className="w-3 h-3 text-[var(--accent-blue)]" />
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={item.lineTax}
-              onChange={handleTaxChange}
-              className="w-16 bg-[var(--input-bg)]/80 border border-[var(--input-border)] rounded px-1 py-0.5 text-[var(--text-primary)]"
-            />
-            <span className="text-[var(--text-tertiary)]">%</span>
-          </div>
+        <div className="flex items-center gap-1 bg-[var(--input-bg)] rounded-lg px-2 py-1 border border-[var(--border-color)]">
+          <Percent className="w-3 h-3 text-[var(--accent-blue)]" />
+          <input
+            type="number"
+            min="0"
+            max="100"
+            value={item.lineTax}
+            onChange={handleTaxChange}
+            className="w-14 bg-transparent text-[var(--text-primary)] focus:outline-none"
+          />
+          <span className="text-[var(--text-tertiary)]">%</span>
         </div>
       </div>
     </div>

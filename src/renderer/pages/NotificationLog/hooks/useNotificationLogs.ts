@@ -20,6 +20,8 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [totalItems, setTotalItems] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
   const [stats, setStats] = useState<LogStatistics | null>(null);
   const [filters, setFilters] = useState<NotificationFilters>({
     sortBy: "created_at",
@@ -29,8 +31,8 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
 
   const fetchLogs = useCallback(
     async (options?: { page?: number; limit?: number }) => {
-      const page = options?.page || 1;
-      const limit = options?.limit || 10;
+      const p = options?.page ?? page;
+      const l = options?.limit ?? limit;
 
       setLoading(true);
       setError(null);
@@ -40,13 +42,13 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
         if (filters.keyword) {
           response = await notificationLogAPI.search({
             keyword: filters.keyword,
-            page,
-            limit,
+            page: p,
+            limit: l,
           });
         } else {
           response = await notificationLogAPI.getAll({
-            page,
-            limit,
+            page: p,
+            limit: l,
             status: filters.status,
             startDate: filters.startDate,
             endDate: filters.endDate,
@@ -55,15 +57,13 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
           });
         }
 
-        console.log("API Response:", response);
-
         if (response.status) {
-          // ✅ Extract items from nested structure
-          const items = response.data?.data || [];
-          const total = response.data?.pagination?.total || 0;
-          
+          const items = response.data?.items || [];
+          const total = response.data?.total || 0;
           setLogs(items);
           setTotalItems(total);
+          if (options?.page !== undefined) setPage(p);
+          if (options?.limit !== undefined) setLimit(l);
         } else {
           throw new Error(response.message);
         }
@@ -74,33 +74,63 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
         setLoading(false);
       }
     },
-    [filters]
+    [filters, page, limit]
   );
 
   const fetchStats = useCallback(async () => {
     try {
       const response = await notificationLogAPI.getStatistics();
       if (response.status) {
-        // ✅ Check if stats are nested similarly
-        const statsData = response.data?.data || response.data;
-        setStats(statsData);
+        setStats(response.data);
       }
     } catch (err) {
       console.error("Failed to fetch stats", err);
     }
   }, []);
 
+  // Auto-fetch when filters change
   useEffect(() => {
-    fetchLogs({ page: 1, limit: 10 });
+    fetchLogs({ page: 1, limit });
+  }, [filters]);
+
+  // Re-fetch when page/limit change
+  useEffect(() => {
+    fetchLogs({ page, limit });
+  }, [page, limit]);
+
+  // Initial stats fetch
+  useEffect(() => {
     fetchStats();
-  }, [fetchLogs, fetchStats]);
+  }, [fetchStats]);
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
       fetchLogs(options);
+      fetchStats();
     },
-    [fetchLogs]
+    [fetchLogs, fetchStats]
   );
+
+  const goToPage = useCallback((newPage: number) => {
+    if (newPage >= 1) setPage(newPage);
+  }, []);
+
+  const changeLimit = useCallback((newLimit: number) => {
+    setLimit(newLimit);
+    setPage(1);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setFilters({
+      status: undefined,
+      startDate: undefined,
+      endDate: undefined,
+      keyword: undefined,
+      sortBy: "created_at",
+      sortOrder: "DESC",
+    });
+    setPage(1);
+  }, []);
 
   return {
     logs,
@@ -109,7 +139,13 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
     loading,
     error,
     totalItems,
+    page,
+    limit,
     stats,
     reload,
+    fetchStats,
+    goToPage,
+    changeLimit,
+    resetFilters,
   };
 };

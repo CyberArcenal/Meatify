@@ -12,7 +12,7 @@ import MovementPage from "../pages/Movement";
 import NotificationLogPage from "../pages/NotificationLog";
 import MeatPage from "../pages/Meat";
 import PurchasePage from "../pages/purchase";
-import ReorderPage from "../pages/reorder/Reorder";
+import ReorderPage from "../pages/reorder";
 import SupplierPage from "../pages/supplier";
 import StockLevelsPage from "../pages/stock";
 import ReturnRefundReportsPage from "../pages/Analytics/ReturnRefundReports";
@@ -23,7 +23,7 @@ import FinancialReportsPage from "../pages/Analytics/FinancialReports";
 import InventoryReportsPage from "../pages/Analytics/InventoryReports";
 import CustomerInsights from "../pages/Analytics/Customer";
 import Cashier from "../pages/CashierSale";
-
+import BatchesPage from "../pages/batches";
 
 const PageNotFound = () => <div> Page Not Found</div>;
 
@@ -45,12 +45,12 @@ function App() {
     // Open email or external page
     if ((window as any).backendAPI?.openExternal) {
       (window as any).backendAPI.openExternal(
-        "mailto:cyberarcenal1@gmail.com?subject=Commercial%20License%20Inquiry"
+        "mailto:cyberarcenal1@gmail.com?subject=Commercial%20License%20Inquiry",
       );
     } else {
       window.open(
         "mailto:cyberarcenal1@gmail.com?subject=Commercial%20License%20Inquiry",
-        "_blank"
+        "_blank",
       );
     }
   };
@@ -65,7 +65,8 @@ function App() {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="pos/cashier" element={<Cashier />} />
         <Route path="pos/transactions" element={<Transactions />} />
-      <Route path="inventory/products" element={<MeatPage />} />
+        <Route path="inventory/products" element={<MeatPage />} />
+        <Route path="inventory/batches" element={<BatchesPage />} />
 
         {/* Customers */}
         <Route path="customers/list" element={<CustomerPage />} />

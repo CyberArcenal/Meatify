@@ -1,3 +1,4 @@
+// src/renderer/pages/customer/hooks/useCustomerForm.ts
 import { useState } from "react";
 import type { Customer } from "../../../api/core/customer";
 
@@ -7,9 +8,7 @@ export const useCustomerForm = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState<FormMode>("add");
   const [customerId, setCustomerId] = useState<number | undefined>();
-  const [initialData, setInitialData] = useState<
-    Partial<Customer> | undefined
-  >();
+  const [initialData, setInitialData] = useState<Partial<Customer> | undefined>();
 
   const openAdd = () => {
     setMode("add");
@@ -25,7 +24,9 @@ export const useCustomerForm = () => {
       name: customer.name,
       email: customer.email || "",
       phone: customer.phone || "",
-      loyaltyPointsBalance: customer.loyaltyPointsBalance,
+      address: customer.address || "",
+      notes: customer.notes || "",
+      isActive: customer.isActive,
     });
     setIsOpen(true);
   };

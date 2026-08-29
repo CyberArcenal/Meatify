@@ -364,7 +364,7 @@ class InventoryMovementService {
     // ✅ Check if audit logging is enabled before logging
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("InventoryMovement", id, movement, user);
+      await auditLogger.logCreate("InventoryMovement", id, movement, user);
     }
 
     logger.debug(`InventoryMovement #${id} permanently deleted`);
@@ -711,7 +711,7 @@ class InventoryMovementService {
 
         const auditEnabled = await this._isAuditEnabled(qr);
         if (auditEnabled) {
-          await auditLogger.debugDelete("InventoryMovement", movement.id, movement, user);
+          await auditLogger.logCreate("InventoryMovement", movement.id, movement, user);
         }
 
         deletedCount++;

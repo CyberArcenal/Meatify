@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback } from "react";
 import type { AuditLogEntry } from "../../../api/core/audit";
 import auditAPI from "../../../api/core/audit";
-// ✅ Import from shared utils instead of defining here
 import { getActionColor } from "../utils/auditColors";
 
 export interface AuditFilters {
@@ -14,23 +13,32 @@ export interface AuditFilters {
   user?: string;
 }
 
-interface Summary {
+export interface AuditSummary {
   totalToday: number;
   byAction: Record<string, number>;
   mostActiveUser: { user: string; count: number } | null;
   mostAffectedEntity: { entity: string; count: number } | null;
 }
 
-// ✅ Re-export so components can import from hooks file
 export { getActionColor };
 
-export const useAuditLogs = (initialFilters: AuditFilters) => {
+export const useAuditLogs = (initialFilters?: Partial<AuditFilters>) => {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [filters, setFilters] = useState<AuditFilters>(initialFilters);
+  const [filters, setFilters] = useState<AuditFilters>({
+    action: "all",
+    startDate: undefined,
+    endDate: undefined,
+    search: "",
+    entity: undefined,
+    user: undefined,
+    ...initialFilters,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalItems, setTotalItems] = useState(0);
-  const [summary, setSummary] = useState<Summary>({
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [summary, setSummary] = useState<AuditSummary>({
     totalToday: 0,
     byAction: {},
     mostActiveUser: null,
@@ -39,16 +47,16 @@ export const useAuditLogs = (initialFilters: AuditFilters) => {
 
   const fetchLogs = useCallback(
     async (options?: { page?: number; limit?: number }) => {
-      const page = options?.page || 1;
-      const limit = options?.limit || 10;
+      const p = options?.page ?? page;
+      const l = options?.limit ?? limit;
 
       setLoading(true);
       setError(null);
 
       try {
         const params: any = {
-          page,
-          limit,
+          page: p,
+          limit: l,
           action: filters.action === "all" ? undefined : filters.action,
           startDate: filters.startDate,
           endDate: filters.endDate,
@@ -64,6 +72,8 @@ export const useAuditLogs = (initialFilters: AuditFilters) => {
         const total = response.data.total || 0;
         setLogs(items);
         setTotalItems(total);
+        if (options?.page !== undefined) setPage(p);
+        if (options?.limit !== undefined) setLimit(l);
 
         // Compute summary
         const today = new Date().toISOString().split("T")[0];
@@ -122,12 +132,46 @@ export const useAuditLogs = (initialFilters: AuditFilters) => {
         setLoading(false);
       }
     },
-    [filters]
+    [filters, page, limit]
   );
 
+  // Auto-fetch when filters change
   useEffect(() => {
-    fetchLogs({ page: 1, limit: 10 });
-  }, [fetchLogs]);
+    fetchLogs({ page: 1, limit });
+  }, [filters]);
+
+  // Re-fetch when page/limit change
+  useEffect(() => {
+    fetchLogs({ page, limit });
+  }, [page, limit]);
+
+  const reload = useCallback(
+    (options?: { page?: number; limit?: number }) => {
+      fetchLogs(options);
+    },
+    [fetchLogs]
+  );
+
+  const goToPage = useCallback((newPage: number) => {
+    if (newPage >= 1) setPage(newPage);
+  }, []);
+
+  const changeLimit = useCallback((newLimit: number) => {
+    setLimit(newLimit);
+    setPage(1);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setFilters({
+      action: "all",
+      startDate: undefined,
+      endDate: undefined,
+      search: "",
+      entity: undefined,
+      user: undefined,
+    });
+    setPage(1);
+  }, []);
 
   return {
     logs,
@@ -135,8 +179,14 @@ export const useAuditLogs = (initialFilters: AuditFilters) => {
     setFilters,
     loading,
     error,
-    reload: fetchLogs,
-    summary,
     totalItems,
+    page,
+    limit,
+    summary,
+    reload,
+    fetchLogs,
+    goToPage,
+    changeLimit,
+    resetFilters,
   };
 };

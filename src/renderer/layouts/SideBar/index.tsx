@@ -21,7 +21,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose }) => {
 
   const handleNavigate = useCallback(() => {
     // Close sidebar on mobile after navigation
-    if (onClose) onClose();
+    // if (onClose) onClose();
   }, [onClose]);
 
   return (

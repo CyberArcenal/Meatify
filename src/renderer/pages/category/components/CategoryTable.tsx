@@ -1,7 +1,8 @@
 // src/renderer/pages/category/components/CategoryTable.tsx
 import React from "react";
-import { Eye, Edit, Trash2, Package, Check, X } from "lucide-react";
+import { Check, X, Package } from "lucide-react";
 import type { Category } from "../../../api/core/category";
+import CategoryActionsDropdown from "./CategoryActionsDropdown";
 
 const StatusBadge: React.FC<{ active: boolean }> = ({ active }) => {
   return active ? (
@@ -23,6 +24,10 @@ interface CategoryTableProps {
   onView: (category: Category) => void;
   onEdit: (category: Category) => void;
   onDelete: (category: Category) => void;
+  onToggleStatus: (category: Category) => void;
+  selectedIds: number[];
+  onSelectRow: (id: number, checked: boolean) => void;
+  onSelectAll: (checked: boolean) => void;
 }
 
 export const CategoryTable: React.FC<CategoryTableProps> = ({
@@ -31,14 +36,16 @@ export const CategoryTable: React.FC<CategoryTableProps> = ({
   onView,
   onEdit,
   onDelete,
+  onToggleStatus,
+  selectedIds,
+  onSelectRow,
+  onSelectAll,
 }) => {
   if (categories.length === 0) {
     return (
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-8 text-center">
+      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl p-8 text-center">
         <Package className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
-        <p className="text-[var(--text-primary)] font-medium">
-          No categories found
-        </p>
+        <p className="text-[var(--text-primary)] font-medium">No categories found</p>
         <p className="text-sm text-[var(--text-tertiary)] mt-1">
           Try adjusting your filters or add a new category
         </p>
@@ -46,25 +53,39 @@ export const CategoryTable: React.FC<CategoryTableProps> = ({
     );
   }
 
+  const allSelected = categories.length > 0 && categories.every((c) => selectedIds.includes(c.id));
+  const someSelected = selectedIds.length > 0 && !allSelected;
+
   return (
-    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg overflow-hidden flex flex-col">
+    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-[var(--table-header-bg)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[25%]">
+              <th className="w-8 py-3 px-2">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  ref={(input) => {
+                    if (input) input.indeterminate = someSelected;
+                  }}
+                  onChange={(e) => onSelectAll(e.target.checked)}
+                  className="rounded border-[var(--border-color)] cursor-pointer"
+                />
+              </th>
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Name
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[40%]">
+              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Description
               </th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[15%]">
+              <th className="py-3 px-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Meats
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[10%]">
+              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider w-[10%]">
+              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Actions
               </th>
             </tr>
@@ -73,54 +94,37 @@ export const CategoryTable: React.FC<CategoryTableProps> = ({
             {categories.map((category) => (
               <tr
                 key={category.id}
-                onClick={() => onView(category)}
                 className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
+                onClick={() => onView(category)}
               >
-                <td className="px-4 py-3 text-sm font-medium text-[var(--text-primary)]">
+                <td className="py-2.5 px-2" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(category.id)}
+                    onChange={(e) => onSelectRow(category.id, e.target.checked)}
+                    className="rounded border-[var(--border-color)] cursor-pointer"
+                  />
+                </td>
+                <td className="py-2.5 px-3 text-sm font-medium text-[var(--text-primary)]">
                   {category.name}
                 </td>
-                <td className="px-4 py-3 text-sm text-[var(--text-secondary)] truncate">
+                <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)] truncate max-w-[200px]">
                   {category.description || "—"}
                 </td>
-                <td className="px-4 py-3 text-right text-sm font-mono text-[var(--text-primary)]">
+                <td className="py-2.5 px-3 text-right text-sm font-mono text-[var(--text-primary)]">
                   {productCounts.get(category.id) ?? 0}
                 </td>
-                <td className="px-4 py-3 text-center">
+                <td className="py-2.5 px-3 text-center">
                   <StatusBadge active={category.isActive} />
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onView(category);
-                      }}
-                      className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-gold)]"
-                      title="View Details"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onEdit(category);
-                      }}
-                      className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-gold)]"
-                      title="Edit"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDelete(category);
-                      }}
-                      className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-red)]"
-                      title="Deactivate"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                  <CategoryActionsDropdown
+                    category={category}
+                    onView={onView}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    onToggleStatus={onToggleStatus}
+                  />
                 </td>
               </tr>
             ))}

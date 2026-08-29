@@ -14,6 +14,7 @@ import {
   Filler,
 } from "chart.js";
 import { Pie, Line, Bar } from "react-chartjs-2";
+import { Award, TrendingUp, Users } from "lucide-react";
 
 ChartJS.register(
   ArcElement,
@@ -58,13 +59,7 @@ export const LoyaltyAnalytics: React.FC<LoyaltyAnalyticsProps> = ({
   monthlyTrends,
   topCustomers,
 }) => {
-  const pieColors = [
-    "#22c55e",
-    "#3b82f6",
-    "#f97316",
-    "#a855f7",
-    "#ef4444",
-  ];
+  const pieColors = ["#22c55e", "#3b82f6", "#f97316", "#a855f7", "#ef4444"];
 
   const pieData = {
     labels: pointsDistribution.map((d) => d.range),
@@ -197,10 +192,29 @@ export const LoyaltyAnalytics: React.FC<LoyaltyAnalyticsProps> = ({
     },
   };
 
+  const hasData = pointsDistribution.some((d) => d.count > 0) ||
+    monthlyTrends.length > 0 ||
+    topCustomers.length > 0;
+
+  if (!hasData) {
+    return (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-[var(--card-bg)] rounded-xl p-8 border border-[var(--border-color)] text-center lg:col-span-2">
+          <Award className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
+          <p className="text-[var(--text-primary)] font-medium">No analytics data available</p>
+          <p className="text-sm text-[var(--text-tertiary)] mt-1">
+            Start earning and redeeming points to see analytics here.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
       <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+          <Users className="w-5 h-5 text-[var(--accent-gold)]" />
           Points Distribution
         </h3>
         <div className="flex justify-center items-center h-64">
@@ -211,7 +225,8 @@ export const LoyaltyAnalytics: React.FC<LoyaltyAnalyticsProps> = ({
       </div>
 
       <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-[var(--accent-gold)]" />
           Monthly Trends
         </h3>
         <div className="h-64">
@@ -220,7 +235,8 @@ export const LoyaltyAnalytics: React.FC<LoyaltyAnalyticsProps> = ({
       </div>
 
       <div className="lg:col-span-2 bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4 flex items-center gap-2">
+          <Award className="w-5 h-5 text-[var(--accent-gold)]" />
           Top Customers by Net Points
         </h3>
         <div className="h-64">

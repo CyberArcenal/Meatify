@@ -21,8 +21,6 @@ export interface NotificationLog {
 }
 
 export interface PaginatedLogs {
-  pagination: any;
-  data: NotificationLog[];
   items: NotificationLog[];
   total: number;
   page: number;

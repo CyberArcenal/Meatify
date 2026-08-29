@@ -1,5 +1,6 @@
+// src/renderer/pages/Cashier/components/CheckoutDialog.tsx
 import React, { useState, useEffect, useRef } from "react";
-import { X, ShoppingBag, CreditCard, Wallet, Loader2 } from "lucide-react";
+import { X, ShoppingBag, CreditCard, Wallet, Loader2, CheckCircle } from "lucide-react";
 import Decimal from "decimal.js";
 import type { CartItem } from "../types";
 import { formatCurrency } from "../../../utils/formatters";
@@ -32,7 +33,7 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
       setPaidAmount(total.toNumber());
       setIsConfirmEnabled(false);
       setTimeout(() => inputRef.current?.focus(), 50);
-      const timer = setTimeout(() => setIsConfirmEnabled(true), 2000);
+      const timer = setTimeout(() => setIsConfirmEnabled(true), 1500);
       return () => clearTimeout(timer);
     }
   }, [isOpen, total]);
@@ -41,7 +42,6 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
 
   const paymentMethodLabel =
     { cash: "Cash", card: "Card", wallet: "E-Wallet" }[paymentMethod] || paymentMethod;
-
   const totalWeight = cartItems.reduce((sum, item) => sum + (item.weightKg || 0), 0);
   const isCash = paymentMethod === "cash";
   const numericPaid = paidAmount ?? 0;
@@ -61,21 +61,16 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
     }
   };
 
-  const clearPaid = () => {
-    setPaidAmount(null);
-    inputRef.current?.focus();
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-md bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl shadow-2xl windows-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="w-full max-w-md bg-[var(--card-bg)] border border-[var(--border-color)] rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-[var(--border-color)]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-color)] bg-[var(--card-secondary-bg)]">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-[var(--accent-blue-light)]">
-              <ShoppingBag className="w-6 h-6 text-[var(--accent-blue)]" />
+            <div className="p-2 rounded-xl bg-[var(--accent-gold-light)]">
+              <ShoppingBag className="w-5 h-5 text-[var(--accent-gold)]" />
             </div>
-            <h2 className="text-xl font-semibold text-[var(--text-primary)]">Complete Sale</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">Confirm Checkout</h2>
           </div>
           <button
             onClick={onClose}
@@ -87,13 +82,13 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-6">
+        <div className="px-6 py-5 space-y-5">
           {/* Total Amount */}
           <div className="text-center">
-            <div className="text-sm uppercase tracking-wider text-[var(--text-tertiary)] mb-1">
+            <div className="text-xs uppercase tracking-wider text-[var(--text-tertiary)] mb-1">
               Total Amount
             </div>
-            <div className="text-5xl font-bold text-[var(--text-primary)]">
+            <div className="text-4xl font-bold text-[var(--accent-gold)]">
               {formatCurrency(total.toFixed(2))}
             </div>
             <div className="text-sm text-[var(--text-secondary)] mt-1">
@@ -101,30 +96,23 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
             </div>
           </div>
 
-          {/* Payment method icon */}
+          {/* Payment icon */}
           <div className="flex justify-center">
-            {paymentMethod === "cash" && (
-              <div className="p-3 rounded-full bg-[var(--payment-cash)]/20">
-                <Wallet className="w-8 h-8 text-[var(--payment-cash)]" />
-              </div>
-            )}
-            {paymentMethod === "card" && (
-              <div className="p-3 rounded-full bg-[var(--payment-card)]/20">
-                <CreditCard className="w-8 h-8 text-[var(--payment-card)]" />
-              </div>
-            )}
-            {paymentMethod === "wallet" && (
-              <div className="p-3 rounded-full bg-[var(--payment-digital)]/20">
-                <Wallet className="w-8 h-8 text-[var(--payment-digital)]" />
-              </div>
-            )}
+            <div className="p-3 rounded-full bg-[var(--card-secondary-bg)] border border-[var(--border-color)]">
+              {paymentMethod === "cash" && <Wallet className="w-8 h-8 text-[var(--payment-cash)]" />}
+              {paymentMethod === "card" && <CreditCard className="w-8 h-8 text-[var(--payment-card)]" />}
+              {paymentMethod === "wallet" && <Wallet className="w-8 h-8 text-[var(--payment-digital)]" />}
+            </div>
           </div>
 
-          {/* Amount Paid (only for cash) */}
+          {/* Amount Paid (cash only) */}
           {isCash && (
             <div className="space-y-2">
-              <label className="block text-sm text-[var(--text-tertiary)]">Amount Paid</label>
+              <label className="block text-sm font-medium text-[var(--text-secondary)]">
+                Amount Paid
+              </label>
               <div className="relative">
+                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--text-tertiary)] font-semibold">₱</span>
                 <input
                   ref={inputRef}
                   type="number"
@@ -132,20 +120,12 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
                   step="0.01"
                   value={paidAmount === null ? "" : paidAmount}
                   onChange={handlePaidChange}
-                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-4 py-3 text-3xl font-bold text-[var(--text-primary)] pr-12"
-                  placeholder="Enter amount"
+                  className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-xl px-8 py-3 text-2xl font-bold text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
+                  placeholder="0.00"
                 />
-                {paidAmount !== null && (
-                  <button
-                    onClick={clearPaid}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-[var(--text-tertiary)] hover:text-[var(--accent-red)] p-1"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                )}
               </div>
               {!isValid && (
-                <p className="text-xs text-[var(--accent-red)]">
+                <p className="text-xs text-[var(--danger-color)]">
                   Amount must be at least {formatCurrency(total.toFixed(2))}
                 </p>
               )}
@@ -154,14 +134,16 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
 
           {/* Item summary */}
           {cartItems.length > 0 && (
-            <div className="bg-[var(--card-secondary-bg)] rounded-lg p-4 max-h-40 overflow-y-auto notes-scrollbar">
-              <p className="text-xs font-medium text-[var(--text-tertiary)] uppercase mb-2">Items</p>
+            <div className="bg-[var(--card-secondary-bg)] rounded-xl p-3 max-h-40 overflow-y-auto custom-scrollbar border border-[var(--border-color)]">
+              <p className="text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider mb-2">
+                Items ({cartItems.length})
+              </p>
               {cartItems.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm py-1">
-                  <span className="text-[var(--text-secondary)]">
-                    {item.name} x{item.weightKg.toFixed(2)} kg
+                <div key={item.id} className="flex justify-between text-sm py-1 border-b border-[var(--border-color)] last:border-0">
+                  <span className="text-[var(--text-secondary)] truncate max-w-[150px]">
+                    {item.name} <span className="text-[var(--text-tertiary)]">×{item.weightKg.toFixed(2)}kg</span>
                   </span>
-                  <span className="text-[var(--text-primary)] font-mono">
+                  <span className="text-[var(--text-primary)] font-mono font-medium">
                     {formatCurrency(
                       new Decimal(item.pricePerKg || 0).times(item.weightKg || 0).toFixed(2)
                     )}
@@ -173,18 +155,18 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 p-6 border-t border-[var(--border-color)] bg-[var(--card-secondary-bg)]/50">
+        <div className="flex gap-3 px-6 py-4 border-t border-[var(--border-color)] bg-[var(--card-secondary-bg)]">
           <button
             onClick={onClose}
             disabled={isProcessing}
-            className="flex-1 px-4 py-3 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--card-hover-bg)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 px-4 py-3 rounded-xl border border-[var(--border-color)] text-[var(--text-secondary)] hover:bg-[var(--card-hover-bg)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 font-medium"
           >
             Cancel
           </button>
           <button
             onClick={handleConfirm}
             disabled={isProcessing || !isValid || !isConfirmEnabled}
-            className="flex-1 px-4 py-3 rounded-lg bg-gradient-to-r from-[var(--accent-green)] to-[var(--accent-green-hover)] text-white font-semibold hover:from-[var(--accent-green-hover)] hover:to-[var(--accent-green-dark)] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="flex-1 px-4 py-3 rounded-xl bg-gradient-to-r from-[var(--accent-gold)] to-[var(--accent-gold-hover)] text-[var(--btn-primary-text)] font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {isProcessing ? (
               <>
@@ -192,9 +174,12 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
                 Processing...
               </>
             ) : !isConfirmEnabled ? (
-              "Please wait 2s..."
+              "Please wait..."
             ) : (
-              "Confirm Payment"
+              <>
+                <CheckCircle className="w-5 h-5" />
+                Confirm Payment
+              </>
             )}
           </button>
         </div>
@@ -203,4 +188,4 @@ const CheckoutDialog: React.FC<CheckoutDialogProps> = ({
   );
 };
 
-export default CheckoutDialog;
+export default React.memo(CheckoutDialog);

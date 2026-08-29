@@ -1,6 +1,6 @@
 // src/renderer/pages/customer/hooks/useCustomers.ts
 import { useState, useEffect, useCallback } from "react";
-import customerAPI, { type Customer, type PaginatedCustomers } from "../../../api/core/customer";
+import customerAPI, { type Customer, type CustomerStatistics } from "../../../api/core/customer";
 
 export interface CustomerFilters {
   search: string;
@@ -11,7 +11,7 @@ export interface CustomerFilters {
   maxPoints?: number;
 }
 
-interface Metrics {
+export interface CustomerMetrics {
   total: number;
   vipCount: number;
   eliteCount: number;
@@ -19,20 +19,30 @@ interface Metrics {
   newThisMonth: number;
 }
 
-// Map sortBy to actual API field names
 const SORT_FIELD_MAP: Record<CustomerFilters["sortBy"], string> = {
   name: "name",
   points: "loyaltyPointsBalance",
   createdAt: "createdAt",
 };
 
-export const useCustomers = (initialFilters: CustomerFilters) => {
+export const useCustomers = (initialFilters?: Partial<CustomerFilters>) => {
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [filters, setFilters] = useState<CustomerFilters>(initialFilters);
+  const [filters, setFilters] = useState<CustomerFilters>({
+    search: "",
+    status: "all",
+    sortBy: "name",
+    sortOrder: "ASC",
+    minPoints: undefined,
+    maxPoints: undefined,
+    ...initialFilters,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalItems, setTotalItems] = useState(0);
-  const [metrics, setMetrics] = useState<Metrics>({
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [stats, setStats] = useState<CustomerStatistics | null>(null);
+  const [metrics, setMetrics] = useState<CustomerMetrics>({
     total: 0,
     vipCount: 0,
     eliteCount: 0,
@@ -42,16 +52,16 @@ export const useCustomers = (initialFilters: CustomerFilters) => {
 
   const fetchCustomers = useCallback(
     async (options?: { page?: number; limit?: number }) => {
-      const page = options?.page || 1;
-      const limit = options?.limit || 10;
+      const p = options?.page ?? page;
+      const l = options?.limit ?? limit;
 
       setLoading(true);
       setError(null);
+
       try {
-        // Build search params – use search() which supports status & pagination
         const params: any = {
-          page,
-          limit,
+          page: p,
+          limit: l,
           searchTerm: filters.search || undefined,
           minPoints: filters.minPoints,
           maxPoints: filters.maxPoints,
@@ -59,34 +69,31 @@ export const useCustomers = (initialFilters: CustomerFilters) => {
           sortOrder: filters.sortOrder,
         };
 
-        // Only add status if not "all"
         if (filters.status !== "all") {
           params.status = filters.status;
         }
 
-        // Use search() instead of getAll() for better filtering
         const response = await customerAPI.search(params);
         if (response.status) {
-          const paginated: PaginatedCustomers = response.data;
-          const items = paginated.items || [];
-          const total = paginated.total || 0;
+          const data = response.data;
+          setCustomers(data.items || []);
+          setTotalItems(data.total || 0);
+          if (options?.page !== undefined) setPage(p);
+          if (options?.limit !== undefined) setLimit(l);
 
-          setCustomers(items);
-          setTotalItems(total);
-
-          // Compute metrics from the returned items (already filtered by status)
+          // Compute metrics
           const now = new Date();
           const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-          const metrics: Metrics = {
-            total: total,
+          const items = data.items || [];
+          setMetrics({
+            total: data.total || 0,
             vipCount: items.filter((c) => c.status === "vip").length,
             eliteCount: items.filter((c) => c.status === "elite").length,
             regularCount: items.filter((c) => c.status === "regular").length,
             newThisMonth: items.filter(
               (c) => new Date(c.createdAt) >= firstDayOfMonth
             ).length,
-          };
-          setMetrics(metrics);
+          });
         } else {
           throw new Error(response.message);
         }
@@ -97,20 +104,63 @@ export const useCustomers = (initialFilters: CustomerFilters) => {
         setLoading(false);
       }
     },
-    [filters]
+    [filters, page, limit]
   );
 
-  // Initial load with default pagination
+  const fetchStats = useCallback(async () => {
+    try {
+      const response = await customerAPI.getStatistics();
+      if (response.status) {
+        setStats(response.data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch customer stats:", err);
+    }
+  }, []);
+
+  // Auto-fetch when filters change
   useEffect(() => {
-    fetchCustomers({ page: 1, limit: 10 });
-  }, [fetchCustomers]);
+    fetchCustomers({ page: 1, limit });
+  }, [filters]);
+
+  // Re-fetch when page/limit change
+  useEffect(() => {
+    fetchCustomers({ page, limit });
+  }, [page, limit]);
+
+  // Initial stats fetch
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
       fetchCustomers(options);
+      fetchStats();
     },
-    [fetchCustomers]
+    [fetchCustomers, fetchStats]
   );
+
+  const goToPage = useCallback((newPage: number) => {
+    if (newPage >= 1) setPage(newPage);
+  }, []);
+
+  const changeLimit = useCallback((newLimit: number) => {
+    setLimit(newLimit);
+    setPage(1);
+  }, []);
+
+  const resetFilters = useCallback(() => {
+    setFilters({
+      search: "",
+      status: "all",
+      sortBy: "name",
+      sortOrder: "ASC",
+      minPoints: undefined,
+      maxPoints: undefined,
+    });
+    setPage(1);
+  }, []);
 
   return {
     customers,
@@ -119,7 +169,14 @@ export const useCustomers = (initialFilters: CustomerFilters) => {
     loading,
     error,
     totalItems,
+    page,
+    limit,
+    stats,
     metrics,
     reload,
+    fetchStats,
+    goToPage,
+    changeLimit,
+    resetFilters,
   };
 };

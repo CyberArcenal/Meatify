@@ -368,7 +368,7 @@ class BatchService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugDelete("Batch", id, oldData, user);
+        await auditLogger.logCreate("Batch", id, oldData, user);
       }
 
       logger.debug(`Batch #${id} soft deleted (depleted)`);
@@ -447,7 +447,7 @@ class BatchService {
 
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("Batch", id, batch, user);
+      await auditLogger.logCreate("Batch", id, batch, user);
     }
 
     logger.debug(`Batch #${id} permanently deleted`);

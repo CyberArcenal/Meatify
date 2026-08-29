@@ -1,6 +1,6 @@
 // src/renderer/pages/Cashier/components/ProductCard.tsx
 import React, { useMemo, useCallback, useState } from "react";
-import { Package, Loader2 } from "lucide-react";
+import { Package, Loader2, Beef, Tag } from "lucide-react";
 import Decimal from "decimal.js";
 import type { Product } from "../types";
 import { formatCurrency } from "../../../utils/formatters";
@@ -22,66 +22,94 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
 
   const isDisabled = !allowNegativeStock && product.stockQty === 0;
 
-  const stockStatusClass = useMemo(() => {
-    if (product.stockQty === 0) return "text-[var(--stock-outstock)]";
-    if (product.stockQty <= stockAlertThreshold) return "text-[var(--stock-lowstock)]";
-    return "text-[var(--stock-instock)]";
+  const stockStatus = useMemo(() => {
+    if (product.stockQty === 0) return { label: "Out of Stock", color: "var(--danger-color)", bg: "var(--status-cancelled-bg)" };
+    if (product.stockQty <= stockAlertThreshold) return { label: "Low Stock", color: "var(--warning-color)", bg: "var(--status-pending-bg)" };
+    return { label: "In Stock", color: "var(--success-color)", bg: "var(--status-completed-bg)" };
   }, [product.stockQty, stockAlertThreshold]);
 
-const handleAdd = useCallback(async () => {
-  if (isAdding || isDisabled) return;
+  const handleAdd = useCallback(async () => {
+    if (isAdding || isDisabled) return;
 
-  setIsAdding(true);
-  try {
-    const cached = getBatchForMeat(product.id);
-    console.log("[ProductCard] Cached batch for meat", product.id, cached); // ✅
+    setIsAdding(true);
+    try {
+      const cached = getBatchForMeat(product.id);
+      if (cached) {
+        onAdd(product, cached.batchId, cached.batchCode);
+        setIsAdding(false);
+        return;
+      }
 
-    if (cached) {
-      onAdd(product, cached.batchId, cached.batchCode);
-      setIsAdding(false);
-      return;
-    }
-
-    const batch = await getBestBatch(product.id);
-    console.log("[ProductCard] Best batch for meat", product.id, batch); // ✅
-    if (batch) {
-      onAdd(product, batch.id, batch.batchCode);
-    } else {
+      const batch = await getBestBatch(product.id);
+      if (batch) {
+        onAdd(product, batch.id, batch.batchCode);
+      } else {
+        onAdd(product, null, null);
+      }
+    } catch (error) {
+      console.error("Failed to get batch for product:", error);
       onAdd(product, null, null);
-      console.warn(`No active batch for ${product.name}`);
+    } finally {
+      setIsAdding(false);
     }
-  } catch (error) {
-    console.error("Failed to get batch for product:", error);
-    onAdd(product, null, null);
-  } finally {
-    setIsAdding(false);
-  }
-}, [product, getBestBatch, getBatchForMeat, onAdd, isAdding, isDisabled]);
+  }, [product, getBestBatch, getBatchForMeat, onAdd, isAdding, isDisabled]);
 
   return (
     <button
       onClick={handleAdd}
       disabled={isDisabled || isAdding}
-      className={`group relative rounded-xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 ${
-        isDisabled || isAdding ? "opacity-50 cursor-not-allowed" : ""
-      }`}
+      className={`
+        group relative rounded-xl overflow-hidden transition-all duration-200
+        bg-[var(--card-bg)] border border-[var(--border-color)]
+        hover:border-[var(--accent-gold)] hover:shadow-lg hover:-translate-y-1
+        ${isDisabled || isAdding ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}
+      `}
     >
-      <div className="absolute inset-0 bg-gradient-to-br from-[var(--product-card-bg)] to-[var(--card-bg)] border border-[var(--product-card-border)]" />
-      <div className="relative z-10 p-4 flex flex-col items-center text-center min-h-[200px]">
-        <Package className="w-10 h-10 text-[var(--accent-blue)] mb-2" />
-        <h3 className="font-medium text-sm text-[var(--text-primary)] line-clamp-2 min-h-[2.5rem]">
+      <div className="p-4 flex flex-col items-center text-center min-h-[200px] relative">
+        {/* Stock status badge */}
+        <div className="absolute top-2 right-2">
+          <span
+            className="text-[9px] font-medium px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: stockStatus.bg, color: stockStatus.color }}
+          >
+            {stockStatus.label}
+          </span>
+        </div>
+
+        {/* Icon */}
+        <div className="w-14 h-14 rounded-full bg-[var(--card-secondary-bg)] flex items-center justify-center mb-3 group-hover:bg-[var(--accent-gold-light)] transition-colors border border-[var(--border-color)] group-hover:border-[var(--accent-gold)]">
+          <Beef className="w-7 h-7 text-[var(--accent-gold)]" />
+        </div>
+
+        {/* Name */}
+        <h3 className="font-semibold text-sm text-[var(--text-primary)] line-clamp-2 min-h-[2.5rem] group-hover:text-[var(--accent-gold)] transition-colors">
           {product.name}
         </h3>
-        <p className="text-xs text-[var(--text-tertiary)] mt-1">{product.sku}</p>
-        <p className="text-lg font-bold text-[var(--accent-green)] mt-2">
+
+        {/* SKU */}
+        <p className="text-xs text-[var(--text-tertiary)] mt-0.5 font-mono">{product.sku}</p>
+
+        {/* Price */}
+        <p className="text-xl font-bold text-[var(--accent-gold)] mt-2">
           {formatCurrency(new Decimal(product.pricePerKg).toFixed(2))}
         </p>
-        <p className={`text-xs mt-1 font-medium ${stockStatusClass}`}>
-          Stock: {product.stockQty} kg
+        <p className="text-[10px] text-[var(--text-tertiary)] -mt-0.5">per kg</p>
+
+        {/* Stock */}
+        <p className="text-xs mt-1.5 font-medium" style={{ color: stockStatus.color }}>
+          {product.stockQty} kg available
         </p>
+
+        {/* Hover overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--accent-gold)]/0 to-[var(--accent-gold)]/0 group-hover:from-[var(--accent-gold)]/5 group-hover:to-transparent transition-all duration-300 pointer-events-none rounded-xl" />
+
+        {/* Loading overlay */}
         {isAdding && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl">
-            <Loader2 className="w-6 h-6 animate-spin text-white" />
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-2">
+              <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
+              <span className="text-xs text-white font-medium">Adding...</span>
+            </div>
           </div>
         )}
       </div>

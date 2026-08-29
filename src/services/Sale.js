@@ -785,7 +785,7 @@ class SaleService {
 
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.debugDelete("Sale", id, sale, user);
+      await auditLogger.logCreate("Sale", id, sale, user);
     }
 
     logger.debug(`Sale #${id} permanently deleted`);
