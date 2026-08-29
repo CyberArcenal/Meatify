@@ -36,32 +36,37 @@ const BatchSelect: React.FC<BatchSelectProps> = ({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    const loadBatches = async () => {
-      setLoading(true);
-      try {
-        const params: any = {
-          limit: 1000,
-          sortBy: "expiryDate",
-          sortOrder: "ASC",
-        };
-        if (meatId) params.meatId = meatId;
-        if (statusFilter !== "all") params.status = statusFilter;
+useEffect(() => {
+  const loadBatches = async () => {
+    setLoading(true);
+    try {
+      const params: any = {
+        limit: 1000,
+        sortBy: "expiryDate",
+        sortOrder: "ASC",
+      };
+      if (meatId) params.meatId = meatId;
+      if (statusFilter !== "all") params.status = statusFilter;
 
-        const response = await batchAPI.getAll(params);
-        if (response.status && response.data) {
-          const list = response.data.items || [];
-          setBatches(list);
-          setFilteredBatches(list);
-        }
-      } catch (error) {
-        console.error("Failed to load batches:", error);
-      } finally {
-        setLoading(false);
+      console.log("[BatchSelect] Fetching batches with params:", params); // ✅
+
+      const response = await batchAPI.getAll(params);
+      console.log("[BatchSelect] Response:", response); // ✅
+
+      if (response.status && response.data) {
+        const list = response.data.items || [];
+        console.log("[BatchSelect] Batches received:", list.map(b => ({ id: b.id, meatId: b.meatId, code: b.batchCode }))); // ✅
+        setBatches(list);
+        setFilteredBatches(list);
       }
-    };
-    loadBatches();
-  }, [meatId, statusFilter]);
+    } catch (error) {
+      console.error("Failed to load batches:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+  loadBatches();
+}, [meatId, statusFilter]);
 
   useEffect(() => {
     if (!searchTerm.trim()) {

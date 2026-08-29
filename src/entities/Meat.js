@@ -11,19 +11,12 @@ const Meat = new EntitySchema({
     image: { type: "varchar", nullable: true },
     barcode: { type: "varchar", unique: true, nullable: true },
     description: { type: String, nullable: true },
-    
-    // ✅ BAGO: Presyo per Kilo (decimal)
     pricePerKg: { type: "decimal", precision: 10, scale: 2, default: 0.00 },
-    
-    // ❌ TANGGALIN: stockQty (integer) - lipat sa Batch
-    // ❌ TANGGALIN: reorderLevel, reorderQty (kung gusto mong i-retain, pwede pa, pero i-base mo na lang sa kabuuang remaining ng lahat ng batches)
-    
     isActive: { type: Boolean, default: true },
     createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },
     updatedAt: { type: Date, nullable: true },
   },
   relations: {
-    // Palitan ang target ng "SaleItem" at "InventoryMovement" kung gusto mong i-link sa Meat
     saleItems: {
       target: "SaleItem",
       type: "one-to-many",

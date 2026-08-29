@@ -388,13 +388,27 @@ class SaleService {
         // ✅ Validate batch
         const batch = await batchRepo.findOne({
           where: { id: itemData.batchId },
+          relations: ["meat"],
         });
         if (!batch) {
           throw new Error(`Batch with ID ${itemData.batchId} not found`);
         }
-        if (batch.meatId !== itemData.meatId) {
+
+        // ✅ Gamitin ang batch.meat.id (hindi batch.meatId)
+        const batchMeatId = batch.meat?.id;
+        const batchMeatName = batch.meat?.name || "Unknown";
+
+        logger.debug(`[DEBUG] Batch #${itemData.batchId}:`, {
+          batchCode: batch.batchCode,
+          batchMeatId: batchMeatId,
+          itemMeatId: itemData.meatId,
+          batchMeatName: batchMeatName,
+          itemMeatName: meat.name,
+        });
+
+        if (batchMeatId !== itemData.meatId) {
           throw new Error(
-            `Batch #${itemData.batchId} does not belong to meat #${itemData.meatId}`,
+            `Batch #${itemData.batchId} (${batch.batchCode}) belongs to meat #${batchMeatId} (${batchMeatName}), but item expects meat #${itemData.meatId} (${meat.name})`,
           );
         }
         if (batch.status !== "active") {

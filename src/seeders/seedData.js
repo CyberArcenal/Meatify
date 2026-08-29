@@ -68,7 +68,7 @@ const suppliersData = [
   },
 ];
 
-// Meats
+// Meats (nakaayos ayon sa ID na inaasahan: 1-13)
 const meatsData = [
   // Beef
   {
@@ -193,12 +193,12 @@ const meatsData = [
   },
 ];
 
-// Batches
+// ✅ Batches - gumamit ng meatId na tumutugma sa mga ID sa itaas
 const batchesData = [
-  // Beef Tenderloin (2 batches)
+  // Beef Tenderloin (meatId: 1)
   {
     batchCode: "BATCH-BEEF-001",
-    meatName: "Beef Tenderloin",
+    meatId: 1,
     initialQuantity: 50.0,
     remainingQuantity: 50.0,
     unitCost: 650.00,
@@ -209,7 +209,7 @@ const batchesData = [
   },
   {
     batchCode: "BATCH-BEEF-002",
-    meatName: "Beef Tenderloin",
+    meatId: 1,
     initialQuantity: 30.0,
     remainingQuantity: 30.0,
     unitCost: 640.00,
@@ -218,10 +218,10 @@ const batchesData = [
     note: "New batch - discounted price",
     supplierName: "Manila Meat Supply",
   },
-  // Beef Ribeye
+  // Beef Ribeye (meatId: 2)
   {
     batchCode: "BATCH-BEEF-003",
-    meatName: "Beef Ribeye",
+    meatId: 2,
     initialQuantity: 25.0,
     remainingQuantity: 25.0,
     unitCost: 750.00,
@@ -230,10 +230,10 @@ const batchesData = [
     note: "Premium grade",
     supplierName: "Manila Meat Supply",
   },
-  // Beef Ground (3 batches)
+  // Beef Ground (meatId: 3) - 3 batches
   {
     batchCode: "BATCH-BEEF-004",
-    meatName: "Beef Ground", 
+    meatId: 3,
     initialQuantity: 40.0,
     remainingQuantity: 40.0,
     unitCost: 350.00,
@@ -244,7 +244,7 @@ const batchesData = [
   },
   {
     batchCode: "BATCH-EXPIRING-001",
-    meatName: "Beef Ground",
+    meatId: 3,
     initialQuantity: 5.0,
     remainingQuantity: 5.0,
     unitCost: 350.00,
@@ -255,7 +255,7 @@ const batchesData = [
   },
   {
     batchCode: "BATCH-EXPIRED-001",
-    meatName: "Beef Ground",
+    meatId: 3,
     initialQuantity: 3.0,
     remainingQuantity: 3.0,
     unitCost: 350.00,
@@ -264,10 +264,10 @@ const batchesData = [
     note: "EXPIRED",
     supplierName: "Premium Meats PH",
   },
-  // Beef Short Ribs
+  // Beef Short Ribs (meatId: 4)
   {
     batchCode: "BATCH-BEEF-005",
-    meatName: "Beef Short Ribs",
+    meatId: 4,
     initialQuantity: 20.0,
     remainingQuantity: 20.0,
     unitCost: 600.00,
@@ -276,10 +276,10 @@ const batchesData = [
     note: "For braising",
     supplierName: "Premium Meats PH",
   },
-  // Pork Belly (2 batches)
+  // Pork Belly (meatId: 5) - 2 batches
   {
     batchCode: "BATCH-PORK-001",
-    meatName: "Pork Belly",
+    meatId: 5,
     initialQuantity: 35.0,
     remainingQuantity: 35.0,
     unitCost: 300.00,
@@ -290,7 +290,7 @@ const batchesData = [
   },
   {
     batchCode: "BATCH-PORK-002",
-    meatName: "Pork Belly",
+    meatId: 5,
     initialQuantity: 25.0,
     remainingQuantity: 25.0,
     unitCost: 290.00,
@@ -299,10 +299,10 @@ const batchesData = [
     note: "Premium quality",
     supplierName: "Fresh Farms Inc.",
   },
-  // Pork Tenderloin
+  // Pork Tenderloin (meatId: 6)
   {
     batchCode: "BATCH-PORK-003",
-    meatName: "Pork Tenderloin",
+    meatId: 6,
     initialQuantity: 20.0,
     remainingQuantity: 20.0,
     unitCost: 340.00,
@@ -311,10 +311,10 @@ const batchesData = [
     note: "Lean pork tenderloin",
     supplierName: "Fresh Farms Inc.",
   },
-  // Pork Chop
+  // Pork Chop (meatId: 7)
   {
     batchCode: "BATCH-PORK-004",
-    meatName: "Pork Chop",
+    meatId: 7,
     initialQuantity: 30.0,
     remainingQuantity: 30.0,
     unitCost: 280.00,
@@ -323,10 +323,10 @@ const batchesData = [
     note: "Thick cut chops",
     supplierName: "Fresh Farms Inc.",
   },
-  // Pork Sausages
+  // Pork Sausages (meatId: 8)
   {
     batchCode: "BATCH-PORK-005",
-    meatName: "Pork Sausages",
+    meatId: 8,
     initialQuantity: 15.0,
     remainingQuantity: 15.0,
     unitCost: 330.00,
@@ -335,10 +335,10 @@ const batchesData = [
     note: "With herbs",
     supplierName: "Fresh Farms Inc.",
   },
-  // Whole Chicken
+  // Whole Chicken (meatId: 9)
   {
     batchCode: "BATCH-CHICK-001",
-    meatName: "Whole Chicken",
+    meatId: 9,
     initialQuantity: 60.0,
     remainingQuantity: 60.0,
     unitCost: 220.00,
@@ -347,10 +347,10 @@ const batchesData = [
     note: "Free-range",
     supplierName: "Local Poultry Supply",
   },
-  // Chicken Breast
+  // Chicken Breast (meatId: 10)
   {
     batchCode: "BATCH-CHICK-002",
-    meatName: "Chicken Breast",
+    meatId: 10,
     initialQuantity: 40.0,
     remainingQuantity: 40.0,
     unitCost: 260.00,
@@ -359,10 +359,10 @@ const batchesData = [
     note: "Boneless skinless",
     supplierName: "Local Poultry Supply",
   },
-  // Chicken Thighs
+  // Chicken Thighs (meatId: 11) ⬅️ ITO ANG BATCH #15
   {
     batchCode: "BATCH-CHICK-003",
-    meatName: "Chicken Thighs",
+    meatId: 11,
     initialQuantity: 30.0,
     remainingQuantity: 30.0,
     unitCost: 240.00,
@@ -371,10 +371,10 @@ const batchesData = [
     note: "Boneless",
     supplierName: "Local Poultry Supply",
   },
-  // Lamb Chops
+  // Lamb Chops (meatId: 12) ⬅️ ITO ANG BATCH #16
   {
     batchCode: "BATCH-LAMB-001",
-    meatName: "Lamb Chops",
+    meatId: 12,
     initialQuantity: 10.0,
     remainingQuantity: 10.0,
     unitCost: 950.00,
@@ -383,10 +383,10 @@ const batchesData = [
     note: "Premium lamb",
     supplierName: "Premium Meats PH",
   },
-  // Lamb Leg
+  // Lamb Leg (meatId: 13)
   {
     batchCode: "BATCH-LAMB-002",
-    meatName: "Lamb Leg",
+    meatId: 13,
     initialQuantity: 8.0,
     remainingQuantity: 8.0,
     unitCost: 900.00,
@@ -556,7 +556,8 @@ const systemSettingsData = [
 
 async function seedCategories() {
   const repo = AppDataSource.getRepository(Category);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   for (const data of categoriesData) {
     const existing = await repo.findOne({ where: { name: data.name } });
     if (existing) { skipped++; continue; }
@@ -570,7 +571,8 @@ async function seedCategories() {
 
 async function seedSuppliers() {
   const repo = AppDataSource.getRepository(Supplier);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   for (const data of suppliersData) {
     const existing = await repo.findOne({ where: { name: data.name } });
     if (existing) { skipped++; continue; }
@@ -586,7 +588,8 @@ async function seedMeats() {
   const categoryRepo = AppDataSource.getRepository(Category);
   const supplierRepo = AppDataSource.getRepository(Supplier);
   const repo = AppDataSource.getRepository(Meat);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   for (const data of meatsData) {
     const existing = await repo.findOne({ where: { sku: data.sku } });
     if (existing) { skipped++; continue; }
@@ -607,25 +610,43 @@ async function seedBatches() {
   const meatRepo = AppDataSource.getRepository(Meat);
   const supplierRepo = AppDataSource.getRepository(Supplier);
   const repo = AppDataSource.getRepository(Batch);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
+
+  // I‑load lahat ng meats upang i‑verify ang mga ID
+  const allMeats = await meatRepo.find();
+  const meatMap = new Map();
+  allMeats.forEach(m => meatMap.set(m.id, m));
 
   for (const data of batchesData) {
     const existing = await repo.findOne({ where: { batchCode: data.batchCode } });
     if (existing) { skipped++; continue; }
-    const meat = await meatRepo.findOne({ where: { name: data.meatName } });
-    if (!meat) { logger.warn(`⚠️ Meat "${data.meatName}" not found for batch "${data.batchCode}"`); skipped++; continue; }
+
+    // ✅ I‑verify na ang meatId ay umiiral
+    if (!data.meatId) {
+      logger.warn(`⚠️ Batch "${data.batchCode}" walang meatId`);
+      skipped++;
+      continue;
+    }
+    const meat = meatMap.get(data.meatId);
+    if (!meat) {
+      logger.warn(`⚠️ Meat with ID ${data.meatId} not found for batch "${data.batchCode}"`);
+      skipped++;
+      continue;
+    }
+
     let supplier = null;
     if (data.supplierName) {
       supplier = await supplierRepo.findOne({ where: { name: data.supplierName } });
     }
-    const { meatName, supplierName, ...batchData } = data;
+
+    const { meatId, meatName, supplierName, ...batchData } = data;
     const entity = repo.create({ ...batchData, meat, supplier: supplier || null });
     await repo.save(entity);
     created++;
   }
 
-  // Ensure every meat has at least one batch
-  const allMeats = await meatRepo.find();
+  // Siguraduhin na ang bawat meat ay may kahit isang batch
   const allBatches = await repo.find({ relations: ['meat'] });
   const meatIdsWithBatches = new Set(allBatches.map(b => b.meat?.id).filter(id => id));
   const meatsWithoutBatch = allMeats.filter(m => !meatIdsWithBatches.has(m.id));
@@ -654,7 +675,8 @@ async function seedBatches() {
 
 async function seedCustomers() {
   const repo = AppDataSource.getRepository(Customer);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   for (const data of customersData) {
     const existing = await repo.findOne({ where: { email: data.email } });
     if (existing) { skipped++; continue; }
@@ -669,7 +691,8 @@ async function seedCustomers() {
 async function seedSales() {
   const customerRepo = AppDataSource.getRepository(Customer);
   const saleRepo = AppDataSource.getRepository(Sale);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   const customers = await customerRepo.find();
   for (let i = 0; i < 30; i++) {
     const customer = customers.length ? customers[i % customers.length] : null;
@@ -703,7 +726,8 @@ async function seedSaleItems() {
   const meatRepo = AppDataSource.getRepository(Meat);
   const batchRepo = AppDataSource.getRepository(Batch);
   const repo = AppDataSource.getRepository(SaleItem);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
 
   const sales = await saleRepo.find();
   const meats = await meatRepo.find();
@@ -743,7 +767,8 @@ async function seedSaleItems() {
 async function seedPurchases() {
   const supplierRepo = AppDataSource.getRepository(Supplier);
   const repo = AppDataSource.getRepository(Purchase);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   const suppliers = await supplierRepo.find();
   for (let i = 0; i < 20; i++) {
     const supplier = suppliers.length ? suppliers[i % suppliers.length] : null;
@@ -769,7 +794,8 @@ async function seedPurchaseItems() {
   const purchaseRepo = AppDataSource.getRepository(Purchase);
   const meatRepo = AppDataSource.getRepository(Meat);
   const repo = AppDataSource.getRepository(PurchaseItem);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
 
   const purchases = await purchaseRepo.find();
   const meats = await meatRepo.find();
@@ -804,7 +830,8 @@ async function seedReturnRefunds() {
   const saleRepo = AppDataSource.getRepository(Sale);
   const customerRepo = AppDataSource.getRepository(Customer);
   const repo = AppDataSource.getRepository(ReturnRefund);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   const sales = await saleRepo.find();
   const customers = await customerRepo.find();
   for (let i = 0; i < 8; i++) {
@@ -834,7 +861,8 @@ async function seedReturnRefundItems() {
   const meatRepo = AppDataSource.getRepository(Meat);
   const batchRepo = AppDataSource.getRepository(Batch);
   const repo = AppDataSource.getRepository(ReturnRefundItem);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
 
   const returns = await returnRepo.find();
   const meats = await meatRepo.find();
@@ -872,7 +900,8 @@ async function seedInventoryMovements() {
   const batchRepo = AppDataSource.getRepository(Batch);
   const saleRepo = AppDataSource.getRepository(Sale);
   const repo = AppDataSource.getRepository(InventoryMovement);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
 
   const meats = await meatRepo.find();
   const batches = await batchRepo.find({ relations: ['meat'] });
@@ -910,7 +939,8 @@ async function seedLoyaltyTransactions() {
   const customerRepo = AppDataSource.getRepository(Customer);
   const saleRepo = AppDataSource.getRepository(Sale);
   const repo = AppDataSource.getRepository(LoyaltyTransaction);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
 
   const customers = await customerRepo.find();
   const sales = await saleRepo.find();
@@ -942,7 +972,8 @@ async function seedLoyaltyTransactions() {
 
 async function seedNotifications() {
   const repo = AppDataSource.getRepository(Notification);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   for (let i = 0; i < 50; i++) {
     const notif = repo.create({
       userId: Math.floor(Math.random() * 10) + 1,
@@ -964,7 +995,8 @@ async function seedNotifications() {
 
 async function seedNotificationLogs() {
   const repo = AppDataSource.getRepository(NotificationLog);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   for (let i = 0; i < 40; i++) {
     const statuses = ['queued', 'sent', 'failed', 'resend'];
     const status = statuses[Math.floor(Math.random() * statuses.length)];
@@ -990,15 +1022,14 @@ async function seedNotificationLogs() {
 }
 
 async function seedAuditLogs() {
-  // ⚠️ Skip audit logs because the entity schema may be incomplete.
-  // Uncomment below if you have a complete AuditLog entity.
   logger.info(`📝 Audit Logs: skipped (entity incomplete)`);
   return { created: 0, skipped: 0 };
 }
 
 async function seedSystemSettings() {
   const repo = AppDataSource.getRepository(SystemSetting);
-  let created = 0, skipped = 0;
+  let created = 0,
+    skipped = 0;
   for (const data of systemSettingsData) {
     const existing = await repo.findOne({ where: { key: data.key, setting_type: data.setting_type } });
     if (existing) { skipped++; continue; }
@@ -1063,9 +1094,11 @@ async function runSeed() {
       logger.info("📊 Database connected");
     }
 
-    // Clear existing data (in proper order)
+    // ✅ I‑clear ang lahat ng data at i‑reset ang autoincrement
     console.log("🧹 Clearing all Meatify data...");
     await AppDataSource.query("PRAGMA foreign_keys = OFF;");
+
+    // I‑clear ang mga table (nakaayos ayon sa dependency)
     const tables = [
       'sale_items', 'sales', 'return_refund_items', 'return_refunds',
       'purchase_items', 'purchases', 'inventory_movements', 'loyalty_transactions',
@@ -1076,11 +1109,12 @@ async function runSeed() {
       const exists = await AppDataSource.query(`SELECT name FROM sqlite_master WHERE type='table' AND name='${table}';`);
       if (exists.length) {
         await AppDataSource.query(`DELETE FROM ${table};`);
+        // ✅ I‑reset ang autoincrement sequence
         await AppDataSource.query(`DELETE FROM sqlite_sequence WHERE name='${table}';`);
       }
     }
     await AppDataSource.query("PRAGMA foreign_keys = ON;");
-    console.log("✅ All tables cleared");
+    console.log("✅ All tables cleared and sequences reset");
 
     // Seed in order
     const results = {
@@ -1108,6 +1142,15 @@ async function runSeed() {
 
     logger.info(`✅ Seed completed! ${totalCreated} created, ${totalSkipped} skipped`);
     console.log('📊 Summary:', results);
+
+    // ✅ I‑verify ang mga batch association
+    const batchRepo = AppDataSource.getRepository(Batch);
+    const batches = await batchRepo.find({ relations: ['meat'] });
+    console.log("\n🔍 VERIFYING BATCH-MEAT ASSOCIATIONS:");
+    for (const batch of batches) {
+      console.log(`  Batch #${batch.id} (${batch.batchCode}) -> Meat ID: ${batch.meat?.id} (${batch.meat?.name || '❌ MISSING'})`);
+    }
+    console.log("=".repeat(50));
 
     // ✅ Print database summary
     await printDatabaseSummary();

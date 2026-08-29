@@ -3,26 +3,24 @@ const batchService = require("../../../../../services/Batch");
 
 module.exports = async (params) => {
   const { page, limit, sortBy, sortOrder, ...filters } = params;
+  console.log("[Batch getAll] Received params:", params); // ✅
 
   try {
-    const options = {
-      page,
-      limit,
-      sortBy,
-      sortOrder,
-      ...filters,
-    };
+    const options = { page, limit, sortBy, sortOrder, ...filters };
+    console.log("[Batch getAll] Options:", options); // ✅
 
     const result = await batchService.findAll(options);
+    console.log("[Batch getAll] Result data count:", result.data.length); // ✅
+
     return {
       status: true,
       message: "Batches retrieved successfully",
-       data: {
-        items: result.data,                 // ✅ array ng meats
-        total: result.pagination.total,     // ✅ total items
-        page: result.pagination.page,       // ✅ current page
-        limit: result.pagination.limit,     // ✅ items per page
-        totalPages: result.pagination.pages, // ✅ total pages (convert "pages" to "totalPages")
+      data: {
+        items: result.data,
+        total: result.pagination.total,
+        page: result.pagination.page,
+        limit: result.pagination.limit,
+        totalPages: result.pagination.pages,
       },
     };
   } catch (error) {

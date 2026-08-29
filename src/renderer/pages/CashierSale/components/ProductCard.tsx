@@ -28,35 +28,35 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
     return "text-[var(--stock-instock)]";
   }, [product.stockQty, stockAlertThreshold]);
 
-  const handleAdd = useCallback(async () => {
-    if (isAdding || isDisabled) return;
+const handleAdd = useCallback(async () => {
+  if (isAdding || isDisabled) return;
 
-    setIsAdding(true);
-    try {
-      // 1️⃣ Check cache muna
-      const cached = getBatchForMeat(product.id);
-      if (cached) {
-        onAdd(product, cached.batchId, cached.batchCode);
-        setIsAdding(false);
-        return;
-      }
+  setIsAdding(true);
+  try {
+    const cached = getBatchForMeat(product.id);
+    console.log("[ProductCard] Cached batch for meat", product.id, cached); // ✅
 
-      // 2️⃣ Walang cache → auto-select best batch
-      const batch = await getBestBatch(product.id);
-      if (batch) {
-        onAdd(product, batch.id, batch.batchCode);
-      } else {
-        // Walang active batch → idagdag na walang batch (warning)
-        onAdd(product, null, null);
-        console.warn(`No active batch for ${product.name}`);
-      }
-    } catch (error) {
-      console.error("Failed to get batch for product:", error);
-      onAdd(product, null, null);
-    } finally {
+    if (cached) {
+      onAdd(product, cached.batchId, cached.batchCode);
       setIsAdding(false);
+      return;
     }
-  }, [product, getBestBatch, getBatchForMeat, onAdd, isAdding, isDisabled]);
+
+    const batch = await getBestBatch(product.id);
+    console.log("[ProductCard] Best batch for meat", product.id, batch); // ✅
+    if (batch) {
+      onAdd(product, batch.id, batch.batchCode);
+    } else {
+      onAdd(product, null, null);
+      console.warn(`No active batch for ${product.name}`);
+    }
+  } catch (error) {
+    console.error("Failed to get batch for product:", error);
+    onAdd(product, null, null);
+  } finally {
+    setIsAdding(false);
+  }
+}, [product, getBestBatch, getBatchForMeat, onAdd, isAdding, isDisabled]);
 
   return (
     <button

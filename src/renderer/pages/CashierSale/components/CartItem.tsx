@@ -46,17 +46,16 @@ const CartItem: React.FC<CartItemProps> = ({
     onUpdateTax(item.id, Math.min(100, Math.max(0, val)));
   };
 
-  const handleBatchChange = (batchId: number | null, batch?: Batch) => {
-    // Update cart item
-    const newBatchId = batchId;
-    const newBatchCode = batch?.batchCode || null;
-    onUpdateBatch(item.id, newBatchId, newBatchCode);
+const handleBatchChange = (batchId: number | null, batch?: Batch) => {
+  console.log("[CartItem] Batch changed for meat", item.id, "to", batchId, batch); // ✅
+  const newBatchId = batchId;
+  const newBatchCode = batch?.batchCode || null;
+  onUpdateBatch(item.id, newBatchId, newBatchCode);
 
-    // ✅ Update cache para sa meat na ito
-    if (newBatchId !== null && newBatchCode !== null) {
-      setBatchForMeat(item.id, newBatchId, newBatchCode);
-    }
-  };
+  if (newBatchId !== null && newBatchCode !== null) {
+    setBatchForMeat(item.id, newBatchId, newBatchCode);
+  }
+};
 
   const hasBatch = item.batchId !== null && item.batchId !== undefined;
 

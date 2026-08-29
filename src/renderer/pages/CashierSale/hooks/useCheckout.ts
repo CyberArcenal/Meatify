@@ -21,15 +21,17 @@ export const useCheckout = () => {
     setIsProcessing(true);
     showLoading("Processing Checkout..");
     try {
-      const items = cart.map((item) => ({
-        meatId: item.id,
-        weightKg: item.weightKg,
-        unitPrice: item.pricePerKg,
-        discount: item.lineDiscount,
-        tax: item.lineTax,
-        // ✅ i-convert ang null sa undefined
-        ...(item.batchId !== null && { batchId: item.batchId }),
-      }));
+  const items = cart.map((item) => {
+  console.log("[Checkout] Item:", item.id, "batchId:", item.batchId); // ✅
+  return {
+    meatId: item.id,
+    weightKg: item.weightKg,
+    unitPrice: item.pricePerKg,
+    discount: item.lineDiscount,
+    tax: item.lineTax,
+    ...(item.batchId !== null && { batchId: item.batchId }),
+  };
+});
 
       const response = await saleAPI.create({
         items,
@@ -46,6 +48,7 @@ export const useCheckout = () => {
       }
     } catch (error: any) {
       console.error("Checkout error", error);
+      hideLoading();
       await dialogs.alert({
         title: "Checkout Failed",
         message: error.message || "An unexpected error occurred.",
