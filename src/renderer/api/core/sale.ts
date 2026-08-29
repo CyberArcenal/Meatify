@@ -30,8 +30,8 @@ export interface SaleItem {
 export interface Sale {
   id: number;
   timestamp: string;
-  status: 'initiated' | 'paid' | 'refunded' | 'voided';
-  paymentMethod: 'cash' | 'card' | 'wallet';
+  status: "initiated" | "paid" | "refunded" | "voided";
+  paymentMethod: "cash" | "card" | "wallet";
   totalAmount: number;
   usedLoyalty: boolean;
   loyaltyRedeemed: number;
@@ -165,24 +165,24 @@ class SaleAPI {
     maxAmount?: number;
     search?: string;
     sortBy?: string;
-    sortOrder?: 'ASC' | 'DESC';
+    sortOrder?: "ASC" | "DESC";
   }): Promise<SalesResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'getAllSales',
+        method: "getAllSales",
         params: params || {},
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch sales');
+      throw new Error(response.message || "Failed to fetch sales");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch sales');
+      throw new Error(error.message || "Failed to fetch sales");
     }
   }
 
@@ -192,20 +192,20 @@ class SaleAPI {
   async getById(id: number): Promise<SaleResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'getSaleById',
+        method: "getSaleById",
         params: { id },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch sale');
+      throw new Error(response.message || "Failed to fetch sale");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch sale');
+      throw new Error(error.message || "Failed to fetch sale");
     }
   }
 
@@ -218,24 +218,24 @@ class SaleAPI {
       status?: string;
       page?: number;
       limit?: number;
-    }
+    },
   ): Promise<SalesResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'getSalesByCustomer',
+        method: "getSalesByCustomer",
         params: { customerId, ...params },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch sales by customer');
+      throw new Error(response.message || "Failed to fetch sales by customer");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch sales by customer');
+      throw new Error(error.message || "Failed to fetch sales by customer");
     }
   }
 
@@ -247,24 +247,24 @@ class SaleAPI {
     params?: {
       page?: number;
       limit?: number;
-    }
+    },
   ): Promise<SalesResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'getSalesByStatus',
+        method: "getSalesByStatus",
         params: { status, ...params },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch sales by status');
+      throw new Error(response.message || "Failed to fetch sales by status");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch sales by status');
+      throw new Error(error.message || "Failed to fetch sales by status");
     }
   }
 
@@ -278,24 +278,26 @@ class SaleAPI {
       status?: string;
       page?: number;
       limit?: number;
-    }
+    },
   ): Promise<SalesResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'getSalesByDateRange',
+        method: "getSalesByDateRange",
         params: { startDate, endDate, ...params },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch sales by date range');
+      throw new Error(
+        response.message || "Failed to fetch sales by date range",
+      );
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch sales by date range');
+      throw new Error(error.message || "Failed to fetch sales by date range");
     }
   }
 
@@ -305,20 +307,20 @@ class SaleAPI {
   async getStatistics(): Promise<SaleStatisticsResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'getSaleStatistics',
+        method: "getSaleStatistics",
         params: {},
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch statistics');
+      throw new Error(response.message || "Failed to fetch statistics");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch statistics');
+      throw new Error(error.message || "Failed to fetch statistics");
     }
   }
 
@@ -339,20 +341,20 @@ class SaleAPI {
   }): Promise<SalesResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'searchSales',
+        method: "searchSales",
         params,
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to search sales');
+      throw new Error(response.message || "Failed to search sales");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to search sales');
+      throw new Error(error.message || "Failed to search sales");
     }
   }
 
@@ -370,29 +372,31 @@ class SaleAPI {
       unitPrice?: number;
       discount?: number;
       tax?: number;
+      batchId?: number;
     }>;
+
     customerId?: number;
-    paymentMethod?: 'cash' | 'card' | 'wallet';
+    paymentMethod?: "cash" | "card" | "wallet";
     notes?: string;
     loyaltyRedeemed?: number;
     voucherCode?: string;
   }): Promise<SaleResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'createSale',
-        params: { ...data, user: 'system' },
+        method: "createSale",
+        params: { ...data, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to create sale');
+      throw new Error(response.message || "Failed to create sale");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to create sale');
+      throw new Error(error.message || "Failed to create sale");
     }
   }
 
@@ -410,28 +414,28 @@ class SaleAPI {
         tax?: number;
       }>;
       customerId: number;
-      paymentMethod: 'cash' | 'card' | 'wallet';
+      paymentMethod: "cash" | "card" | "wallet";
       notes: string;
       voucherCode: string;
       loyaltyRedeemed: number;
-    }>
+    }>,
   ): Promise<SaleResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'updateSale',
-        params: { id, ...data, user: 'system' },
+        method: "updateSale",
+        params: { id, ...data, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to update sale');
+      throw new Error(response.message || "Failed to update sale");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to update sale');
+      throw new Error(error.message || "Failed to update sale");
     }
   }
 
@@ -441,20 +445,20 @@ class SaleAPI {
   async delete(id: number): Promise<{ status: boolean; message: string }> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'deleteSale',
-        params: { id, user: 'system' },
+        method: "deleteSale",
+        params: { id, user: "system" },
       });
 
       return {
         status: response.status,
-        message: response.message || 'Sale deleted successfully',
+        message: response.message || "Sale deleted successfully",
       };
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to delete sale');
+      throw new Error(error.message || "Failed to delete sale");
     }
   }
 
@@ -464,43 +468,45 @@ class SaleAPI {
   async restore(id: number): Promise<SaleResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'restoreSale',
-        params: { id, user: 'system' },
+        method: "restoreSale",
+        params: { id, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to restore sale');
+      throw new Error(response.message || "Failed to restore sale");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to restore sale');
+      throw new Error(error.message || "Failed to restore sale");
     }
   }
 
   /**
    * Permanently delete a sale
    */
-  async permanentlyDelete(id: number): Promise<{ status: boolean; message: string }> {
+  async permanentlyDelete(
+    id: number,
+  ): Promise<{ status: boolean; message: string }> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'permanentlyDeleteSale',
-        params: { id, user: 'system' },
+        method: "permanentlyDeleteSale",
+        params: { id, user: "system" },
       });
 
       return {
         status: response.status,
-        message: response.message || 'Sale permanently deleted',
+        message: response.message || "Sale permanently deleted",
       };
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to permanently delete sale');
+      throw new Error(error.message || "Failed to permanently delete sale");
     }
   }
 
@@ -514,20 +520,20 @@ class SaleAPI {
   async markAsPaid(saleId: number): Promise<SaleResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'markAsPaid',
-        params: { saleId, user: 'system' },
+        method: "markAsPaid",
+        params: { saleId, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to mark sale as paid');
+      throw new Error(response.message || "Failed to mark sale as paid");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to mark sale as paid');
+      throw new Error(error.message || "Failed to mark sale as paid");
     }
   }
 
@@ -537,20 +543,20 @@ class SaleAPI {
   async refund(saleId: number, reason?: string): Promise<SaleResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'refundSale',
-        params: { saleId, reason: reason || '', user: 'system' },
+        method: "refundSale",
+        params: { saleId, reason: reason || "", user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to refund sale');
+      throw new Error(response.message || "Failed to refund sale");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to refund sale');
+      throw new Error(error.message || "Failed to refund sale");
     }
   }
 
@@ -560,20 +566,20 @@ class SaleAPI {
   async void(saleId: number, reason?: string): Promise<SaleResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'voidSale',
-        params: { saleId, reason: reason || '', user: 'system' },
+        method: "voidSale",
+        params: { saleId, reason: reason || "", user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to void sale');
+      throw new Error(response.message || "Failed to void sale");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to void sale');
+      throw new Error(error.message || "Failed to void sale");
     }
   }
 
@@ -587,43 +593,45 @@ class SaleAPI {
   async bulkCreate(salesArray: any[]): Promise<BulkCreateResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'bulkCreateSales',
-        params: { salesArray, user: 'system' },
+        method: "bulkCreateSales",
+        params: { salesArray, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to bulk create sales');
+      throw new Error(response.message || "Failed to bulk create sales");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to bulk create sales');
+      throw new Error(error.message || "Failed to bulk create sales");
     }
   }
 
   /**
    * Bulk update sales
    */
-  async bulkUpdate(updatesArray: Array<{ id: number; updates: any }>): Promise<BulkUpdateResponse> {
+  async bulkUpdate(
+    updatesArray: Array<{ id: number; updates: any }>,
+  ): Promise<BulkUpdateResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'bulkUpdateSales',
-        params: { updatesArray, user: 'system' },
+        method: "bulkUpdateSales",
+        params: { updatesArray, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to bulk update sales');
+      throw new Error(response.message || "Failed to bulk update sales");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to bulk update sales');
+      throw new Error(error.message || "Failed to bulk update sales");
     }
   }
 
@@ -633,20 +641,20 @@ class SaleAPI {
   async importCSV(filePath: string): Promise<ImportResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'importSalesCSV',
-        params: { filePath, user: 'system' },
+        method: "importSalesCSV",
+        params: { filePath, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to import sales');
+      throw new Error(response.message || "Failed to import sales");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to import sales');
+      throw new Error(error.message || "Failed to import sales");
     }
   }
 
@@ -654,25 +662,25 @@ class SaleAPI {
    * Export sales to CSV or JSON
    */
   async export(params?: {
-    format?: 'csv' | 'json';
+    format?: "csv" | "json";
     filters?: any;
   }): Promise<SaleExportResponse> {
     try {
       if (!window.backendAPI?.sale) {
-        throw new Error('Electron API (sale) not available');
+        throw new Error("Electron API (sale) not available");
       }
 
       const response = await window.backendAPI.sale({
-        method: 'exportSales',
-        params: params || { format: 'json' },
+        method: "exportSales",
+        params: params || { format: "json" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to export sales');
+      throw new Error(response.message || "Failed to export sales");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to export sales');
+      throw new Error(error.message || "Failed to export sales");
     }
   }
 
@@ -684,7 +692,7 @@ class SaleAPI {
    * Check if the backend API is available
    */
   async isAvailable(): Promise<boolean> {
-    return !!(window.backendAPI?.sale);
+    return !!window.backendAPI?.sale;
   }
 
   /**
@@ -695,7 +703,7 @@ class SaleAPI {
       const stats = await this.getStatistics();
       return stats.data.totalRevenue || 0;
     } catch (error) {
-      console.error('Error fetching today\'s sales total:', error);
+      console.error("Error fetching today's sales total:", error);
       return 0;
     }
   }
@@ -708,7 +716,7 @@ class SaleAPI {
       const stats = await this.getStatistics();
       return stats.data.todaySales || 0;
     } catch (error) {
-      console.error('Error fetching today\'s sales count:', error);
+      console.error("Error fetching today's sales count:", error);
       return 0;
     }
   }
@@ -721,7 +729,7 @@ class SaleAPI {
       const stats = await this.getStatistics();
       return stats.data.totalWeightSold || 0;
     } catch (error) {
-      console.error('Error fetching today\'s weight sold:', error);
+      console.error("Error fetching today's weight sold:", error);
       return 0;
     }
   }
@@ -747,19 +755,22 @@ class SaleAPI {
       const response = await this.getById(saleId);
       const sale = response.data;
       return {
-        receiptNumber: `RCP-${sale.id.toString().padStart(6, '0')}`,
+        receiptNumber: `RCP-${sale.id.toString().padStart(6, "0")}`,
         date: sale.timestamp,
         customer: sale.customer,
-        items: sale.saleItems.map(item => ({
-          product: item.meat?.name || 'Unknown',
-          sku: item.meat?.sku || '',
+        items: sale.saleItems.map((item) => ({
+          product: item.meat?.name || "Unknown",
+          sku: item.meat?.sku || "",
           weight: item.weightKg,
           unitPrice: item.unitPrice,
           discount: item.discount,
           tax: item.tax,
           lineTotal: item.lineTotal,
         })),
-        subtotal: sale.saleItems.reduce((sum, i) => sum + (i.unitPrice * i.weightKg), 0),
+        subtotal: sale.saleItems.reduce(
+          (sum, i) => sum + i.unitPrice * i.weightKg,
+          0,
+        ),
         tax: sale.saleItems.reduce((sum, i) => sum + i.tax, 0),
         discount: sale.saleItems.reduce((sum, i) => sum + i.discount, 0),
         total: sale.totalAmount,
@@ -767,7 +778,7 @@ class SaleAPI {
         status: sale.status,
       };
     } catch (error) {
-      console.error('Error generating receipt:', error);
+      console.error("Error generating receipt:", error);
       throw error;
     }
   }

@@ -1,5 +1,12 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Loader2, RefreshCw, XCircle } from "lucide-react";
+// src/renderer/pages/Cashier/index.tsx
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
+import { Loader2 } from "lucide-react";
 import Decimal from "decimal.js";
 import { useProducts } from "./hooks/useProducts";
 import { useCustomers } from "./hooks/useCustomers";
@@ -12,9 +19,9 @@ import CheckoutDialog from "./components/CheckoutDialog";
 import type { CartItem } from "./types";
 import PaymentSuccessDialog from "./components/PaymentSuccessDialog";
 import CashierHeader from "./components/CashierHeader";
-import { useSettings } from "../../contexts/SettingsContext";
 import { useBarcodeEnabled } from "../../utils/posUtils";
 import { calculateCartTotal } from "./utils";
+import { dialogs } from "../../utils/dialogs";
 
 const Cashier: React.FC = () => {
   const {
@@ -28,7 +35,8 @@ const Cashier: React.FC = () => {
     clearFilters,
   } = useProducts();
 
-  const { selectedCustomer, selectCustomer, setSelectedCustomer } = useCustomers();
+  const { selectedCustomer, selectCustomer, setSelectedCustomer } =
+    useCustomers();
 
   const {
     cart,
@@ -39,10 +47,11 @@ const Cashier: React.FC = () => {
     setGlobalTax,
     setNotes,
     addToCart,
-    updateCartQuantity,
+    updateWeight,
     removeFromCart,
     updateLineDiscount,
     updateLineTax,
+    updateBatch,
     clearCart,
   } = useCart();
 
@@ -55,7 +64,9 @@ const Cashier: React.FC = () => {
   } = useLoyaltyMethod(selectedCustomer?.id);
 
   const { isProcessing, processCheckout } = useCheckout();
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "wallet">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<
+    "cash" | "card" | "wallet"
+  >("cash");
   const [showCheckoutDialog, setShowCheckoutDialog] = useState(false);
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
   const [successData, setSuccessData] = useState<{
@@ -70,30 +81,51 @@ const Cashier: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isBarcodeEnabled = useBarcodeEnabled();
 
-  // ========== OPTIMIZATION: useMemo for heavy calculations ==========
+  // ========== Memoized calculations ==========
   const loyaltyDeduction = useMemo(
     () => (useLoyalty ? new Decimal(loyaltyPointsToRedeem) : new Decimal(0)),
-    [useLoyalty, loyaltyPointsToRedeem]
+    [useLoyalty, loyaltyPointsToRedeem],
   );
 
   const finalTotal = useMemo(
     () => calculateCartTotal(cart, globalDiscount, globalTax, loyaltyDeduction),
-    [cart, globalDiscount, globalTax, loyaltyDeduction]
+    [cart, globalDiscount, globalTax, loyaltyDeduction],
   );
 
-  const itemCount = useMemo(
-    () => cart.reduce((acc, item) => acc + item.cartQuantity, 0),
-    [cart]
+  const itemCount = useMemo(() => cart.length, [cart]);
+
+  // ========== Handlers ==========
+  const handleAddToCart = useCallback(
+    (
+      product: any,
+      batchId: number | null = null,
+      batchCode: string | null = null,
+    ) => {
+      addToCart(product, 1, batchId, batchCode);
+    },
+    [addToCart],
   );
 
-  // ========== Handlers with useCallback ==========
   const handleCheckoutClick = useCallback(() => {
     if (cart.length === 0) {
-      alert("Please add items to the cart.");
+      dialogs.alert({ message: "Please add items to the cart." });
       return;
     }
+
+    // ✅ Validate na lahat ng items ay may batch
+    const missingBatch = cart.some(
+      (item) => item.batchId === null || item.batchId === undefined,
+    );
+    if (missingBatch) {
+      dialogs.alert({
+        message:
+          "Some items do not have a batch selected. Please select a batch for each item.",
+      });
+      return;
+    }
+
     setShowCheckoutDialog(true);
-  }, [cart.length]);
+  }, [cart]);
 
   const handleConfirmCheckout = useCallback(
     async (paidAmount?: number) => {
@@ -119,10 +151,19 @@ const Cashier: React.FC = () => {
             cartItems: cart,
           });
           setShowSuccessDialog(true);
-        }
+        },
       );
     },
-    [cart, selectedCustomer, paymentMethod, notes, useLoyalty, loyaltyPointsToRedeem, finalTotal, processCheckout]
+    [
+      cart,
+      selectedCustomer,
+      paymentMethod,
+      notes,
+      useLoyalty,
+      loyaltyPointsToRedeem,
+      finalTotal,
+      processCheckout,
+    ],
   );
 
   const handleSuccessDialogClose = useCallback(() => {
@@ -134,7 +175,13 @@ const Cashier: React.FC = () => {
     setUseLoyalty(false);
     setLoyaltyPointsToRedeem(0);
     loadProducts();
-  }, [clearCart, setSelectedCustomer, setUseLoyalty, setLoyaltyPointsToRedeem, loadProducts]);
+  }, [
+    clearCart,
+    setSelectedCustomer,
+    setUseLoyalty,
+    setLoyaltyPointsToRedeem,
+    loadProducts,
+  ]);
 
   const handleClearCart = useCallback(() => {
     clearCart();
@@ -154,13 +201,16 @@ const Cashier: React.FC = () => {
       }
       if (e.ctrlKey && e.key === "d") {
         e.preventDefault();
-        const discountStr = window.prompt("Enter global discount percentage:", String(globalDiscount));
+        const discountStr = window.prompt(
+          "Enter global discount percentage:",
+          String(globalDiscount),
+        );
         if (discountStr !== null) {
           const discount = parseFloat(discountStr);
           if (!isNaN(discount) && discount >= 0 && discount <= 100) {
             setGlobalDiscount(discount);
           } else {
-            alert("Invalid discount. Must be 0–100.");
+            dialogs.alert({ message: "Invalid discount. Must be 0–100." });
           }
         }
       }
@@ -204,7 +254,10 @@ const Cashier: React.FC = () => {
               <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-blue)]" />
             </div>
           ) : (
-            <ProductGrid products={filteredProducts} onAddToCart={addToCart} />
+            <ProductGrid
+              products={filteredProducts}
+              onAddToCart={handleAddToCart}
+            />
           )}
         </div>
 
@@ -214,10 +267,11 @@ const Cashier: React.FC = () => {
             globalDiscount={globalDiscount}
             globalTax={globalTax}
             notes={notes}
-            onUpdateQuantity={updateCartQuantity}
+            onUpdateWeight={updateWeight}
             onRemove={removeFromCart}
             onUpdateDiscount={updateLineDiscount}
             onUpdateTax={updateLineTax}
+            onUpdateBatch={updateBatch}
             onGlobalDiscountChange={setGlobalDiscount}
             onGlobalTaxChange={setGlobalTax}
             onNotesChange={setNotes}

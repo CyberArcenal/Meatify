@@ -1,18 +1,25 @@
-import React, { useState, useMemo, useCallback } from "react";
-import { Package } from "lucide-react";
+// src/renderer/pages/Cashier/components/ProductCard.tsx
+import React, { useMemo, useCallback, useState } from "react";
+import { Package, Loader2 } from "lucide-react";
 import Decimal from "decimal.js";
 import type { Product } from "../types";
 import { formatCurrency } from "../../../utils/formatters";
 import { useStockAlertThreshold, useAllowNegativeStock } from "../../../utils/posUtils";
+import { useBatchCache } from "../hooks/useBatchCache";
+import { useBatchAutoSelect } from "../hooks/useBatchAutoSelect";
 
 interface ProductCardProps {
   product: Product;
-  onAdd: (product: Product) => void;
+  onAdd: (product: Product, batchId: number | null, batchCode: string | null) => void;
 }
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
   const stockAlertThreshold = useStockAlertThreshold();
   const allowNegativeStock = useAllowNegativeStock();
+  const { getBestBatch } = useBatchAutoSelect();
+  const { getBatchForMeat } = useBatchCache();
+  const [isAdding, setIsAdding] = useState(false);
+
   const isDisabled = !allowNegativeStock && product.stockQty === 0;
 
   const stockStatusClass = useMemo(() => {
@@ -21,16 +28,42 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
     return "text-[var(--stock-instock)]";
   }, [product.stockQty, stockAlertThreshold]);
 
-  const handleAdd = useCallback(() => {
-    onAdd(product);
-  }, [onAdd, product]);
+  const handleAdd = useCallback(async () => {
+    if (isAdding || isDisabled) return;
+
+    setIsAdding(true);
+    try {
+      // 1️⃣ Check cache muna
+      const cached = getBatchForMeat(product.id);
+      if (cached) {
+        onAdd(product, cached.batchId, cached.batchCode);
+        setIsAdding(false);
+        return;
+      }
+
+      // 2️⃣ Walang cache → auto-select best batch
+      const batch = await getBestBatch(product.id);
+      if (batch) {
+        onAdd(product, batch.id, batch.batchCode);
+      } else {
+        // Walang active batch → idagdag na walang batch (warning)
+        onAdd(product, null, null);
+        console.warn(`No active batch for ${product.name}`);
+      }
+    } catch (error) {
+      console.error("Failed to get batch for product:", error);
+      onAdd(product, null, null);
+    } finally {
+      setIsAdding(false);
+    }
+  }, [product, getBestBatch, getBatchForMeat, onAdd, isAdding, isDisabled]);
 
   return (
     <button
       onClick={handleAdd}
-      disabled={isDisabled}
+      disabled={isDisabled || isAdding}
       className={`group relative rounded-xl overflow-hidden transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 ${
-        isDisabled ? "opacity-50 cursor-not-allowed" : ""
+        isDisabled || isAdding ? "opacity-50 cursor-not-allowed" : ""
       }`}
     >
       <div className="absolute inset-0 bg-gradient-to-br from-[var(--product-card-bg)] to-[var(--card-bg)] border border-[var(--product-card-border)]" />
@@ -46,6 +79,11 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
         <p className={`text-xs mt-1 font-medium ${stockStatusClass}`}>
           Stock: {product.stockQty} kg
         </p>
+        {isAdding && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded-xl">
+            <Loader2 className="w-6 h-6 animate-spin text-white" />
+          </div>
+        )}
       </div>
     </button>
   );

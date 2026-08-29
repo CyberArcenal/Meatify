@@ -1,3 +1,4 @@
+// src/renderer/pages/Cashier/types.ts
 import { type MeatInventory } from "../../api/analytics/inventoryReports";
 import { type Customer as ApiCustomer } from "../../api/core/customer";
 
@@ -8,9 +9,11 @@ export type Product = MeatInventory & {
 export type Customer = ApiCustomer;
 
 export interface CartItem extends Product {
-  weightKg: number; // decimal weight in kg
-  lineDiscount: number; // percentage
-  lineTax: number; // percentage
+  weightKg: number;
+  lineDiscount: number;
+  lineTax: number;
+  batchId: number | null;        // ✅ Required
+  batchCode: string | null;      // ✅ Para display
 }
 
 export type PaymentMethod = "cash" | "card" | "wallet";

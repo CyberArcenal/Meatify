@@ -53,8 +53,8 @@ export const useMeat = (initialFilters?: Partial<MeatFilters>) => {
 
         if (response.status) {
           const data = response.data;
-          setMeats(data.items || []);
-          setTotalItems(data.total || 0);
+          setMeats(data.data || []);
+          setTotalItems(data.pagination.total || 0);
         } else {
           throw new Error(response.message || "Failed to fetch meats");
         }

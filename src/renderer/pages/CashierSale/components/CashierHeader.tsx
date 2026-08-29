@@ -1,3 +1,4 @@
+// src/renderer/pages/Cashier/components/CashierHeader.tsx
 import React from "react";
 import {
   Search,
@@ -13,7 +14,6 @@ import Decimal from "decimal.js";
 import CategorySelect from "../../../components/Selects/Category";
 import { formatCurrency } from "../../../utils/formatters";
 import {
-  useBarcodeEnabled,
   useCashDrawerEnabled,
   useReceiptPrintingEnabled,
 } from "../../../utils/posUtils";

@@ -1,19 +1,27 @@
+// src/renderer/pages/Cashier/components/ProductGrid.tsx
 import React, { useMemo } from "react";
 import type { Product } from "../types";
 import ProductCard from "./ProductCard";
 
 interface ProductGridProps {
   products: Product[];
-  onAddToCart: (product: Product) => void;
+  onAddToCart: (product: Product, batchId: number | null, batchCode: string | null) => void;
 }
 
-const ProductGrid: React.FC<ProductGridProps> = ({ products, onAddToCart }) => {
+const ProductGrid: React.FC<ProductGridProps> = ({
+  products,
+  onAddToCart,
+}) => {
   const visibleProducts = useMemo(() => products.slice(0, 100), [products]);
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 p-4">
       {visibleProducts.map((product) => (
-        <ProductCard key={product.id} product={product} onAdd={onAddToCart} />
+        <ProductCard
+          key={product.id}
+          product={product}
+          onAdd={onAddToCart}
+        />
       ))}
       {products.length > 100 && (
         <div className="col-span-full text-center text-sm text-[var(--text-tertiary)] py-4">

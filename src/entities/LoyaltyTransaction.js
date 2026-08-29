@@ -16,6 +16,7 @@ const LoyaltyTransaction = new EntitySchema({
     timestamp: { type: Date, default: () => "CURRENT_TIMESTAMP" },
     notes: { type: String, nullable: true }, // optional context (e.g., promo, manual adjustment)
     updatedAt: { type: Date, nullable: true },
+    deletedAt: { type: Date, nullable: true },
   },
   relations: {
     customer: {

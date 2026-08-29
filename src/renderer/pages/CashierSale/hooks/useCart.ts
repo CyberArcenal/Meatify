@@ -1,3 +1,4 @@
+// src/renderer/pages/Cashier/hooks/useCart.ts
 import { useReducer, useCallback } from "react";
 import type { CartItem, Product } from "../types";
 import { dialogs } from "../../../utils/dialogs";
@@ -10,17 +11,17 @@ type CartState = {
 };
 
 type CartAction =
-  | { type: "ADD_TO_CART"; product: Product; weightKg: number }
+  | { type: "ADD_TO_CART"; product: Product; weightKg: number; batchId: number | null; batchCode: string | null }
   | { type: "UPDATE_WEIGHT"; productId: number; weightKg: number }
   | { type: "REMOVE_FROM_CART"; productId: number }
   | { type: "UPDATE_LINE_DISCOUNT"; productId: number; discountPercent: number }
   | { type: "UPDATE_LINE_TAX"; productId: number; taxPercent: number }
+  | { type: "UPDATE_BATCH"; productId: number; batchId: number | null; batchCode: string | null }
   | { type: "SET_GLOBAL_DISCOUNT"; value: number }
   | { type: "SET_GLOBAL_TAX"; value: number }
   | { type: "SET_NOTES"; value: string }
   | { type: "CLEAR_CART" };
 
-// Helper to get total weight for a given meat in cart
 const getTotalWeightForMeat = (cart: CartItem[], meatId: number) => {
   return cart
     .filter((item) => item.id === meatId)
@@ -30,10 +31,9 @@ const getTotalWeightForMeat = (cart: CartItem[], meatId: number) => {
 const cartReducer = (state: CartState, action: CartAction): CartState => {
   switch (action.type) {
     case "ADD_TO_CART": {
-      const { product, weightKg } = action;
+      const { product, weightKg, batchId, batchCode } = action;
       const existing = state.cart.find((item) => item.id === product.id);
 
-      // Check total weight for this meat against stock
       const currentWeight = existing ? getTotalWeightForMeat(state.cart, product.id) : 0;
       const newWeight = currentWeight + weightKg;
 
@@ -46,6 +46,7 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
       }
 
       if (existing) {
+        // If existing, update weight but keep the existing batch
         return {
           ...state,
           cart: state.cart.map((item) =>
@@ -64,6 +65,8 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
               weightKg,
               lineDiscount: 0,
               lineTax: 0,
+              batchId: batchId,        // ✅ Required
+              batchCode: batchCode,    // ✅ Required
             },
           ],
         };
@@ -74,7 +77,6 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
       const item = state.cart.find((i) => i.id === action.productId);
       if (!item) return state;
 
-      // Check if new weight exceeds stock
       const otherWeight = getTotalWeightForMeat(
         state.cart.filter((i) => i.id !== item.id),
         item.id
@@ -90,7 +92,6 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
       }
 
       if (action.weightKg <= 0) {
-        // Remove if weight is zero or negative
         return {
           ...state,
           cart: state.cart.filter((i) => i.id !== action.productId),
@@ -131,6 +132,16 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
         ),
       };
 
+    case "UPDATE_BATCH":
+      return {
+        ...state,
+        cart: state.cart.map((i) =>
+          i.id === action.productId
+            ? { ...i, batchId: action.batchId, batchCode: action.batchCode }
+            : i
+        ),
+      };
+
     case "SET_GLOBAL_DISCOUNT":
       return { ...state, globalDiscount: Math.max(0, Math.min(100, action.value)) };
 
@@ -156,9 +167,12 @@ export const useCart = () => {
     notes: "",
   });
 
-  const addToCart = useCallback((product: Product, weightKg: number = 1) => {
-    dispatch({ type: "ADD_TO_CART", product, weightKg });
-  }, []);
+  const addToCart = useCallback(
+    (product: Product, weightKg: number = 1, batchId: number | null = null, batchCode: string | null = null) => {
+      dispatch({ type: "ADD_TO_CART", product, weightKg, batchId, batchCode });
+    },
+    []
+  );
 
   const updateWeight = useCallback((productId: number, weightKg: number) => {
     dispatch({ type: "UPDATE_WEIGHT", productId, weightKg });
@@ -174,6 +188,10 @@ export const useCart = () => {
 
   const updateLineTax = useCallback((productId: number, taxPercent: number) => {
     dispatch({ type: "UPDATE_LINE_TAX", productId, taxPercent });
+  }, []);
+
+  const updateBatch = useCallback((productId: number, batchId: number | null, batchCode: string | null) => {
+    dispatch({ type: "UPDATE_BATCH", productId, batchId, batchCode });
   }, []);
 
   const setGlobalDiscount = useCallback((value: number) => {
@@ -202,6 +220,7 @@ export const useCart = () => {
     removeFromCart,
     updateLineDiscount,
     updateLineTax,
+    updateBatch,
     setGlobalDiscount,
     setGlobalTax,
     setNotes,

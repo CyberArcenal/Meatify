@@ -21,9 +21,12 @@ module.exports = async (params) => {
     return {
       status: true,
       message: `Expiring batches retrieved successfully (within ${daysThreshold} days)`,
-      data: {
-        data: result.data,
-        pagination: result.pagination,
+       data: {
+        items: result.data,                 // ✅ array ng meats
+        total: result.pagination.total,     // ✅ total items
+        page: result.pagination.page,       // ✅ current page
+        limit: result.pagination.limit,     // ✅ items per page
+        totalPages: result.pagination.pages, // ✅ total pages (convert "pages" to "totalPages")
       },
     };
   } catch (error) {

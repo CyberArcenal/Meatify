@@ -1,3 +1,4 @@
+// src/renderer/pages/Cashier/components/Cart.tsx
 import React, {
   useEffect,
   useRef,
@@ -36,16 +37,16 @@ interface CartProps {
   globalDiscount: number;
   globalTax: number;
   notes: string;
-  onUpdateQuantity: (id: number, qty: number) => void;
+  onUpdateWeight: (id: number, weightKg: number) => void;
   onRemove: (id: number) => void;
   onUpdateDiscount: (id: number, discount: number) => void;
   onUpdateTax: (id: number, tax: number) => void;
+  onUpdateBatch: (id: number, batchId: number | null, batchCode: string | null) => void;
   onGlobalDiscountChange: (value: number) => void;
   onGlobalTaxChange: (value: number) => void;
   onNotesChange: (value: string) => void;
   selectedCustomer: Customer | null;
   onCustomerSelect: (customer: Customer | null) => void;
-  onUpdateWeight: (id: number, weightKg: number) => void;
   loyaltyPointsAvailable: number;
   loyaltyPointsToRedeem: number;
   useLoyalty: boolean;
@@ -63,11 +64,11 @@ const Cart: React.FC<CartProps> = ({
   globalDiscount,
   globalTax,
   notes,
-  onUpdateQuantity,
   onUpdateWeight,
   onRemove,
   onUpdateDiscount,
   onUpdateTax,
+  onUpdateBatch,
   onGlobalDiscountChange,
   onGlobalTaxChange,
   onNotesChange,
@@ -85,11 +86,12 @@ const Cart: React.FC<CartProps> = ({
   onClearCart,
 }) => {
   const cartContainerRef = useRef<HTMLDivElement | null>(null);
+  const prevCartLengthRef = useRef(cart.length); // ✅ Track previous length
+
   const discountEnabled = useDiscountEnabled();
   const isPointEnabled = useLoyaltyPointsEnabled();
   const maxDiscount = useMaxDiscountPercent();
 
-  // ========== Debounced inputs ==========
   const [localDiscount, setLocalDiscount] = useState(globalDiscount);
   const [localTax, setLocalTax] = useState(globalTax);
   const debouncedDiscount = useDebounce(localDiscount, 300);
@@ -103,7 +105,6 @@ const Cart: React.FC<CartProps> = ({
     onGlobalTaxChange(debouncedTax);
   }, [debouncedTax, onGlobalTaxChange]);
 
-  // ========== Memoized calculations ==========
   const subtotal = useMemo(() => calculateSubtotal(cart), [cart]);
   const loyaltyDeduction = useMemo(
     () => (useLoyalty ? new Decimal(loyaltyPointsToRedeem) : new Decimal(0)),
@@ -134,17 +135,21 @@ const Cart: React.FC<CartProps> = ({
     }
   };
 
-  // Auto-scroll to bottom when cart changes
+  // ✅ Auto-scroll ONLY when a new item is added (length increases)
   useEffect(() => {
-    if (cartContainerRef.current) {
-      cartContainerRef.current.scrollTo({
-        top: cartContainerRef.current.scrollHeight,
-        behavior: "smooth",
-      });
+    const currentLength = cart.length;
+    if (currentLength > prevCartLengthRef.current) {
+      // May bagong item na na-add
+      if (cartContainerRef.current) {
+        cartContainerRef.current.scrollTo({
+          top: cartContainerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      }
     }
+    prevCartLengthRef.current = currentLength;
   }, [cart]);
 
-  // Stable callbacks for memoized children
   const handleCustomerSelect = useCallback(
     (id: number | null, customer: Customer | null) => {
       onCustomerSelect(customer ? customer : null);
@@ -182,13 +187,14 @@ const Cart: React.FC<CartProps> = ({
         ) : (
           cart.map((item) => (
             <CartItem
-          key={item.id}
-    item={item}
-    onUpdateWeight={onUpdateWeight}
-    onRemove={onRemove}
-    onUpdateDiscount={onUpdateDiscount}
-    onUpdateTax={onUpdateTax}
-    maxDiscount={maxDiscount}
+              key={item.id}
+              item={item}
+              onUpdateWeight={onUpdateWeight}
+              onRemove={onRemove}
+              onUpdateDiscount={onUpdateDiscount}
+              onUpdateTax={onUpdateTax}
+              onUpdateBatch={onUpdateBatch}
+              maxDiscount={maxDiscount}
             />
           ))
         )}
@@ -203,7 +209,6 @@ const Cart: React.FC<CartProps> = ({
               customer === undefined ? null : customer
             );
           }}
-          showLoyalty
           placeholder="Select customer..."
         />
 

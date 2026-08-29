@@ -1,9 +1,13 @@
-import React, { useCallback, useMemo, useState } from "react";
-import { Minus, Plus, Trash2, Tag, Percent } from "lucide-react";
+// src/renderer/pages/Cashier/components/CartItem.tsx
+import React, { useCallback, useMemo } from "react";
+import { Trash2, Tag, Percent } from "lucide-react";
 import Decimal from "decimal.js";
 import type { CartItem as CartItemType } from "../types";
 import { calculateLineTotal } from "../utils";
 import { formatCurrency } from "../../../utils/formatters";
+import BatchSelect from "../../../components/Selects/Batch";
+import type { Batch } from "../../../api/core/batch";
+import { useBatchCache } from "../hooks/useBatchCache";
 
 interface CartItemProps {
   item: CartItemType;
@@ -11,6 +15,7 @@ interface CartItemProps {
   onRemove: (id: number) => void;
   onUpdateDiscount: (id: number, discount: number) => void;
   onUpdateTax: (id: number, tax: number) => void;
+  onUpdateBatch: (id: number, batchId: number | null, batchCode: string | null) => void;
   maxDiscount?: number;
 }
 
@@ -20,9 +25,11 @@ const CartItem: React.FC<CartItemProps> = ({
   onRemove,
   onUpdateDiscount,
   onUpdateTax,
+  onUpdateBatch,
   maxDiscount = 100,
 }) => {
   const lineTotal = useMemo(() => calculateLineTotal(item), [item]);
+  const { setBatchForMeat } = useBatchCache();
 
   const handleWeightChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value) || 0;
@@ -38,6 +45,20 @@ const CartItem: React.FC<CartItemProps> = ({
     const val = parseFloat(e.target.value) || 0;
     onUpdateTax(item.id, Math.min(100, Math.max(0, val)));
   };
+
+  const handleBatchChange = (batchId: number | null, batch?: Batch) => {
+    // Update cart item
+    const newBatchId = batchId;
+    const newBatchCode = batch?.batchCode || null;
+    onUpdateBatch(item.id, newBatchId, newBatchCode);
+
+    // ✅ Update cache para sa meat na ito
+    if (newBatchId !== null && newBatchCode !== null) {
+      setBatchForMeat(item.id, newBatchId, newBatchCode);
+    }
+  };
+
+  const hasBatch = item.batchId !== null && item.batchId !== undefined;
 
   return (
     <div className="relative bg-[var(--card-secondary-bg)] border border-[var(--border-color)] rounded-lg p-3 hover:border-[var(--accent-blue)] transition-colors overflow-hidden">
@@ -71,6 +92,25 @@ const CartItem: React.FC<CartItemProps> = ({
           <span className="font-bold text-[var(--accent-green)]">
             {formatCurrency(lineTotal.toFixed(2))}
           </span>
+        </div>
+
+        {/* Batch Select + indicator */}
+        <div className="mt-2 flex items-center gap-2">
+          <span className="text-xs text-[var(--text-tertiary)]">Batch:</span>
+          <BatchSelect
+            meatId={item.id}
+            statusFilter="active"
+            value={item.batchId}
+            onChange={handleBatchChange}
+            className="w-48"
+            placeholder="Select batch"
+          />
+          {item.batchCode && (
+            <span className="text-xs text-[var(--text-secondary)]">{item.batchCode}</span>
+          )}
+          {!hasBatch && (
+            <span className="text-xs text-[var(--accent-red)]">⚠️ No batch selected</span>
+          )}
         </div>
 
         <div className="mt-2 flex gap-2 text-xs">

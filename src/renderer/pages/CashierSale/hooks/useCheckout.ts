@@ -1,3 +1,4 @@
+// src/renderer/pages/Cashier/hooks/useCheckout.ts
 import { useState } from "react";
 import saleAPI from "../../../api/core/sale";
 import { dialogs } from "../../../utils/dialogs";
@@ -20,23 +21,23 @@ export const useCheckout = () => {
     setIsProcessing(true);
     showLoading("Processing Checkout..");
     try {
-const items = cart.map((item) => ({
-  meatId: item.id,
-  weightKg: item.weightKg,
-  unitPrice: item.pricePerKg,
-  discount: item.lineDiscount,
-  tax: item.lineTax,
-}));
+      const items = cart.map((item) => ({
+        meatId: item.id,
+        weightKg: item.weightKg,
+        unitPrice: item.pricePerKg,
+        discount: item.lineDiscount,
+        tax: item.lineTax,
+        // ✅ i-convert ang null sa undefined
+        ...(item.batchId !== null && { batchId: item.batchId }),
+      }));
 
-      const response = await saleAPI.create(
-        {
-          items,
-          customerId: selectedCustomer?.id,
-          paymentMethod,
-          notes,
-          loyaltyRedeemed,
-        },
-      );
+      const response = await saleAPI.create({
+        items,
+        customerId: selectedCustomer?.id,
+        paymentMethod,
+        notes,
+        loyaltyRedeemed,
+      });
 
       if (response.status) {
         onSuccess(response.data);
@@ -55,7 +56,6 @@ const items = cart.map((item) => ({
     }
   };
 
-  // Optional: keep handleCheckout if needed elsewhere
   const handleCheckout = async (
     cart: CartItem[],
     selectedCustomer: Customer | null,
