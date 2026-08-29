@@ -233,7 +233,7 @@ const batchesData = [
   // Beef Ground (3 batches)
   {
     batchCode: "BATCH-BEEF-004",
-    meatName: "Beef Ground",
+    meatName: "Beef Ground", 
     initialQuantity: 40.0,
     remainingQuantity: 40.0,
     unitCost: 350.00,

@@ -19,8 +19,11 @@ module.exports = async (params) => {
       status: true,
       message: "Search completed successfully",
       data: {
-        data: result.data,
-        pagination: result.pagination,
+        items: result.data,                 // ✅ array ng meats
+        total: result.pagination.total,     // ✅ total items
+        page: result.pagination.page,       // ✅ current page
+        limit: result.pagination.limit,     // ✅ items per page
+        totalPages: result.pagination.pages, // ✅ total pages (convert "pages" to "totalPages")
       },
     };
   } catch (error) {
