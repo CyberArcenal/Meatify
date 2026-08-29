@@ -1,7 +1,7 @@
 // src/main/ipcHandlers/windowControlHandlers.js
 //@ts-check
 const { ipcMain, BrowserWindow } = require("electron");
-const { logger } = require("../../../utils/logger");
+const { logger } = require("../../../../utils/logger");
 
 class WindowControlHandlers {
   constructor() {

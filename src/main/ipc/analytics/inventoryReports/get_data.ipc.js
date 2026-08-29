@@ -31,28 +31,25 @@ module.exports = async (params) => {
       supplierId,
     };
     const meatResult = await meatService.findAll(meatOptions);
-    const meats = meatResult.data;
+    const meats = meatResult.data || [];
 
     // Get batches for each meat
     const enrichedMeats = await Promise.all(
       meats.map(async (meat) => {
-        // Get all batches for this meat
         const batchOptions = {
           meatId: meat.id,
           includeInactive: true,
           limit: 1000,
         };
         const batchResult = await batchService.findAll(batchOptions);
-        const batches = batchResult.data;
+        const batches = batchResult.data || [];
 
-        // Calculate inventory metrics
         const totalStock = batches.reduce((sum, b) => sum + b.remainingQuantity, 0);
         const activeBatches = batches.filter(b => b.status === "active");
         const totalActiveStock = activeBatches.reduce((sum, b) => sum + b.remainingQuantity, 0);
         const totalValue = batches.reduce((sum, b) => sum + (b.remainingQuantity * b.unitCost), 0);
         const avgCost = totalStock > 0 ? totalValue / totalStock : 0;
 
-        // Get expiring batches
         const expiringBatches = batches.filter(b => {
           const expiryDate = new Date(b.expiryDate);
           const now = new Date();
@@ -60,18 +57,15 @@ module.exports = async (params) => {
           return daysUntilExpiry <= 7 && daysUntilExpiry >= 0 && b.status === "active";
         });
 
-        // Get expired batches
         const expiredBatches = batches.filter(b => {
           const expiryDate = new Date(b.expiryDate);
           const now = new Date();
           return expiryDate < now && b.status !== "expired";
         });
 
-        // Get low stock indicator
         const isLowStock = totalActiveStock <= lowStockThreshold && totalActiveStock > 0;
         const isOutOfStock = totalActiveStock === 0;
 
-        // Get batch details
         const batchDetails = batches.map(b => ({
           id: b.id,
           batchCode: b.batchCode,
@@ -102,7 +96,6 @@ module.exports = async (params) => {
       })
     );
 
-    // Get movement history if requested
     let movementHistory = [];
     if (includeMovementHistory) {
       const movementOptions = {
@@ -113,10 +106,9 @@ module.exports = async (params) => {
         sortOrder: "DESC",
       };
       const movementResult = await inventoryMovementService.findAll(movementOptions);
-      movementHistory = movementResult.data;
+      movementHistory = movementResult.data || [];
     }
 
-    // Get summary statistics
     const summary = await getInventorySummaryData(startDate, endDate, lowStockThreshold);
 
     return {
@@ -146,28 +138,25 @@ module.exports = async (params) => {
   }
 };
 
-/**
- * Get inventory summary data
- */
 async function getInventorySummaryData(startDate, endDate, lowStockThreshold) {
   try {
-    // Get all meats
     const meatOptions = {
       isActive: true,
       limit: 10000,
     };
     const meatResult = await meatService.findAll(meatOptions);
-    const meats = meatResult.data;
+    const meats = meatResult.data || [];
 
-    // Get all batches
     const batchOptions = {
       includeInactive: true,
       limit: 10000,
     };
     const batchResult = await batchService.findAll(batchOptions);
-    const batches = batchResult.data;
+    const batches = batchResult.data || [];
 
-    // Calculate total inventory value
+    // ✅ FIX: define totalMeats
+    const totalMeats = meats.length;
+
     let totalValue = 0;
     let totalStock = 0;
     let totalActiveStock = 0;
@@ -189,7 +178,6 @@ async function getInventorySummaryData(startDate, endDate, lowStockThreshold) {
       totalStock += totalMeatStock;
       totalActiveStock += totalMeatActiveStock;
 
-      // Count expiring batches
       meatBatches.forEach(b => {
         if (b.status !== "active") return;
         const expiryDate = new Date(b.expiryDate);
@@ -198,12 +186,10 @@ async function getInventorySummaryData(startDate, endDate, lowStockThreshold) {
         if (expiryDate < now) expiredCount++;
       });
 
-      // Count low stock and out of stock
       if (totalMeatActiveStock === 0) outOfStockCount++;
       else if (totalMeatActiveStock <= lowStockThreshold) lowStockCount++;
     });
 
-    // Get top 5 meats by value
     const topMeatsByValue = meats
       .map(meat => {
         const meatBatches = batches.filter(b => b.meatId === meat.id);
@@ -213,7 +199,6 @@ async function getInventorySummaryData(startDate, endDate, lowStockThreshold) {
       .sort((a, b) => b.inventoryValue - a.inventoryValue)
       .slice(0, 5);
 
-    // Get top 5 meats by stock
     const topMeatsByStock = meats
       .map(meat => {
         const meatBatches = batches.filter(b => b.meatId === meat.id);
@@ -223,7 +208,6 @@ async function getInventorySummaryData(startDate, endDate, lowStockThreshold) {
       .sort((a, b) => b.totalStock - a.totalStock)
       .slice(0, 5);
 
-    // Get category breakdown
     const categoryBreakdown = {};
     meats.forEach(meat => {
       const catId = meat.categoryId || "uncategorized";
@@ -242,7 +226,6 @@ async function getInventorySummaryData(startDate, endDate, lowStockThreshold) {
       categoryBreakdown[catId].totalStock += meatBatches.reduce((sum, b) => sum + b.remainingQuantity, 0);
     });
 
-    // Get supplier breakdown
     const supplierBreakdown = {};
     meats.forEach(meat => {
       const supplierId = meat.supplierId || "unknown";
@@ -262,7 +245,7 @@ async function getInventorySummaryData(startDate, endDate, lowStockThreshold) {
     });
 
     return {
-      totalMeats: meats.length,
+      totalMeats,
       totalBatches: batches.length,
       totalValue,
       totalStock,
