@@ -182,7 +182,7 @@ export const BatchTable: React.FC<BatchTableProps> = ({
                     </div>
                   </td>
                   <td className="py-2.5 px-3 text-right text-sm font-semibold text-[var(--text-primary)]">
-                    {batch.remainingQuantity} kg
+                    {batch.remainingQuantity.toFixed(2)} kg
                   </td>
                   <td className="py-2.5 px-3 text-right text-sm font-mono text-[var(--text-secondary)]">
                     ₱{new Decimal(batch.unitCost).toFixed(2)}

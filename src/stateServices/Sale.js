@@ -8,21 +8,15 @@ const Customer = require("../entities/Customer");
 const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const notificationService = require("../services/Notification");
 const { BatchStateService } = require("./Batch");
-const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const system = require("../utils/system");
 const CashDrawerService = require("../services/CashDrawer");
 const PrinterService = require("../services/Printer");
 
-// ❌ REMOVED hardcoded functions:
-// const getLoyaltyPointRate = async () => 100;
-// const loyaltyPointsEnabled = async () => true;
-// const enableReceiptPrinting = async () => true;
-// const enableCashDrawer = async () => true;
-// const companyName = async () => "Meatify Shop";
-
 /**
- * SaleStateService handles state transitions for sales.
- * It does NOT contain CRUD operations – those belong to SaleService.
- * All methods here modify the state (status) of sales and trigger side effects.
+ * SaleStateService handles side effects for sale state transitions.
+ * It does NOT update the sale status – that is done by the service or subscriber.
+ * All methods here react to status changes (onPaid, onRefunded, onVoided)
+ * and perform necessary business logic (stock deduction, loyalty, notifications, etc.).
  */
 class SaleStateService {
   /**
@@ -51,14 +45,14 @@ class SaleStateService {
   }
 
   /**
-   * Mark a sale as paid – triggers all side effects: FIFO batch deduction,
-   * loyalty points, notifications, receipt printing, cash drawer.
+   * React to a sale becoming 'paid'.
+   * This is called after the status has already been updated to 'paid'.
+   * It handles FIFO batch deduction, loyalty points, notifications, receipt printing, cash drawer.
    * @param {number} saleId
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-
-  async markAsPaid(saleId, user = "system", queryRunner = null) {
+  async onPaid(saleId, user = "system", queryRunner = null) {
     const {
       updateDb,
       saveDb,
@@ -68,6 +62,7 @@ class SaleStateService {
     const saleRepo = this._getRepo(queryRunner, Sale);
     const saleItemRepo = this._getRepo(queryRunner, SaleItem);
 
+    // Load the sale with its items and customer
     const sale = await saleRepo.findOne({
       where: { id: saleId },
       relations: ["saleItems", "saleItems.meat", "saleItems.batch", "customer"],
@@ -76,17 +71,20 @@ class SaleStateService {
       throw new Error(`Sale #${saleId} not found`);
     }
 
-    if (sale.status !== "initiated") {
-      throw new Error(`Sale #${saleId} is already ${sale.status}`);
+    // If the sale is not 'paid', we still process (idempotent) but we warn.
+    if (sale.status !== "paid") {
+      logger.warn(
+        `[SaleState] onPaid called for sale #${saleId} with status '${sale.status}' – expected 'paid'. Proceeding anyway.`,
+      );
     }
 
-    logger.info(`[SaleState] Marking sale #${saleId} as paid`);
+    logger.info(`[SaleState] Processing onPaid for sale #${saleId}`);
 
     // --- STEP 1: Batch Deduction (Respect user selection) ---
     const deductions = [];
     for (const item of sale.saleItems) {
       if (item.batchId) {
-        // ✅ User selected a specific batch – deduct from that batch directly
+        // User selected a specific batch – deduct from that batch directly
         const result = await this.batchStateService.deductFromBatch(
           item.batchId,
           item.weightKg,
@@ -100,7 +98,7 @@ class SaleStateService {
         );
         deductions.push({ saleItem: item, deductions: [result] });
       } else {
-        // ✅ No batch selected – use FIFO
+        // No batch selected – use FIFO
         const result = await this.batchStateService.fifoDeduct(
           item.meat.id,
           item.weightKg,
@@ -147,7 +145,7 @@ class SaleStateService {
       }
     }
 
-    // --- STEP 3: Update sale total ---
+    // --- STEP 3: Update sale total (recalculate) ---
     let newTotal = 0;
     for (const item of newSaleItems) {
       newTotal += item.lineTotal;
@@ -168,7 +166,7 @@ class SaleStateService {
       sale.pointsEarn = pointsEarned;
     }
 
-    // --- STEP 5: Loyalty Points (Redeem & Earn) ---
+    // --- STEP 5: Apply loyalty points (redeem & earn) ---
     if (sale.customer) {
       const customerRepo = this._getRepo(queryRunner, Customer);
       const customer = await customerRepo.findOne({
@@ -213,21 +211,21 @@ class SaleStateService {
       }
     }
 
-    // --- STEP 6: Update sale status to paid ---
-    sale.status = "paid";
-    sale.updatedAt = new Date();
-    const paidSale = await updateDb(saleRepo, sale, { queryRunner });
+    // --- STEP 6: Save the updated sale (with new total and items) ---
+    // Note: We do not change the status here; it should already be 'paid'.
+    // We still need to persist the updated total and items.
+    const updatedSale = await updateDb(saleRepo, sale, { queryRunner });
 
-    // --- STEP 7: Audit log ---
+    // --- STEP 7: Audit log (status change is already logged elsewhere) ---
     await auditLogger.logUpdate(
       "Sale",
       saleId,
-      { status: "initiated" },
-      { status: "paid" },
+      { previousState: "initiated" }, // just for context
+      { newState: "paid", total: sale.totalAmount },
       user,
     );
 
-    // --- STEP 8: Side effects ---
+    // --- STEP 8: Non-critical side effects ---
     try {
       // Large sale notification
       if (sale.totalAmount > 10000) {
@@ -243,7 +241,6 @@ class SaleStateService {
       const printEnabled = await system.enableReceiptPrinting();
       if (printEnabled) {
         try {
-          const PrinterService = require("../services/Printer");
           const printerService = new PrinterService();
           await printerService.printReceipt(saleId);
           logger.info(`[SaleState] Receipt printed for sale #${saleId}`);
@@ -259,7 +256,6 @@ class SaleStateService {
       const drawerEnabled = await system.enableCashDrawer();
       if (drawerEnabled && sale.paymentMethod === "cash") {
         try {
-          const CashDrawerService = require("../services/CashDrawer");
           const cashDrawerService = new CashDrawerService();
           await cashDrawerService.openDrawer("sale");
           logger.info(`[SaleState] Cash drawer opened for sale #${saleId}`);
@@ -277,27 +273,22 @@ class SaleStateService {
       );
     }
 
-    logger.info(`[SaleState] Sale #${saleId} paid successfully`);
-    return paidSale;
+    logger.info(`[SaleState] onPaid completed for sale #${saleId}`);
+    return updatedSale;
   }
 
   /**
-   * Refund a sale – reverse all stock deductions and loyalty points
+   * React to a sale becoming 'refunded'.
+   * Reverses stock deductions and loyalty points.
    * @param {number} saleId
    * @param {string} reason
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async refundSale(saleId, reason = "", user = "system", queryRunner = null) {
-    const {
-      updateDb,
-      saveDb,
-      removeDb,
-    } = require("../utils/dbUtils/dbActions");
+  async onRefunded(saleId, reason = "", user = "system", queryRunner = null) {
+    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
 
     const saleRepo = this._getRepo(queryRunner, Sale);
-    const saleItemRepo = this._getRepo(queryRunner, SaleItem);
-
     const sale = await saleRepo.findOne({
       where: { id: saleId },
       relations: ["saleItems", "saleItems.batch", "saleItems.meat", "customer"],
@@ -306,11 +297,13 @@ class SaleStateService {
       throw new Error(`Sale #${saleId} not found`);
     }
 
-    if (sale.status !== "paid") {
-      throw new Error(`Cannot refund sale with status "${sale.status}"`);
+    if (sale.status !== "refunded") {
+      logger.warn(
+        `[SaleState] onRefunded called for sale #${saleId} with status '${sale.status}' – expected 'refunded'. Proceeding anyway.`,
+      );
     }
 
-    logger.info(`[SaleState] Refunding sale #${saleId}`);
+    logger.info(`[SaleState] Processing onRefunded for sale #${saleId}`);
 
     // --- STEP 1: Reverse stock for each sale item (add back to batch) ---
     for (const item of sale.saleItems) {
@@ -365,71 +358,75 @@ class SaleStateService {
       }
     }
 
-    // --- STEP 3: Update sale status ---
-    sale.status = "refunded";
-    sale.notes = sale.notes
-      ? `${sale.notes}\nRefunded: ${reason}`
-      : `Refunded: ${reason}`;
-    sale.updatedAt = new Date();
-    const refundedSale = await updateDb(saleRepo, sale, { queryRunner });
-
-    // --- STEP 4: Audit log ---
+    // --- STEP 3: Audit log (status already changed) ---
     await auditLogger.logUpdate(
       "Sale",
       saleId,
-      { status: "paid" },
-      { status: "refunded" },
+      { previousState: "paid" },
+      { newState: "refunded", reason },
       user,
     );
 
-    logger.info(`[SaleState] Sale #${saleId} refunded successfully`);
-    return refundedSale;
+    logger.info(`[SaleState] onRefunded completed for sale #${saleId}`);
+    return sale;
   }
 
   /**
-   * Void a sale (before payment) – no stock changes
+   * React to a sale becoming 'voided' (before payment).
+   * No stock changes – just logs and notifications.
    * @param {number} saleId
    * @param {string} reason
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async voidSale(saleId, reason = "", user = "system", queryRunner = null) {
+  async onVoided(saleId, reason = "", user = "system", queryRunner = null) {
     const { updateDb } = require("../utils/dbUtils/dbActions");
 
     const saleRepo = this._getRepo(queryRunner, Sale);
-
     const sale = await saleRepo.findOne({
       where: { id: saleId },
-      relations: ["saleItems", "customer"],
+      relations: ["customer"],
     });
     if (!sale) {
       throw new Error(`Sale #${saleId} not found`);
     }
 
-    if (sale.status !== "initiated") {
-      throw new Error(`Cannot void a sale with status "${sale.status}"`);
+    if (sale.status !== "voided") {
+      logger.warn(
+        `[SaleState] onVoided called for sale #${saleId} with status '${sale.status}' – expected 'voided'. Proceeding anyway.`,
+      );
     }
 
-    logger.info(`[SaleState] Voiding sale #${saleId}`);
+    logger.info(`[SaleState] Processing onVoided for sale #${saleId}`);
 
-    sale.status = "voided";
-    sale.notes = sale.notes
-      ? `${sale.notes}\nVoided: ${reason}`
-      : `Voided: ${reason}`;
-    sale.updatedAt = new Date();
-
-    const voidedSale = await updateDb(saleRepo, sale, { queryRunner });
-
+    // --- STEP 1: Audit log ---
     await auditLogger.logUpdate(
       "Sale",
       saleId,
-      { status: "initiated" },
-      { status: "voided" },
+      { previousState: "initiated" },
+      { newState: "voided", reason },
       user,
     );
 
-    logger.info(`[SaleState] Sale #${saleId} voided successfully`);
-    return voidedSale;
+    // --- STEP 2: Notification (optional) ---
+    try {
+      await notificationService.create(
+        {
+          userId: 1,
+          title: "Sale Voided",
+          message: `Sale #${saleId} was voided. Reason: ${reason || "No reason provided."}`,
+          type: "info",
+          metadata: { saleId, reason },
+        },
+        user,
+        queryRunner,
+      );
+    } catch (err) {
+      logger.error(`[SaleState] Failed to send void notification:`, err);
+    }
+
+    logger.info(`[SaleState] onVoided completed for sale #${saleId}`);
+    return sale;
   }
 
   // --- Helper methods for side effects ---
@@ -461,13 +458,6 @@ class SaleStateService {
    * @private
    */
   async _checkLoyaltyMilestone(customer, user, queryRunner) {
-    // ✅ Optionally use system thresholds for flexibility
-    // const vipThreshold = await system.loyaltyVipThreshold();
-    // const eliteThreshold = await system.loyaltyEliteThreshold();
-    // For now, keep simple check for demonstration
-    const thresholds = [100, 500, 1000, 5000];
-    const current = customer.lifetimePointsEarned || 0;
-
     try {
       await notificationService.create(
         {

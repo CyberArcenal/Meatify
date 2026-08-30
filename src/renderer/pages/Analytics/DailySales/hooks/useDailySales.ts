@@ -53,16 +53,35 @@ export const useDailySales = (initialParams: UseDailySalesParams = {}) => {
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Helper: get date string from timestamp (handles string, Date, or ISO)
+  const getDateString = useCallback((timestamp: any): string => {
+    if (!timestamp) return '';
+    if (typeof timestamp === 'string') {
+      return timestamp.split('T')[0];
+    }
+    if (timestamp instanceof Date) {
+      return timestamp.toISOString().split('T')[0];
+    }
+    // Fallback: try to convert
+    try {
+      return new Date(timestamp).toISOString().split('T')[0];
+    } catch {
+      return '';
+    }
+  }, []);
+
   // Helper: aggregate sales by date
   const aggregateByDate = useCallback((sales: DailySale[]) => {
     const map = new Map<string, { count: number; total: number; paidCount: number }>();
     sales.forEach(sale => {
-      const date = sale.timestamp.split('T')[0];
-      const current = map.get(date) || { count: 0, total: 0, paidCount: 0 };
+      if (!sale) return;
+      const dateStr = getDateString(sale.timestamp);
+      if (!dateStr) return;
+      const current = map.get(dateStr) || { count: 0, total: 0, paidCount: 0 };
       current.count += 1;
-      current.total += sale.totalAmount;
+      current.total += sale.totalAmount || 0;
       if (sale.status === 'paid') current.paidCount += 1;
-      map.set(date, current);
+      map.set(dateStr, current);
     });
     return Array.from(map.entries()).map(([date, agg]) => ({
       date,
@@ -71,7 +90,7 @@ export const useDailySales = (initialParams: UseDailySalesParams = {}) => {
       average: agg.count > 0 ? agg.total / agg.count : 0,
       paidCount: agg.paidCount,
     })).sort((a, b) => a.date.localeCompare(b.date));
-  }, []);
+  }, [getDateString]);
 
   const fetchData = useCallback(async () => {
     // Cancel previous request
@@ -84,7 +103,7 @@ export const useDailySales = (initialParams: UseDailySalesParams = {}) => {
     setLoading({ stats: true, chart: true, table: true });
     setError(null);
 
-    // ✅ CONDITIONAL PARAMS – iwasan ang undefined
+    // Build API params (only include if defined)
     const apiParams: any = {
       limit: 10000, // fetch many to aggregate client-side
     };
@@ -97,7 +116,7 @@ export const useDailySales = (initialParams: UseDailySalesParams = {}) => {
       const res = await dailySalesAPI.getData(apiParams);
       if (!controller.signal.aborted) {
         if (res.status) {
-          const sales = res.data.sales;
+          const sales = res.data.sales || [];
           const daily = aggregateByDate(sales);
 
           // Stats

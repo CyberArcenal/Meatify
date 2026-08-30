@@ -1,12 +1,21 @@
 // src/renderer/pages/inventory/batches/components/BatchFormDialog.tsx
-import React, { useState, useEffect } from "react";
-import { Loader2, Save, Package, Calendar, DollarSign, Hash } from "lucide-react";
+import React, { useState } from "react";
+import {
+  Loader2,
+  Save,
+  Package,
+  Calendar,
+  Hash,
+  Calculator,
+} from "lucide-react";
 import Modal from "../../../components/UI/Modal";
 import type { Batch } from "../../../api/core/batch";
 import batchAPI from "../../../api/core/batch";
 import { dialogs } from "../../../utils/dialogs";
 import MeatSelect from "../../../components/Selects/Meat";
 import SupplierSelect from "../../../components/Selects/Supplier";
+import { useBatchForm } from "../hooks/useBatchForm";
+import { formatCurrency } from "../../../utils/formatters";
 
 interface BatchFormDialogProps {
   isOpen: boolean;
@@ -21,47 +30,23 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const [form, setForm] = useState({
-    meatId: 0,
-    quantity: 0,
-    unitCost: 0,
-    expiryDate: "",
-    supplierId: undefined as number | undefined,
-    note: "",
-    batchCode: "",
-  });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    form,
+    error,
+    setError,
+    totalCost,
+    handleChange,
+    handleMeatChange,
+    handleSupplierChange,
+    resetForm,
+  } = useBatchForm(batch);
 
-  useEffect(() => {
-    if (batch) {
-      setForm({
-        meatId: batch.meatId,
-        quantity: batch.initialQuantity,
-        unitCost: batch.unitCost,
-        expiryDate: batch.expiryDate,
-        supplierId: batch.supplierId || undefined,
-        note: batch.note || "",
-        batchCode: batch.batchCode,
-      });
-    } else {
-      setForm({
-        meatId: 0,
-        quantity: 0,
-        unitCost: 0,
-        expiryDate: "",
-        supplierId: undefined,
-        note: "",
-        batchCode: "",
-      });
-    }
-  }, [batch, isOpen]);
+  const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    // Validation
     if (!form.meatId || form.meatId === 0) {
       setError("Please select a meat.");
       return;
@@ -82,7 +67,6 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
     setSaving(true);
     try {
       if (batch) {
-        // Update existing batch
         const res = await batchAPI.update(batch.id, {
           batchCode: form.batchCode || undefined,
           unitCost: form.unitCost,
@@ -92,7 +76,6 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
         if (!res.status) throw new Error(res.message);
         dialogs.success(`Batch ${form.batchCode} updated successfully.`);
       } else {
-        // Create new batch
         const res = await batchAPI.create({
           meatId: form.meatId,
           quantity: form.quantity,
@@ -113,25 +96,17 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({
-      ...prev,
-      [name]: name === "quantity" || name === "unitCost" ? parseFloat(value) || 0 : value,
-    }));
+  const handleClose = () => {
+    resetForm();
+    onClose();
   };
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
-      title={
-        <div className="flex items-center gap-2">
-          <Package className="w-5 h-5 text-[var(--accent-gold)]" />
-          {batch ? "Edit Batch" : "Create New Batch"}
-        </div>
-      }
-      size="md"
+      onClose={handleClose}
+      title={batch ? "Edit Batch" : "Create New Batch"}
+      size="lg"
       closeOnClickOutside={!saving}
       closeOnEsc={!saving}
     >
@@ -150,10 +125,13 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
               </label>
               <MeatSelect
                 value={form.meatId || null}
-                onChange={(id) => setForm((prev) => ({ ...prev, meatId: id || 0 }))}
+                onChange={handleMeatChange}
                 placeholder="Select meat..."
                 activeOnly
               />
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                Unit cost will be auto-filled from meat price.
+              </p>
             </div>
 
             <div>
@@ -162,7 +140,7 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
               </label>
               <SupplierSelect
                 value={form.supplierId || null}
-                onChange={(id) => setForm((prev) => ({ ...prev, supplierId: id || undefined }))}
+                onChange={handleSupplierChange}
                 placeholder="Select supplier..."
                 activeOnly
               />
@@ -220,7 +198,9 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
               Unit Cost (₱) <span className="text-[var(--accent-red)]">*</span>
             </label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--text-tertiary)] text-sm">₱</span>
+              <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--text-tertiary)] text-sm">
+                ₱
+              </span>
               <input
                 type="number"
                 name="unitCost"
@@ -232,7 +212,23 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
                 className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-8 pr-3 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)]"
               />
             </div>
+            <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+              Auto-filled from meat price; you can override.
+            </p>
           </div>
+        </div>
+
+        {/* ✅ Total Cost Display – auto-updates with quantity or unitCost */}
+        <div className="bg-[var(--card-secondary-bg)] rounded-lg p-3 border border-[var(--border-color)] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Calculator className="w-4 h-4 text-[var(--accent-gold)]" />
+            <span className="text-sm font-medium text-[var(--text-secondary)]">
+              Total Cost:
+            </span>
+          </div>
+          <span className="text-lg font-bold text-[var(--accent-gold)]">
+            {formatCurrency(totalCost.toFixed(2))}
+          </span>
         </div>
 
         <div>
@@ -269,7 +265,7 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
         <div className="flex justify-end gap-3 pt-4 border-t border-[var(--border-color)]">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             disabled={saving}
             className="px-5 py-2.5 border border-[var(--border-color)] rounded-lg text-[var(--text-primary)] hover:bg-[var(--card-hover-bg)] transition-colors font-medium disabled:opacity-50"
           >

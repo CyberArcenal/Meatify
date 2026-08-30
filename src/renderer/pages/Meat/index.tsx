@@ -351,14 +351,21 @@ const MeatPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
             title={showStats ? "Hide summary" : "Show summary"}
           >
-            {showStats ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {showStats ? (
+              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+            ) : (
+              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+            )}
           </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
             title={showFilters ? "Hide filters" : "Show filters"}
           >
-            <Filter className="w-4 h-4" />
+            <Filter
+              className="w-4 h-4"
+              style={{ color: "var(--text-primary)" }}
+            />
           </button>
           <button
             onClick={handleExportAll}
@@ -366,7 +373,9 @@ const MeatPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+            <Download style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
+            />
           </button>
           <button
             onClick={() => {
@@ -377,7 +386,7 @@ const MeatPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
           <button
             onClick={formDialog.openAdd}

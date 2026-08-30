@@ -73,14 +73,14 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
           // Compute summary from all items (unfiltered)
           const today = new Date().toISOString().split("T")[0];
           const todayTransactions = items.filter((t) => {
-            const txDate = t.timestamp.split("T")[0];
+            const txDate = new Date(t.timestamp).toISOString().split("T")[0];
             return txDate === today && t.status === "paid";
           });
           const revenue = todayTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
           const count = todayTransactions.length;
           const avg = count > 0 ? revenue / count : 0;
           const refundsToday = items.filter(
-            (t) => t.timestamp.split("T")[0] === today && t.status === "refunded"
+            (t) => new Date(t.timestamp).toISOString().split("T")[0] === today && t.status === "refunded"
           ).length;
 
           setSummary({
@@ -168,13 +168,13 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
   }, []);
 
   return {
-    transactions: filteredTransactions, // for table (filtered)
-    allTransactions, // for stats (unfiltered) – but summary is already computed
+    transactions: filteredTransactions,
+    allTransactions,
     filters,
     setFilters,
     loading,
     error,
-    totalItems: allTransactions.length, // for pagination (we might want to use API total instead)
+    totalItems: allTransactions.length,
     page,
     limit,
     summary,

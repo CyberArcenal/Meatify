@@ -57,8 +57,9 @@ export const useMeatForm = () => {
       description: meat.description || "",
       pricePerKg: meat.pricePerKg,
       isActive: meat.isActive,
-      categoryId: meat.categoryId || undefined,
-      supplierId: meat.supplierId || undefined,
+      // ✅ Gamitin ang nested object kung walang direct na ID
+      categoryId: meat.categoryId ?? meat.category?.id ?? undefined,
+      supplierId: meat.supplierId ?? meat.supplier?.id ?? undefined,
       image: meat.image || null,
     });
     setIsOpen(true);

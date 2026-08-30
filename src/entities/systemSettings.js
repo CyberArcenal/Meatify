@@ -2,10 +2,6 @@
 const { EntitySchema } = require("typeorm");
 
 const SettingType = {
-  EMAIL: "email",
-  ATTENDANCE: "attendance",
-  DEVICE: "device",
-  INVENTORY_SYNC: "inventory_sync",
   GENERAL: "general",
   INVENTORY: "inventory",
   SALES: "sales",
@@ -14,7 +10,7 @@ const SettingType = {
   DATA_REPORTS: "data_reports",
   INTEGRATIONS: "integrations",
   AUDIT_SECURITY: "audit_security",
-};
+}
 
 const SystemSetting = new EntitySchema({
   name: "SystemSetting",

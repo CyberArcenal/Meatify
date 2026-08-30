@@ -88,7 +88,9 @@ class SaleItemService {
     try {
       return await system.auditLogEnabled();
     } catch (error) {
-      logger.warn(`[SaleItem] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[SaleItem] Failed to check audit enabled status: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
@@ -102,7 +104,9 @@ class SaleItemService {
     try {
       return await system.taxRate();
     } catch (error) {
-      logger.warn(`[SaleItem] Failed to get tax rate: ${error.message}, defaulting to 0`);
+      logger.warn(
+        `[SaleItem] Failed to get tax rate: ${error.message}, defaulting to 0`,
+      );
       return 0;
     }
   }
@@ -116,7 +120,9 @@ class SaleItemService {
     try {
       return await system.enableDiscounts();
     } catch (error) {
-      logger.warn(`[SaleItem] Failed to check discounts enabled: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[SaleItem] Failed to check discounts enabled: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
@@ -130,7 +136,9 @@ class SaleItemService {
     try {
       return await system.maxDiscountPercent();
     } catch (error) {
-      logger.warn(`[SaleItem] Failed to get max discount percent: ${error.message}, defaulting to 20`);
+      logger.warn(
+        `[SaleItem] Failed to get max discount percent: ${error.message}, defaulting to 20`,
+      );
       return 20;
     }
   }
@@ -142,9 +150,15 @@ class SaleItemService {
    */
   async _getMaxWeightKg(qr = null) {
     try {
-      return await system.getDecimal("max_sale_weight_kg", SettingType.SALES, 999.999);
+      return await system.getDecimal(
+        "max_sale_weight_kg",
+        SettingType.SALES,
+        999.999,
+      );
     } catch (error) {
-      logger.warn(`[SaleItem] Failed to get max weight: ${error.message}, defaulting to 999.999`);
+      logger.warn(
+        `[SaleItem] Failed to get max weight: ${error.message}, defaulting to 999.999`,
+      );
       return 999.999;
     }
   }
@@ -156,9 +170,15 @@ class SaleItemService {
    */
   async _getMaxUnitPrice(qr = null) {
     try {
-      return await system.getDecimal("max_sale_unit_price", SettingType.SALES, 9999.99);
+      return await system.getDecimal(
+        "max_sale_unit_price",
+        SettingType.SALES,
+        9999.99,
+      );
     } catch (error) {
-      logger.warn(`[SaleItem] Failed to get max unit price: ${error.message}, defaulting to 9999.99`);
+      logger.warn(
+        `[SaleItem] Failed to get max unit price: ${error.message}, defaulting to 9999.99`,
+      );
       return 9999.99;
     }
   }
@@ -170,9 +190,15 @@ class SaleItemService {
    */
   async _getMaxLineTotal(qr = null) {
     try {
-      return await system.getDecimal("max_sale_line_total", SettingType.SALES, 999999.99);
+      return await system.getDecimal(
+        "max_sale_line_total",
+        SettingType.SALES,
+        999999.99,
+      );
     } catch (error) {
-      logger.warn(`[SaleItem] Failed to get max line total: ${error.message}, defaulting to 999999.99`);
+      logger.warn(
+        `[SaleItem] Failed to get max line total: ${error.message}, defaulting to 999999.99`,
+      );
       return 999999.99;
     }
   }
@@ -184,9 +210,15 @@ class SaleItemService {
    */
   async _getRetentionDays(qr = null) {
     try {
-      return await system.getInt("sale_item_retention_days", SettingType.SALES, 730);
+      return await system.getInt(
+        "sale_item_retention_days",
+        SettingType.SALES,
+        730,
+      );
     } catch (error) {
-      logger.warn(`[SaleItem] Failed to get retention days: ${error.message}, defaulting to 730`);
+      logger.warn(
+        `[SaleItem] Failed to get retention days: ${error.message}, defaulting to 730`,
+      );
       return 730;
     }
   }
@@ -214,10 +246,18 @@ class SaleItemService {
       if (!data.saleId) throw new Error("saleId is required");
       if (!data.meatId) throw new Error("meatId is required");
       if (!data.batchId) throw new Error("batchId is required");
-      if (data.weightKg === undefined || data.weightKg === null || data.weightKg <= 0) {
+      if (
+        data.weightKg === undefined ||
+        data.weightKg === null ||
+        data.weightKg <= 0
+      ) {
         throw new Error("weightKg must be greater than 0");
       }
-      if (data.unitPrice === undefined || data.unitPrice === null || data.unitPrice < 0) {
+      if (
+        data.unitPrice === undefined ||
+        data.unitPrice === null ||
+        data.unitPrice < 0
+      ) {
         throw new Error("unitPrice must be non-negative");
       }
 
@@ -231,12 +271,16 @@ class SaleItemService {
 
       // ✅ Validate max weight
       if (data.weightKg > maxWeight) {
-        throw new Error(`Weight ${data.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`);
+        throw new Error(
+          `Weight ${data.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`,
+        );
       }
 
       // ✅ Validate max unit price
       if (data.unitPrice > maxUnitPrice) {
-        throw new Error(`Unit price ₱${data.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
+        throw new Error(
+          `Unit price ₱${data.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
+        );
       }
 
       // Validate sale exists
@@ -246,18 +290,24 @@ class SaleItemService {
       }
 
       // Validate meat exists and is active
-      const meat = await meatRepo.findOne({ where: { id: data.meatId, isActive: true } });
+      const meat = await meatRepo.findOne({
+        where: { id: data.meatId, isActive: true },
+      });
       if (!meat) {
         throw new Error(`Meat with ID ${data.meatId} not found or inactive`);
       }
 
       // Validate batch exists and belongs to the meat
       const batch = await batchRepo.findOne({ where: { id: data.batchId } });
+
       if (!batch) {
         throw new Error(`Batch with ID ${data.batchId} not found`);
       }
-      if (batch.meatId !== data.meatId) {
-        throw new Error(`Batch #${data.batchId} does not belong to meat #${data.meatId}`);
+
+      if (!batch.meat || batch.meat.id !== data.meatId) {
+        throw new Error(
+          `Batch #${data.batchId} does not belong to meat #${data.meatId}`,
+        );
       }
 
       // ✅ Validate tax
@@ -272,10 +322,11 @@ class SaleItemService {
         if (!discountsEnabled) {
           throw new Error("Discounts are disabled in system settings");
         }
-        const discountPercent = (discount / (data.unitPrice * data.weightKg)) * 100;
+        const discountPercent =
+          (discount / (data.unitPrice * data.weightKg)) * 100;
         if (discountPercent > maxDiscountPercent) {
           throw new Error(
-            `Discount ${discountPercent.toFixed(1)}% exceeds maximum allowed of ${maxDiscountPercent}%`
+            `Discount ${discountPercent.toFixed(1)}% exceeds maximum allowed of ${maxDiscountPercent}%`,
           );
         }
       }
@@ -283,12 +334,14 @@ class SaleItemService {
       // Compute lineTotal if not provided
       let lineTotal = data.lineTotal;
       if (lineTotal === undefined || lineTotal === null) {
-        lineTotal = (data.unitPrice * data.weightKg) - discount + tax;
+        lineTotal = data.unitPrice * data.weightKg - discount + tax;
       }
 
       // ✅ Validate max line total
       if (lineTotal > maxLineTotal) {
-        throw new Error(`Line total ₱${lineTotal} exceeds maximum allowed of ₱${maxLineTotal}`);
+        throw new Error(
+          `Line total ₱${lineTotal} exceeds maximum allowed of ₱${maxLineTotal}`,
+        );
       }
 
       const saleItem = saleItemRepo.create({
@@ -312,7 +365,9 @@ class SaleItemService {
         await auditLogger.logCreate("SaleItem", saved.id, saved, user);
       }
 
-      logger.debug(`SaleItem created: #${saved.id} - Meat: ${meat.name}, Weight: ${saved.weightKg}kg`);
+      logger.debug(
+        `SaleItem created: #${saved.id} - Meat: ${meat.name}, Weight: ${saved.weightKg}kg`,
+      );
       return saved;
     } catch (error) {
       console.error("Failed to create sale item:", error.message);
@@ -333,14 +388,23 @@ class SaleItemService {
     const repo = this._getRepo(qr, SaleItem);
 
     try {
-      const existing = await repo.findOne({ where: { id }, relations: ["sale", "meat", "batch"] });
+      const existing = await repo.findOne({
+        where: { id },
+        relations: ["sale", "meat", "batch"],
+      });
       if (!existing) {
         throw new Error(`SaleItem with ID ${id} not found`);
       }
 
       // Prevent changing sale, meat, or batch
-      if (data.saleId !== undefined || data.meatId !== undefined || data.batchId !== undefined) {
-        throw new Error("Cannot change saleId, meatId, or batchId after creation");
+      if (
+        data.saleId !== undefined ||
+        data.meatId !== undefined ||
+        data.batchId !== undefined
+      ) {
+        throw new Error(
+          "Cannot change saleId, meatId, or batchId after creation",
+        );
       }
 
       const oldData = { ...existing };
@@ -355,49 +419,76 @@ class SaleItemService {
 
       // Update fields if provided
       if (data.weightKg !== undefined) {
-        if (data.weightKg <= 0) throw new Error("weightKg must be greater than 0");
+        if (data.weightKg <= 0)
+          throw new Error("weightKg must be greater than 0");
         if (data.weightKg > maxWeight) {
-          throw new Error(`Weight ${data.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`);
+          throw new Error(
+            `Weight ${data.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`,
+          );
         }
         existing.weightKg = data.weightKg;
-        existing.lineTotal = (existing.unitPrice * existing.weightKg) - existing.discount + existing.tax;
+        existing.lineTotal =
+          existing.unitPrice * existing.weightKg -
+          existing.discount +
+          existing.tax;
       }
       if (data.unitPrice !== undefined) {
-        if (data.unitPrice < 0) throw new Error("unitPrice must be non-negative");
+        if (data.unitPrice < 0)
+          throw new Error("unitPrice must be non-negative");
         if (data.unitPrice > maxUnitPrice) {
-          throw new Error(`Unit price ₱${data.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
+          throw new Error(
+            `Unit price ₱${data.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
+          );
         }
         existing.unitPrice = data.unitPrice;
-        existing.lineTotal = (existing.unitPrice * existing.weightKg) - existing.discount + existing.tax;
+        existing.lineTotal =
+          existing.unitPrice * existing.weightKg -
+          existing.discount +
+          existing.tax;
       }
       if (data.discount !== undefined) {
         if (data.discount > 0 && !discountsEnabled) {
           throw new Error("Discounts are disabled in system settings");
         }
         if (data.discount > 0) {
-          const discountPercent = (data.discount / (existing.unitPrice * existing.weightKg)) * 100;
+          const discountPercent =
+            (data.discount / (existing.unitPrice * existing.weightKg)) * 100;
           if (discountPercent > maxDiscountPercent) {
             throw new Error(
-              `Discount ${discountPercent.toFixed(1)}% exceeds maximum allowed of ${maxDiscountPercent}%`
+              `Discount ${discountPercent.toFixed(1)}% exceeds maximum allowed of ${maxDiscountPercent}%`,
             );
           }
         }
         existing.discount = data.discount;
-        existing.lineTotal = (existing.unitPrice * existing.weightKg) - existing.discount + existing.tax;
+        existing.lineTotal =
+          existing.unitPrice * existing.weightKg -
+          existing.discount +
+          existing.tax;
       }
       if (data.tax !== undefined) {
         if (data.tax > taxRate) {
-          throw new Error(`Tax ${data.tax}% exceeds maximum tax rate of ${taxRate}%`);
+          throw new Error(
+            `Tax ${data.tax}% exceeds maximum tax rate of ${taxRate}%`,
+          );
         }
         existing.tax = data.tax;
-        existing.lineTotal = (existing.unitPrice * existing.weightKg) - existing.discount + existing.tax;
+        existing.lineTotal =
+          existing.unitPrice * existing.weightKg -
+          existing.discount +
+          existing.tax;
       }
       if (data.lineTotal !== undefined) {
         // Allow manual lineTotal override if no other fields changed
-        if (data.weightKg === undefined && data.unitPrice === undefined &&
-            data.discount === undefined && data.tax === undefined) {
+        if (
+          data.weightKg === undefined &&
+          data.unitPrice === undefined &&
+          data.discount === undefined &&
+          data.tax === undefined
+        ) {
           if (data.lineTotal > maxLineTotal) {
-            throw new Error(`Line total ₱${data.lineTotal} exceeds maximum allowed of ₱${maxLineTotal}`);
+            throw new Error(
+              `Line total ₱${data.lineTotal} exceeds maximum allowed of ₱${maxLineTotal}`,
+            );
           }
           existing.lineTotal = data.lineTotal;
         }
@@ -442,7 +533,9 @@ class SaleItemService {
     const saleRepo = this._getRepo(qr, this.saleRepository.target);
     const sale = await saleRepo.findOne({ where: { id: item.saleId } });
     if (sale && sale.status === "paid") {
-      throw new Error(`Cannot delete item from a paid sale. Use state service to refund.`);
+      throw new Error(
+        `Cannot delete item from a paid sale. Use state service to refund.`,
+      );
     }
     if (sale && sale.status === "refunded") {
       throw new Error(`Cannot delete item from a refunded sale.`);
@@ -517,19 +610,29 @@ class SaleItemService {
       qb.andWhere("saleItem.batchId = :batchId", { batchId: options.batchId });
     }
     if (options.minWeight !== undefined) {
-      qb.andWhere("saleItem.weightKg >= :minWeight", { minWeight: options.minWeight });
+      qb.andWhere("saleItem.weightKg >= :minWeight", {
+        minWeight: options.minWeight,
+      });
     }
     if (options.maxWeight !== undefined) {
-      qb.andWhere("saleItem.weightKg <= :maxWeight", { maxWeight: options.maxWeight });
+      qb.andWhere("saleItem.weightKg <= :maxWeight", {
+        maxWeight: options.maxWeight,
+      });
     }
     if (options.minAmount !== undefined) {
-      qb.andWhere("saleItem.lineTotal >= :minAmount", { minAmount: options.minAmount });
+      qb.andWhere("saleItem.lineTotal >= :minAmount", {
+        minAmount: options.minAmount,
+      });
     }
     if (options.maxAmount !== undefined) {
-      qb.andWhere("saleItem.lineTotal <= :maxAmount", { maxAmount: options.maxAmount });
+      qb.andWhere("saleItem.lineTotal <= :maxAmount", {
+        maxAmount: options.maxAmount,
+      });
     }
     if (options.startDate) {
-      qb.andWhere("saleItem.createdAt >= :startDate", { startDate: new Date(options.startDate) });
+      qb.andWhere("saleItem.createdAt >= :startDate", {
+        startDate: new Date(options.startDate),
+      });
     }
     if (options.endDate) {
       const end = new Date(options.endDate);
@@ -539,14 +642,16 @@ class SaleItemService {
     if (options.search) {
       qb.andWhere(
         "(meat.name LIKE :search OR CAST(sale.id AS TEXT) LIKE :search OR batch.batchCode LIKE :search)",
-        { search: `%${options.search}%` }
+        { search: `%${options.search}%` },
       );
     }
 
     // Sorting
     let sortBy = options.sortBy || "createdAt";
     if (!ALLOWED_SORT_COLUMNS.has(sortBy)) {
-      console.warn(`[SaleItem] Invalid sortBy: ${sortBy}, falling back to createdAt`);
+      console.warn(
+        `[SaleItem] Invalid sortBy: ${sortBy}, falling back to createdAt`,
+      );
       sortBy = "createdAt";
     }
     const sortOrder = options.sortOrder === "ASC" ? "ASC" : "DESC";
@@ -647,7 +752,15 @@ class SaleItemService {
   async exportItems(format = "json", filters = {}, user = "system", qr = null) {
     try {
       // Fetch all data without pagination for export
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
+      const result = await this.findAll(
+        {
+          ...filters,
+          limit: undefined,
+          page: undefined,
+          ignoreRetention: true,
+        },
+        qr,
+      );
       const items = result.data;
 
       let exportData;
@@ -770,8 +883,16 @@ class SaleItemService {
           tax: record.tax ? parseFloat(record.tax) : 0,
           lineTotal: record.lineTotal ? parseFloat(record.lineTotal) : null,
         };
-        if (!data.saleId || !data.meatId || !data.batchId || !data.weightKg || data.unitPrice === undefined) {
-          throw new Error("saleId, meatId, batchId, weightKg, and unitPrice are required");
+        if (
+          !data.saleId ||
+          !data.meatId ||
+          !data.batchId ||
+          !data.weightKg ||
+          data.unitPrice === undefined
+        ) {
+          throw new Error(
+            "saleId, meatId, batchId, weightKg, and unitPrice are required",
+          );
         }
         const saved = await this.create(data, user, qr);
         results.imported.push(saved);
@@ -810,7 +931,9 @@ class SaleItemService {
       .getMany();
 
     if (oldItems.length === 0) {
-      logger.info(`[SaleItem] No old items to clean up (threshold: ${daysOld} days)`);
+      logger.info(
+        `[SaleItem] No old items to clean up (threshold: ${daysOld} days)`,
+      );
       return { count: 0 };
     }
 
@@ -825,13 +948,17 @@ class SaleItemService {
         }
 
         deletedCount++;
-        logger.debug(`[SaleItem] Deleted item #${item.id} (older than ${daysOld} days)`);
+        logger.debug(
+          `[SaleItem] Deleted item #${item.id} (older than ${daysOld} days)`,
+        );
       } catch (err) {
         logger.error(`[SaleItem] Failed to delete item #${item.id}:`, err);
       }
     }
 
-    logger.info(`[SaleItem] Cleaned up ${deletedCount} old items (older than ${daysOld} days)`);
+    logger.info(
+      `[SaleItem] Cleaned up ${deletedCount} old items (older than ${daysOld} days)`,
+    );
     return { count: deletedCount };
   }
 

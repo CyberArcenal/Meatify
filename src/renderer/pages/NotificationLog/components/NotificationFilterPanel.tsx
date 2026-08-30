@@ -32,7 +32,10 @@ export const NotificationFilterPanel: React.FC<NotificationFilterPanelProps> = (
     <div className="bg-[var(--card-bg)] border border-[var(--border-color)]/20 rounded-lg p-5 mt-4">
       <div className="flex justify-between items-center mb-4">
         <h3 className="text-md font-semibold text-[var(--text-primary)] flex items-center gap-2">
-          <Filter className="w-4 h-4" /> Filter Notifications
+          <Filter
+              className="w-4 h-4"
+              style={{ color: "var(--text-primary)" }}
+            /> Filter Notifications
         </h3>
         <button
           onClick={onClear}

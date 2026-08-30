@@ -1,7 +1,7 @@
 // src/renderer/pages/inventory/stock/hooks/useStockLevels.ts
 import { useState, useEffect, useCallback } from "react";
 import meatAPI, { type Meat } from "../../../api/core/meat";
-import batchAPI, { type Batch } from "../../../api/core/batch";
+import batchAPI from "../../../api/core/batch";
 import supplierAPI, { type Supplier } from "../../../api/core/supplier";
 import categoryAPI, { type Category } from "../../../api/core/category";
 
@@ -54,6 +54,9 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
     ...initialFilters,
   });
 
+  const DEFAULT_REORDER_LEVEL = 10;
+  const DEFAULT_REORDER_QTY = 20;
+
   const fetchFilterData = useCallback(async () => {
     try {
       const [suppliersRes, categoriesRes] = await Promise.all([
@@ -80,6 +83,7 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
       setError(null);
 
       try {
+        // 1. Fetch active meats with pagination and filters
         const meatParams: any = {
           page: p,
           limit: l,
@@ -88,6 +92,7 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
           supplierId: filters.supplierId,
           sortBy: filters.sortBy,
           sortOrder: filters.sortOrder,
+          isActive: true,
         };
 
         const meatResponse = await meatAPI.getAll(meatParams);
@@ -95,6 +100,7 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
         const meatItems = meatResponse.data.items || [];
         const total = meatResponse.data.total || 0;
 
+        // 2. Fetch all active batches to compute current stock
         const batchResponse = await batchAPI.getAll({
           status: "active",
           limit: 10000,
@@ -102,17 +108,19 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
         if (!batchResponse.status) throw new Error(batchResponse.message);
         const batches = batchResponse.data.items || [];
 
+        // 3. Build stock map: meatId -> total remaining quantity
         const stockMap = new Map<number, number>();
         batches.forEach((batch) => {
           const current = stockMap.get(batch.meatId) || 0;
           stockMap.set(batch.meatId, current + batch.remainingQuantity);
         });
 
-        const defaultThreshold = 10;
+        // 4. Build StockMeat array
         const stockMeats: StockMeat[] = meatItems.map((meat) => {
           const currentStock = stockMap.get(meat.id) || 0;
-          const reorderLevel = (meat as any).reorderLevel || defaultThreshold;
-          const reorderQty = (meat as any).reorderQty || 20;
+          // Future: extend Meat with reorderLevel/reorderQty
+          const reorderLevel = (meat as any).reorderLevel || DEFAULT_REORDER_LEVEL;
+          const reorderQty = (meat as any).reorderQty || DEFAULT_REORDER_QTY;
 
           return {
             ...meat,
@@ -122,6 +130,7 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
           };
         });
 
+        // 5. Apply stock status filter (if not "all")
         let filteredMeats = stockMeats;
         if (filters.stockStatus !== "all") {
           filteredMeats = stockMeats.filter((m) => {
@@ -138,7 +147,7 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
         if (options?.page !== undefined) setPage(p);
         if (options?.limit !== undefined) setLimit(l);
 
-        // Compute summary
+        // 6. Compute summary based on filteredMeats
         const totalStockValue = filteredMeats.reduce(
           (sum, m) => sum + m.currentStock * m.pricePerKg,
           0
@@ -160,6 +169,14 @@ export const useStockLevels = (initialFilters?: Partial<StockFilters>) => {
         const message = err instanceof Error ? err.message : "Failed to fetch stock data";
         setError(message);
         setTotalItems(0);
+        setMeats([]);
+        setSummary({
+          totalMeats: 0,
+          totalStockValue: 0,
+          lowStockCount: 0,
+          outOfStockCount: 0,
+          inStockCount: 0,
+        });
       } finally {
         setLoading(false);
       }

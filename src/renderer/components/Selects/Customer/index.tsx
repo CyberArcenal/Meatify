@@ -29,7 +29,11 @@ const CustomerSelect: React.FC<CustomerSelectProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [dropdownStyle, setDropdownStyle] = useState({ top: 0, left: 0, width: 0 });
+  const [dropdownStyle, setDropdownStyle] = useState({
+    top: 0,
+    left: 0,
+    width: 0,
+  });
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -73,8 +77,8 @@ const CustomerSelect: React.FC<CustomerSelectProps> = ({
         (c) =>
           c.name.toLowerCase().includes(lower) ||
           (c.email && c.email.toLowerCase().includes(lower)) ||
-          (c.phone && c.phone.toLowerCase().includes(lower))
-      )
+          (c.phone && c.phone.toLowerCase().includes(lower)),
+      ),
     );
   }, [searchTerm, customers]);
 
@@ -176,12 +180,20 @@ const CustomerSelect: React.FC<CustomerSelectProps> = ({
           minHeight: "42px",
         }}
       >
-        <Users className="w-4 h-4 flex-shrink-0" style={{ color: "var(--accent-gold)" }} />
+        <Users
+          className="w-4 h-4 flex-shrink-0"
+          style={{ color: "var(--accent-gold)" }}
+        />
         <div className="flex-1 min-w-0">
           {selectedCustomer ? (
-            <span className="font-medium truncate">{selectedCustomer.name}</span>
+            <span className="font-medium truncate">
+              {selectedCustomer.name}
+            </span>
           ) : (
-            <span className="truncate" style={{ color: "var(--text-secondary)" }}>
+            <span
+              className="truncate"
+              style={{ color: "var(--text-secondary)" }}
+            >
               {placeholder}
             </span>
           )}
@@ -228,7 +240,10 @@ const CustomerSelect: React.FC<CustomerSelectProps> = ({
               maxHeight: "350px",
             }}
           >
-            <div className="p-2 border-b" style={{ borderColor: "var(--border-color)" }}>
+            <div
+              className="p-2 border-b"
+              style={{ borderColor: "var(--border-color)" }}
+            >
               <div className="relative">
                 <Search
                   className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4"
@@ -252,11 +267,17 @@ const CustomerSelect: React.FC<CustomerSelectProps> = ({
 
             <div className="overflow-y-auto" style={{ maxHeight: "250px" }}>
               {loading && customers.length === 0 ? (
-                <div className="p-3 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
+                <div
+                  className="p-3 text-center text-sm"
+                  style={{ color: "var(--text-secondary)" }}
+                >
                   Loading...
                 </div>
               ) : filteredCustomers.length === 0 ? (
-                <div className="p-3 text-center text-sm" style={{ color: "var(--text-secondary)" }}>
+                <div
+                  className="p-3 text-center text-sm"
+                  style={{ color: "var(--text-secondary)" }}
+                >
                   No customers found
                 </div>
               ) : (
@@ -266,14 +287,22 @@ const CustomerSelect: React.FC<CustomerSelectProps> = ({
                     type="button"
                     onClick={() => handleSelect(customer)}
                     className={`w-full px-3 py-2 text-left flex items-center gap-2 transition-colors text-sm cursor-pointer hover:bg-[var(--card-hover-bg)] ${
-                      customer.id === value ? "bg-[var(--accent-gold-light)]" : ""
+                      customer.id === value
+                        ? "bg-[var(--accent-gold-light)]"
+                        : ""
                     }`}
                     style={{ borderBottom: "1px solid var(--border-color)" }}
                   >
-                    <Users className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "var(--accent-gold)" }} />
+                    <Users
+                      className="w-3.5 h-3.5 flex-shrink-0"
+                      style={{ color: "var(--accent-gold)" }}
+                    />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium truncate" style={{ color: "var(--text-primary)" }}>
+                        <span
+                          className="font-medium truncate"
+                          style={{ color: "var(--text-primary)" }}
+                        >
                           {customer.name}
                         </span>
                         <span
@@ -283,14 +312,22 @@ const CustomerSelect: React.FC<CustomerSelectProps> = ({
                             color: getStatusColor(customer.status),
                           }}
                         >
-                          {customer.status}
+                          <span style={{ color: "var(--text-primary)" }}>
+                            {customer.status}
+                          </span>
                         </span>
                       </div>
-                      <div className="flex items-center gap-3 text-xs" style={{ color: "var(--text-tertiary)" }}>
+                      <div
+                        className="flex items-center gap-3 text-xs"
+                        style={{ color: "var(--text-tertiary)" }}
+                      >
                         {customer.email && <span>{customer.email}</span>}
                         {customer.phone && <span>{customer.phone}</span>}
                         <span className="flex items-center gap-1">
-                          <Star className="w-3 h-3" style={{ color: "var(--accent-gold)" }} />
+                          <Star
+                            className="w-3 h-3"
+                            style={{ color: "var(--accent-gold)" }}
+                          />
                           {customer.loyaltyPointsBalance}
                         </span>
                       </div>
@@ -300,7 +337,7 @@ const CustomerSelect: React.FC<CustomerSelectProps> = ({
               )}
             </div>
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

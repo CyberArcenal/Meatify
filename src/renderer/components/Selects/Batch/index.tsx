@@ -319,7 +319,7 @@ const BatchSelect: React.FC<BatchSelectProps> = ({
                         style={{ color: "var(--text-tertiary)" }}
                       >
                         {batch.meat && <span className="truncate">{batch.meat.name}</span>}
-                        <span className="flex-shrink-0">{batch.remainingQuantity}kg</span>
+                        <span className="flex-shrink-0">{batch.remainingQuantity.toFixed(2)}kg</span>
                         <span className="flex items-center gap-1 flex-shrink-0">
                           <Calendar className="w-3 h-3" />
                           {format(new Date(batch.expiryDate), "MMM dd, yyyy")}

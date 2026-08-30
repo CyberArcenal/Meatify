@@ -65,14 +65,14 @@ const MovementPage: React.FC = () => {
     (newPage: number) => {
       goToPage(newPage);
     },
-    [goToPage]
+    [goToPage],
   );
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
       changeLimit(newSize);
     },
-    [changeLimit]
+    [changeLimit],
   );
 
   const handlersRef = useRef({
@@ -122,7 +122,7 @@ const MovementPage: React.FC = () => {
     (key: keyof MovementFilters, value: any) => {
       setFilters((prev) => ({ ...prev, [key]: value }));
     },
-    [setFilters]
+    [setFilters],
   );
 
   // ─── Export ────────────────────────────────────────────────────
@@ -132,19 +132,25 @@ const MovementPage: React.FC = () => {
       const response = await inventoryMovementAPI.export({
         format: "csv",
         filters: {
-          movementType: filters.movementType === "all" ? undefined : filters.movementType,
+          movementType:
+            filters.movementType === "all" ? undefined : filters.movementType,
           startDate: filters.startDate,
           endDate: filters.endDate,
           search: filters.search || undefined,
-          direction: filters.direction === "all" ? undefined : filters.direction,
+          direction:
+            filters.direction === "all" ? undefined : filters.direction,
         },
       });
       if (response.status && response.data) {
-        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const blob = new Blob([response.data.data as string], {
+          type: "text/csv",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = response.data.filename || `movements_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          response.data.filename ||
+          `movements_export_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         dialogs.success("Export completed.");
@@ -157,12 +163,22 @@ const MovementPage: React.FC = () => {
   };
 
   const handleBulkExport = () => {
-    const selectedMovements = movements.filter((m) => selectedIds.includes(m.id));
+    const selectedMovements = movements.filter((m) =>
+      selectedIds.includes(m.id),
+    );
     if (selectedMovements.length === 0) {
       dialogs.warning("No items selected for export.");
       return;
     }
-    const headers = ["ID", "Meat", "Batch", "Type", "Qty Change", "Date", "Notes"];
+    const headers = [
+      "ID",
+      "Meat",
+      "Batch",
+      "Type",
+      "Qty Change",
+      "Date",
+      "Notes",
+    ];
     const rows = selectedMovements.map((m) => [
       m.id,
       m.meat?.name || `Meat #${m.meatId}`,
@@ -195,7 +211,8 @@ const MovementPage: React.FC = () => {
             Inventory Movements
           </h1>
           <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-            Track all inventory changes including sales, returns, and adjustments
+            Track all inventory changes including sales, returns, and
+            adjustments
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -204,14 +221,21 @@ const MovementPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
             title={showStats ? "Hide summary" : "Show summary"}
           >
-            {showStats ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {showStats ? (
+              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+            ) : (
+              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+            )}
           </button>
           <button
             onClick={() => setShowFilters(!showFilters)}
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
             title={showFilters ? "Hide filters" : "Show filters"}
           >
-            <Filter className="w-4 h-4" />
+            <Filter
+              className="w-4 h-4"
+              style={{ color: "var(--text-primary)" }}
+            />
           </button>
           <button
             onClick={handleExportAll}
@@ -219,7 +243,9 @@ const MovementPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`} />
+            <Download style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
+            />
           </button>
           <button
             onClick={() => {
@@ -229,7 +255,7 @@ const MovementPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>
@@ -265,7 +291,9 @@ const MovementPage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading movements</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading movements
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit })}
@@ -281,7 +309,7 @@ const MovementPage: React.FC = () => {
           selectedIds={selectedIds}
           onSelectRow={(id, checked) => {
             setSelectedIds((prev) =>
-              checked ? [...prev, id] : prev.filter((i) => i !== id)
+              checked ? [...prev, id] : prev.filter((i) => i !== id),
             );
           }}
           onSelectAll={(checked) => {

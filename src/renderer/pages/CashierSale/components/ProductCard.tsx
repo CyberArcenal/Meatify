@@ -1,5 +1,5 @@
 // src/renderer/pages/Cashier/components/ProductCard.tsx
-import React, { useMemo, useCallback, useState } from "react";
+import React, { useMemo, useCallback, useState, useRef } from "react";
 import { Package, Loader2, Beef, Tag } from "lucide-react";
 import Decimal from "decimal.js";
 import type { Product } from "../types";
@@ -19,6 +19,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
   const { getBestBatch } = useBatchAutoSelect();
   const { getBatchForMeat } = useBatchCache();
   const [isAdding, setIsAdding] = useState(false);
+  const isAddingRef = useRef(false); // ✅ Para maiwasan ang double-click
 
   const isDisabled = !allowNegativeStock && product.stockQty === 0;
 
@@ -29,14 +30,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
   }, [product.stockQty, stockAlertThreshold]);
 
   const handleAdd = useCallback(async () => {
-    if (isAdding || isDisabled) return;
+    // ✅ Agad na tignan ang ref para hindi na magpatuloy kung may ongoing na add
+    if (isAddingRef.current || isDisabled) return;
 
+    isAddingRef.current = true;
     setIsAdding(true);
+
     try {
       const cached = getBatchForMeat(product.id);
       if (cached) {
         onAdd(product, cached.batchId, cached.batchCode);
-        setIsAdding(false);
         return;
       }
 
@@ -50,9 +53,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
       console.error("Failed to get batch for product:", error);
       onAdd(product, null, null);
     } finally {
+      isAddingRef.current = false;
       setIsAdding(false);
     }
-  }, [product, getBestBatch, getBatchForMeat, onAdd, isAdding, isDisabled]);
+  }, [product, getBestBatch, getBatchForMeat, onAdd, isDisabled]);
 
   return (
     <button
@@ -97,7 +101,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onAdd }) => {
 
         {/* Stock */}
         <p className="text-xs mt-1.5 font-medium" style={{ color: stockStatus.color }}>
-          {product.stockQty} kg available
+          {product.stockQty.toFixed(2)} kg available
         </p>
 
         {/* Hover overlay */}

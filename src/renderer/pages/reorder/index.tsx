@@ -130,7 +130,11 @@ const ReorderPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
             title={showStats ? "Hide summary" : "Show summary"}
           >
-            {showStats ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            {showStats ? (
+              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+            ) : (
+              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+            )}
           </button>
           <button
             onClick={reload}
@@ -138,7 +142,7 @@ const ReorderPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
         </div>
       </div>

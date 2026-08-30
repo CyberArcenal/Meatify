@@ -21,7 +21,7 @@ let splashWindow = null;
 function getIconPath() {
   const platform = process.platform;
   const iconDir = APP_CONFIG.isDev
-    ? path.resolve(__dirname, '..', '..', 'build')
+    ? path.resolve(__dirname, '..', '..', '..', 'build')
     : path.join(process.resourcesPath, 'build');
 
   const iconMap = {
@@ -31,7 +31,15 @@ function getIconPath() {
   };
   const iconFile = iconMap[platform] || 'icon.png';
   const iconPath = path.join(iconDir, iconFile);
-  return fs.existsSync(iconPath) ? iconPath : null;
+
+  const exists = fs.existsSync(iconPath);
+  if (exists) {
+    logger.debug(`✅ Icon found at: ${iconPath}`);
+  } else {
+    logger.warn(`⚠️ Icon not found at: ${iconPath} (platform: ${platform})`);
+  }
+
+  return exists ? iconPath : null;
 }
 
 /**

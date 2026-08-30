@@ -260,3 +260,171 @@
 tr.expanded-row {
   animation: expandRow 0.3s ease-out;
 }
+
+
+
+
+/* Settings Page Header Styles */
+.settings-header-icon {
+  background: linear-gradient(135deg, #d4af37 0%, #b8860b 100%);
+  box-shadow: 0 4px 20px rgba(212, 175, 55, 0.3);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+.settings-header-icon svg {
+  color: #1a1a1a;
+}
+
+.settings-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.settings-title .version-badge {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  background: var(--card-secondary-bg);
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border-color);
+  margin-left: 0.5rem;
+}
+
+.settings-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.125rem;
+}
+
+.settings-subtitle .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-gold);
+}
+
+/* Tab Styles */
+.settings-tabs-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  background: var(--card-secondary-bg);
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.settings-tab:hover {
+  background: var(--card-hover-bg);
+  color: var(--text-primary);
+}
+
+.settings-tab.active {
+  background: var(--accent-gold);
+  color: #1a1a1a;
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.25);
+}
+
+.settings-tab .tab-icon {
+  width: 16px;
+  height: 16px;
+}
+
+
+
+
+
+/* ============================================================
+   WINDOWS BUTTONS (fix for settings page)
+   ============================================================ */
+
+.windows-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+}
+
+.windows-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.windows-button-primary {
+  background: var(--primary-color, #d4af37);
+  color: var(--btn-primary-text, #1a1a1a);
+  border-color: var(--primary-color, #d4af37);
+  box-shadow: 0 2px 4px rgba(212, 175, 55, 0.2);
+}
+
+.windows-button-primary:hover:not(:disabled) {
+  background: var(--primary-hover, #b8960f);
+  border-color: var(--primary-hover, #b8960f);
+  box-shadow: 0 4px 8px rgba(212, 175, 55, 0.3);
+  transform: translateY(-1px);
+}
+
+.windows-button-primary:active:not(:disabled) {
+  background: var(--accent-gold-dark, #a0850a);
+  transform: translateY(0);
+}
+
+.windows-button-secondary {
+  background: var(--card-bg, #2d2d2d);
+  color: var(--text-primary, #f5f5f5);
+  border: 1px solid var(--border-color, #444444);
+}
+
+.windows-button-secondary:hover:not(:disabled) {
+  background: var(--card-hover-bg, #3d3d3d);
+  border-color: var(--border-dark, #555555);
+}
+
+.windows-button-secondary:active:not(:disabled) {
+  background: var(--border-color, #444444);
+}
+
+/* Pwede rin idagdag ang danger style kung kailangan */
+.windows-button-danger {
+  background: var(--danger-color, #e74c3c);
+  color: #ffffff;
+  border-color: var(--danger-color, #e74c3c);
+}
+
+.windows-button-danger:hover:not(:disabled) {
+  background: var(--accent-red-hover, #c0392b);
+  border-color: var(--accent-red-hover, #c0392b);
+}

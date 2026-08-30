@@ -24,6 +24,7 @@ import InventoryReportsPage from "../pages/Analytics/InventoryReports";
 import CustomerInsights from "../pages/Analytics/Customer";
 import Cashier from "../pages/CashierSale";
 import BatchesPage from "../pages/batches";
+import MeatifySettingsPage from "../pages/system/settings";
 
 const PageNotFound = () => <div> Page Not Found</div>;
 
@@ -93,7 +94,7 @@ function App() {
         {/* System */}
         <Route path="system/audit" element={<AuditTrailPage />} />
         <Route path="notification-logs" element={<NotificationLogPage />} />
-        {/* <Route path="system/settings" element={<SettingsPage />} /> */}
+        <Route path="system/settings" element={<MeatifySettingsPage />} />
         {/* <Route path="/devices" element={<DeviceManagerPage />} /> */}
 
         {/* 404 Page */}

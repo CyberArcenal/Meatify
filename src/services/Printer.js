@@ -70,7 +70,7 @@ class PrinterService {
     try {
       sale = await AppDataSource.getRepository(Sale).findOne({
         where: { id: saleId },
-        relations: ["saleItems", "saleItems.product", "customer"],
+        relations: ["saleItems", "saleItems.meat", "customer"],
       });
 
       if (!sale) {

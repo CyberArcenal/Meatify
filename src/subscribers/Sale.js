@@ -51,7 +51,7 @@ class SaleSubscriber {
     if (entity.status === "paid") {
       try {
         const service = await this.getStateService(manager.connection);
-        await service.markAsPaid(entity.id, "system", queryRunner);
+        await service.onPaid(entity.id, "system", queryRunner);
       } catch (err) {
         logger.error("[SaleSubscriber] Failed to process paid sale on insert:", err);
       }
@@ -92,13 +92,13 @@ class SaleSubscriber {
 
       switch (entity.status) {
         case "paid":
-          await service.markAsPaid(entity.id, "system", queryRunner);
+          await service.onPaid(entity.id, "system", queryRunner);
           break;
         case "refunded":
-          await service.refundSale(entity.id, "", "system", queryRunner);
+          await service.onRefunded(entity.id, "", "system", queryRunner);
           break;
         case "voided":
-          await service.voidSale(entity.id, "", "system", queryRunner);
+          await service.onVoided(entity.id, "", "system", queryRunner);
           break;
         default:
           break;
