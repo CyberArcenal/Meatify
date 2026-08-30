@@ -1,3 +1,4 @@
+// src/renderer/pages/Analytics/SalesReports/components/SummaryCards.tsx
 import React from 'react';
 import { ShoppingBag, DollarSign, Receipt, TrendingUp } from 'lucide-react';
 import type { SalesReportSummaryData } from '../../../../api/analytics/salesReport';
@@ -8,21 +9,11 @@ interface Props {
 }
 
 const SummaryCards: React.FC<Props> = ({ summary, loading }) => {
-  const colorClasses = {
-    blue: 'bg-[var(--accent-blue-light)] text-[var(--accent-blue)] border-[var(--accent-blue)]/20',
-    green: 'bg-[var(--accent-green-light)] text-[var(--accent-green)] border-[var(--accent-green)]/20',
-    amber: 'bg-[var(--accent-amber-light)] text-[var(--accent-amber)] border-[var(--accent-amber)]/20',
-    purple: 'bg-[var(--accent-purple-light)] text-[var(--accent-purple)] border-[var(--accent-purple)]/20',
-  };
-
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[1, 2, 3, 4].map(i => (
-          <div key={i} className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)] animate-pulse">
-            <div className="h-4 bg-[var(--border-color)] rounded w-24 mb-2" />
-            <div className="h-6 bg-[var(--border-color)] rounded w-32" />
-          </div>
+          <div key={i} className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)] animate-pulse h-24" />
         ))}
       </div>
     );
@@ -35,27 +26,31 @@ const SummaryCards: React.FC<Props> = ({ summary, loading }) => {
       title: 'Total Transactions',
       value: summary.summary.totalTransactions,
       icon: ShoppingBag,
-      color: 'blue',
+      color: 'text-[var(--accent-blue)]',
+      bg: 'bg-[var(--accent-blue-light)]',
     },
     {
       title: 'Total Revenue',
       value: summary.summary.totalRevenue,
       icon: DollarSign,
-      color: 'green',
+      color: 'text-[var(--success-color)]',
+      bg: 'bg-[var(--status-completed-bg)]',
       format: (val: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val),
     },
     {
       title: 'Average Ticket',
       value: summary.summary.averageTicket,
       icon: Receipt,
-      color: 'purple',
+      color: 'text-[var(--accent-purple)]',
+      bg: 'bg-[var(--accent-purple-light)]',
       format: (val: number) => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(val),
     },
     {
       title: 'Total Weight',
       value: summary.summary.totalWeight,
       icon: TrendingUp,
-      color: 'amber',
+      color: 'text-[var(--accent-amber)]',
+      bg: 'bg-[var(--accent-amber-light)]',
       format: (val: number) => `${val.toFixed(2)} kg`,
     },
   ];
@@ -65,19 +60,19 @@ const SummaryCards: React.FC<Props> = ({ summary, loading }) => {
       {cards.map((card, idx) => (
         <div
           key={idx}
-          className={`rounded-xl p-5 border transition-all duration-300 hover:scale-[1.02] hover:shadow-lg ${
-            colorClasses[card.color as keyof typeof colorClasses]
-          }`}
+          className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] p-5 shadow-sm hover:shadow-md hover:border-[var(--accent-gold)] transition-all duration-200 group"
         >
           <div className="flex items-start justify-between">
             <div>
-              <p className="text-sm font-medium opacity-80">{card.title}</p>
-              <p className="text-2xl font-bold mt-1">
+              <p className="text-xs font-medium uppercase tracking-wider text-[var(--text-secondary)]">
+                {card.title}
+              </p>
+              <p className="text-2xl font-bold text-[var(--text-primary)] mt-1">
                 {card.format ? card.format(card.value) : card.value}
               </p>
             </div>
-            <div className="p-2 rounded-lg bg-black/10">
-              <card.icon className="w-6 h-6" />
+            <div className={`p-2.5 rounded-full ${card.bg} group-hover:ring-2 group-hover:ring-[var(--accent-gold)]/30 transition-all`}>
+              <card.icon className={`w-5 h-5 ${card.color}`} />
             </div>
           </div>
         </div>

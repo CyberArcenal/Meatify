@@ -1,216 +1,135 @@
-import React, { useState, useEffect, useCallback } from 'react';
+// src/renderer/pages/Analytics/SalesReports/index.tsx
+import React from 'react';
 import { RefreshCw } from 'lucide-react';
-import type {
-  SalesReportSummaryData,
-  SalesReportData,
-  SalesReportItem,
-  CustomerReportItem,
-  DailyTrend,
-} from '../../../api/analytics/salesReport';
-import salesReportAPI from '../../../api/analytics/salesReport';
+import { useSalesReport } from './hooks/useSalesReport';
+import { useSalesFilters } from './hooks/useSalesFilters';
 import ExportButton from './components/ExportButton';
 import FilterBar from './components/FilterBar';
 import SummaryCards from './components/SummaryCards';
 import StatsCards from './components/StatsCards';
 import SalesTable from './components/SalesTable';
 
-// Local type for the sales entries we want to display
-type SaleEntry = {
-  id: number;
-  timestamp: string;
-  customer?: { name: string } | null;
-  paymentMethod: string;
-  totalAmount: number;
-  status: string;
-  notes?: string | null;
-  saleItems?: Array<{
-    id: number;
-    productId: number;
-    product?: { name: string } | null;
-    quantity: number;
-    unitPrice: number;
-    lineTotal: number;
-  }>;
-};
-
 const SalesReportsPage: React.FC = () => {
-  // Filters
-  const [customerId, setCustomerId] = useState<number | undefined>();
-  const [status, setStatus] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [minAmount, setMinAmount] = useState<number | undefined>();
-  const [maxAmount, setMaxAmount] = useState<number | undefined>();
+  const { filters, updateFilters, resetFilters, hasFilters } = useSalesFilters();
 
-  // Data states
-  const [summary, setSummary] = useState<SalesReportSummaryData | null>(null);
-  const [sales, setSales] = useState<SaleEntry[]>([]);
-  const [productBreakdown, setProductBreakdown] = useState<SalesReportItem[]>([]);
-  const [customerBreakdown, setCustomerBreakdown] = useState<CustomerReportItem[]>([]);
-  const [dailyTrend, setDailyTrend] = useState<DailyTrend[]>([]);
-
-  // Pagination
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const limit = 10;
-
-  // Loading states
-  const [loading, setLoading] = useState({
-    summary: false,
-    sales: false,
+  const {
+    state: {
+      summary,
+      sales,
+      productBreakdown,
+      customerBreakdown,
+      dailyTrend,
+      total,
+      totalPages,
+      loadingSummary,
+      loadingSales,
+      error,
+      page,
+    },
+    updateFilters: updateReportFilters,
+    refetch,
+  } = useSalesReport({
+    customerId: filters.customerId,
+    status: filters.status || undefined,
+    paymentMethod: filters.paymentMethod || undefined,
+    startDate: filters.startDate || undefined,
+    endDate: filters.endDate || undefined,
+    searchTerm: filters.searchTerm || undefined,
+    minAmount: filters.minAmount,
+    maxAmount: filters.maxAmount,
+    page: 1,
+    limit: 10,
   });
-  const [error, setError] = useState<string | null>(null);
 
-  // Fetch summary
-  const fetchSummary = useCallback(async () => {
-    setLoading(prev => ({ ...prev, summary: true }));
-    try {
-      const res = await salesReportAPI.getSummary({
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-      });
-      if (res.status) setSummary(res.data);
-      else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, summary: false }));
-    }
-  }, [startDate, endDate]);
+  const handleFilterChange = (newFilters: any) => {
+    updateFilters(newFilters);
+    updateReportFilters({
+      ...newFilters,
+      page: 1,
+      customerId: newFilters.customerId ? Number(newFilters.customerId) : undefined,
+      minAmount: newFilters.minAmount ? Number(newFilters.minAmount) : undefined,
+      maxAmount: newFilters.maxAmount ? Number(newFilters.maxAmount) : undefined,
+    });
+  };
 
-  // Fetch sales + breakdowns
-  const fetchSales = useCallback(async () => {
-    setLoading(prev => ({ ...prev, sales: true }));
-    try {
-      const res = await salesReportAPI.getData({
-        customerId,
-        status: status || undefined,
-        paymentMethod: paymentMethod || undefined,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        minAmount,
-        maxAmount,
-        search: searchTerm || undefined, // API supports 'search' parameter
-        page,
-        limit,
-        includeProductBreakdown: true,
-        includeCustomerBreakdown: true,
-      });
-      if (res.status) {
-        const data = res.data;
-        setSales(data.sales as SaleEntry[]);
-        setProductBreakdown(data.productBreakdown || []);
-        setCustomerBreakdown(data.customerBreakdown || []);
-        setDailyTrend(data.dailyTrend || []);
-        setTotal(data.pagination.total);
-        setTotalPages(data.pagination.totalPages);
-      } else throw new Error(res.message);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(prev => ({ ...prev, sales: false }));
-    }
-  }, [
-    customerId,
-    status,
-    paymentMethod,
-    startDate,
-    endDate,
-    minAmount,
-    maxAmount,
-    searchTerm,
-    page,
-    limit,
-  ]);
-
-  useEffect(() => {
-    fetchSummary();
-    fetchSales();
-  }, [fetchSummary, fetchSales]);
-
-  const handleFilterChange = (filters: any) => {
-    setCustomerId(filters.customerId ? Number(filters.customerId) : undefined);
-    setStatus(filters.status);
-    setPaymentMethod(filters.paymentMethod);
-    setStartDate(filters.startDate);
-    setEndDate(filters.endDate);
-    setSearchTerm(filters.searchTerm);
-    setMinAmount(filters.minAmount ? Number(filters.minAmount) : undefined);
-    setMaxAmount(filters.maxAmount ? Number(filters.maxAmount) : undefined);
-    setPage(1);
+  const handlePageChange = (newPage: number) => {
+    updateReportFilters({ page: newPage });
   };
 
   const handleRefresh = () => {
-    setError(null);
-    fetchSummary();
-    fetchSales();
+    refetch();
   };
 
-  const anyLoading = Object.values(loading).some(v => v);
+  const anyLoading = loadingSummary || loadingSales;
 
   return (
     <div className="p-6 space-y-6 bg-[var(--background-color)] min-h-screen">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Sales Report</h1>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border-color)] pb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="text-[var(--accent-gold)]">📊</span>
+            Sales Report
+          </h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+            Monitor sales performance, trends, and customer insights
+          </p>
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={handleRefresh}
             disabled={anyLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-[var(--card-secondary-bg)] text-[var(--text-secondary)] rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--card-bg)] text-[var(--text-secondary)] rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-gold)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${anyLoading ? 'animate-spin' : ''}`} />
             Refresh
           </button>
           <ExportButton
-            customerId={customerId}
-            status={status}
-            paymentMethod={paymentMethod}
-            startDate={startDate}
-            endDate={endDate}
-            minAmount={minAmount}
-            maxAmount={maxAmount}
-            searchTerm={searchTerm}
+            customerId={filters.customerId}
+            status={filters.status}
+            paymentMethod={filters.paymentMethod}
+            startDate={filters.startDate}
+            endDate={filters.endDate}
+            minAmount={filters.minAmount}
+            maxAmount={filters.maxAmount}
+            searchTerm={filters.searchTerm}
           />
         </div>
       </div>
 
       <FilterBar
-        customerId={customerId}
-        status={status}
-        paymentMethod={paymentMethod}
-        startDate={startDate}
-        endDate={endDate}
-        searchTerm={searchTerm}
-        minAmount={minAmount}
-        maxAmount={maxAmount}
+        customerId={filters.customerId}
+        status={filters.status}
+        paymentMethod={filters.paymentMethod}
+        startDate={filters.startDate}
+        endDate={filters.endDate}
+        searchTerm={filters.searchTerm}
+        minAmount={filters.minAmount}
+        maxAmount={filters.maxAmount}
         onFilterChange={handleFilterChange}
       />
 
       {error && (
-        <div className="bg-[var(--danger-bg)] text-[var(--danger-color)] p-4 rounded-lg border border-[var(--danger-border)]">
+        <div className="bg-[var(--status-cancelled-bg)] border border-[var(--accent-red)] text-[var(--accent-red)] p-4 rounded-xl">
           Error: {error}
         </div>
       )}
 
-      <SummaryCards summary={summary} loading={loading.summary} />
+      <SummaryCards summary={summary} loading={loadingSummary} />
 
       <StatsCards
         topProducts={productBreakdown.slice(0, 5)}
         topCustomers={customerBreakdown.slice(0, 5)}
         hourlyData={dailyTrend.slice(0, 12)}
-        loading={loading.sales}
+        loading={loadingSales}
       />
 
       <SalesTable
         data={sales}
-        loading={loading.sales}
+        loading={loadingSales}
         page={page}
         totalPages={totalPages}
         total={total}
-        onPageChange={setPage}
+        onPageChange={handlePageChange}
       />
     </div>
   );

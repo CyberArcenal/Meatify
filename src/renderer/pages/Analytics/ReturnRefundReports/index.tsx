@@ -1,6 +1,6 @@
 // src/renderer/pages/analytics/returns/index.tsx
 import React, { useEffect, useState } from "react";
-import { RefreshCw, Loader2, AlertCircle } from "lucide-react";
+import { RefreshCw, Loader2 } from "lucide-react";
 import { useReturnRefunds } from "./hooks/useReturnRefunds";
 import { usePagination } from "../../../contexts/PaginationContext";
 import { FilterBar } from "./components/FilterBar";
@@ -9,6 +9,7 @@ import { StatsCards } from "./components/StatsCards";
 import { ReturnsTable } from "./components/ReturnsTable";
 import type { ReturnRefundReport } from "../../../api/analytics/returnRefundReports";
 import { ReturnViewDialog } from "./components/ReturnViewDialog";
+import ExportButton from "./components/ExportButton";
 
 const ReturnRefundReportsPage: React.FC = () => {
   const { pagination, setPagination, clearPagination } = usePagination();
@@ -23,6 +24,8 @@ const ReturnRefundReportsPage: React.FC = () => {
     reload,
     summary,
     stats,
+    page,
+    limit,
   } = useReturnRefunds({
     search: "",
     status: "",
@@ -40,29 +43,28 @@ const ReturnRefundReportsPage: React.FC = () => {
   // Sync with global pagination
   useEffect(() => {
     setPagination({
-      currentPage: pagination.currentPage,
+      currentPage: page,
       totalItems: totalItems,
-      pageSize: pagination.pageSize,
-      onPageChange: (page) => {
-        reload({ page, limit: pagination.pageSize });
+      pageSize: limit,
+      onPageChange: (newPage) => {
+        reload({ page: newPage, limit });
       },
-      onPageSizeChange: (size) => {
-        reload({ page: 1, limit: size });
+      onPageSizeChange: (newSize) => {
+        reload({ page: 1, limit: newSize });
       },
       pageSizeOptions: [10, 20, 50, 100],
       showPageSize: true,
     });
 
     return () => clearPagination();
-  }, [totalItems, pagination.currentPage, pagination.pageSize]);
+  }, [totalItems, page, limit, reload, setPagination, clearPagination]);
 
   const handleFilterChange = (key: keyof typeof filters, value: any) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    reload({ page: 1, limit: pagination.pageSize });
+    setFilters({ [key]: value });
   };
 
   const handleRefresh = () => {
-    reload({ page: pagination.currentPage, limit: pagination.pageSize });
+    reload({ page, limit });
   };
 
   const handleView = (returnRefund: ReturnRefundReport) => {
@@ -76,32 +78,43 @@ const ReturnRefundReportsPage: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[var(--card-bg)] p-6 rounded-lg">
+    <div className="p-6 space-y-6 bg-[var(--background-color)] min-h-screen">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border-color)] pb-4">
         <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-[var(--accent-gold)] to-[var(--accent-gold-hover)] bg-clip-text text-transparent">
-            Returns & Refunds Report
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="text-[var(--accent-gold)]">↩️</span>
+            Returns & Refunds
           </h1>
-          <p className="text-sm text-[var(--text-tertiary)] mt-1">
-            {totalItems} total return transactions
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+            Monitor return transactions, refund amounts, and trends
           </p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 bg-[var(--card-secondary-bg)] rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors text-[var(--text-primary)] border border-[var(--border-color)] disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--card-bg)] text-[var(--text-secondary)] rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-gold)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+          <ExportButton
+            customerId={filters.customerId}
+            status={filters.status}
+            refundMethod={filters.refundMethod}
+            startDate={filters.startDate || ""}
+            endDate={filters.endDate || ""}
+            searchTerm={filters.search}
+          />
+        </div>
       </div>
 
       {/* Summary Cards */}
-      {!loading && !error && <SummaryCards summary={summary} />}
+      <SummaryCards summary={summary} loading={loading} />
 
       {/* Stats Cards */}
-      {!loading && !error && <StatsCards stats={stats} />}
+      <StatsCards stats={stats} loading={loading} />
 
       {/* Filter Bar */}
       <FilterBar
@@ -112,11 +125,11 @@ const ReturnRefundReportsPage: React.FC = () => {
 
       {/* Error Display */}
       {error && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 mt-4 text-red-400">
-          {error}
+        <div className="bg-[var(--status-cancelled-bg)] border border-[var(--accent-red)] text-[var(--accent-red)] p-4 rounded-xl">
+          Error: {error}
           <button
-            onClick={() => reload({ page: 1, limit: pagination.pageSize })}
-            className="ml-3 underline"
+            onClick={() => reload({ page, limit })}
+            className="ml-3 underline hover:text-[var(--accent-red)]"
           >
             Retry
           </button>
@@ -125,16 +138,11 @@ const ReturnRefundReportsPage: React.FC = () => {
 
       {/* Table */}
       {loading ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-[var(--accent-gold)]" />
         </div>
       ) : (
-        <div className="flex-1 mt-4">
-          <ReturnsTable
-            returns={returns}
-            onView={handleView}
-          />
-        </div>
+        <ReturnsTable returns={returns} onView={handleView} />
       )}
 
       {/* View Dialog */}

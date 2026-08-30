@@ -1,6 +1,9 @@
 // src/renderer/pages/analytics/returns/hooks/useReturnRefunds.ts
-import { useState, useEffect, useCallback } from "react";
-import type { ReturnRefundReport, ReturnSummaryData } from "../../../../api/analytics/returnRefundReports";
+import { useState, useEffect, useCallback, useRef } from "react";
+import type {
+  ReturnRefundReport,
+  ReturnSummaryData,
+} from "../../../../api/analytics/returnRefundReports";
 import returnRefundReportsAPI from "../../../../api/analytics/returnRefundReports";
 
 export interface ReturnFilters {
@@ -25,7 +28,12 @@ export interface ReturnSummary {
 
 export interface ReturnStats {
   statusCounts: Array<{ status: string; count: number; total: number }>;
-  topCustomers: Array<{ customerId: number; customerName: string; count: number; totalAmount: number }>;
+  topCustomers: Array<{
+    customerId: number;
+    customerName: string;
+    count: number;
+    totalAmount: number;
+  }>;
   totalProcessedAmount: number;
   averageProcessedAmount: number;
 }
@@ -37,6 +45,9 @@ export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
   const [totalItems, setTotalItems] = useState(0);
   const [summary, setSummary] = useState<ReturnSummary | null>(null);
   const [stats, setStats] = useState<ReturnStats | null>(null);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+
   const [filters, setFilters] = useState<ReturnFilters>({
     search: "",
     status: "",
@@ -49,52 +60,75 @@ export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
     ...initialFilters,
   });
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   const fetchReturns = useCallback(
     async (options?: { page?: number; limit?: number }) => {
-      const page = options?.page || 1;
-      const limit = options?.limit || 10;
+      const p = options?.page ?? page;
+      const l = options?.limit ?? limit;
+
+      // Cancel previous request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
 
       setLoading(true);
       setError(null);
 
-      try {
-        const response = await returnRefundReportsAPI.getData({
-          page,
-          limit,
-          status: filters.status || undefined,
-          refundMethod: filters.refundMethod || undefined,
-          customerId: filters.customerId,
-          startDate: filters.startDate,
-          endDate: filters.endDate,
-          sortBy: filters.sortBy,
-          sortOrder: filters.sortOrder,
-          // Note: search is not directly supported by getData; we can filter client-side if needed.
-          // Alternatively, we could add a search param in the backend, but for now we pass undefined.
-        });
+      // Build params conditionally
+      const params: any = {
+        page: p,
+        limit: l,
+        sortBy: filters.sortBy,
+        sortOrder: filters.sortOrder,
+      };
 
-        if (response.status) {
-          const data = response.data;
-          setReturns(data.returns || []);
-          setTotalItems(data.pagination.total || 0);
-        } else {
-          throw new Error(response.message || "Failed to fetch returns");
+      if (filters.status) params.status = filters.status;
+      if (filters.refundMethod) params.refundMethod = filters.refundMethod;
+      if (filters.customerId !== undefined && filters.customerId !== null) {
+        params.customerId = filters.customerId;
+      }
+      if (filters.startDate) params.startDate = filters.startDate;
+      if (filters.endDate) params.endDate = filters.endDate;
+
+      try {
+        const response = await returnRefundReportsAPI.getData(params);
+        if (!controller.signal.aborted) {
+          if (response.status) {
+            const data = response.data;
+            setReturns(data.returns || []);
+            setTotalItems(data.pagination?.total || 0);
+            setPage(p);
+            setLimit(l);
+          } else {
+            throw new Error(response.message || "Failed to fetch returns");
+          }
         }
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : "Failed to fetch returns";
-        setError(message);
-        setReturns([]);
-        setTotalItems(0);
+        if (!controller.signal.aborted) {
+          const message = err instanceof Error ? err.message : "Failed to fetch returns";
+          setError(message);
+          setReturns([]);
+          setTotalItems(0);
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
       }
     },
-    [filters]
+    [filters, page, limit]
   );
 
   const fetchSummaryAndStats = useCallback(async () => {
     try {
       const summaryResponse = await returnRefundReportsAPI.getSummary({
-        period: "month", // You may want to make this dynamic based on filters
+        period: "month",
         status: filters.status || undefined,
       });
 
@@ -102,7 +136,6 @@ export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
         const data = summaryResponse.data as ReturnSummaryData;
         const summaryData = data.summary;
 
-        // Compute summary fields
         const statusBreakdown = summaryData.statusBreakdown || {};
         const processedCount = statusBreakdown.processed || 0;
         const pendingCount = statusBreakdown.pending || 0;
@@ -117,14 +150,16 @@ export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
           avgAmount: summaryData.avgRefund,
         });
 
-        // Compute stats fields
         const statusCounts = Object.entries(statusBreakdown).map(([status, count]) => ({
           status,
           count: count as number,
-          total: status === "processed" ? summaryData.totalReturnsAmount : 0, // approximate
+          total: status === "processed" ? summaryData.totalReturnsAmount : 0,
         }));
 
-        const processedAmount = statusBreakdown.processed ? summaryData.totalReturnsAmount * (processedCount / summaryData.totalReturns) : 0;
+        const processedAmount =
+          statusBreakdown.processed && summaryData.totalReturns > 0
+            ? summaryData.totalReturnsAmount * (processedCount / summaryData.totalReturns)
+            : 0;
 
         setStats({
           statusCounts,
@@ -139,9 +174,23 @@ export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
   }, [filters.status]);
 
   useEffect(() => {
-    fetchReturns({ page: 1, limit: 10 });
+    fetchReturns({ page: 1, limit });
     fetchSummaryAndStats();
-  }, [fetchReturns, fetchSummaryAndStats]);
+    // Cleanup
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Refetch when filters change
+  useEffect(() => {
+    fetchReturns({ page: 1, limit });
+    fetchSummaryAndStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, fetchSummaryAndStats]);
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
@@ -151,15 +200,21 @@ export const useReturnRefunds = (initialFilters?: Partial<ReturnFilters>) => {
     [fetchReturns, fetchSummaryAndStats]
   );
 
+  const updateFilters = useCallback((newFilters: Partial<ReturnFilters>) => {
+    setFilters((prev) => ({ ...prev, ...newFilters }));
+  }, []);
+
   return {
     returns,
     loading,
     error,
     totalItems,
     filters,
-    setFilters,
+    setFilters: updateFilters,
     reload,
     summary,
     stats,
+    page,
+    limit,
   };
 };

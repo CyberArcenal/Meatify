@@ -1,6 +1,6 @@
 // src/renderer/pages/analytics/returns/components/ReturnViewDialog.tsx
 import React from "react";
-import { X, Beef, Calendar, Hash, FileText, Package } from "lucide-react";
+import { X, Beef, Package, FileText } from "lucide-react";
 import Decimal from "decimal.js";
 import { format } from "date-fns";
 import type { ReturnRefundReport } from "../../../../api/analytics/returnRefundReports";
@@ -37,64 +37,60 @@ export const ReturnViewDialog: React.FC<ReturnViewDialogProps> = ({
   const totalWeight = returnRefund.items?.reduce((sum, item) => sum + item.weightKg, 0) || 0;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex items-center justify-center min-h-screen px-4">
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-        <div className="relative bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-          <div className="flex items-center justify-between p-6 border-b border-[var(--border-color)]">
-            <h2 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <Package className="w-5 h-5 text-[var(--accent-gold)]" />
-              Return #{returnRefund.referenceNo || returnRefund.id}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
-            >
-              <X className="w-5 h-5 text-[var(--text-tertiary)]" />
-            </button>
-          </div>
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] w-full max-w-2xl max-h-[80vh] overflow-hidden shadow-2xl">
+        <div className="px-6 py-4 border-b border-[var(--border-color)] flex justify-between items-center bg-[var(--card-secondary-bg)]">
+          <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="text-[var(--accent-gold)]">↩️</span>
+            Return #{returnRefund.referenceNo || returnRefund.id}
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1 rounded hover:bg-[var(--card-hover-bg)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
 
-          <div className="p-6 space-y-4">
-            {/* Basic Info */}
+        <div className="overflow-y-auto p-6 custom-scrollbar">
+          <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-xs text-[var(--text-tertiary)] uppercase">Reference</p>
-                <p className="text-sm font-mono text-[var(--text-primary)]">
+                <p className="text-xs uppercase text-[var(--text-tertiary)]">Reference</p>
+                <p className="text-[var(--text-primary)] font-mono">
                   {returnRefund.referenceNo || `#${returnRefund.id}`}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-[var(--text-tertiary)] uppercase">Status</p>
+                <p className="text-xs uppercase text-[var(--text-tertiary)]">Status</p>
                 <StatusBadge status={returnRefund.status} />
               </div>
               <div>
-                <p className="text-xs text-[var(--text-tertiary)] uppercase">Date</p>
-                <p className="text-sm text-[var(--text-primary)]">
+                <p className="text-xs uppercase text-[var(--text-tertiary)]">Date</p>
+                <p className="text-[var(--text-primary)]">
                   {format(new Date(returnRefund.createdAt), "MMM dd, yyyy h:mm a")}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-[var(--text-tertiary)] uppercase">Customer</p>
-                <p className="text-sm text-[var(--text-primary)]">
+                <p className="text-xs uppercase text-[var(--text-tertiary)]">Customer</p>
+                <p className="text-[var(--text-primary)]">
                   {returnRefund.customer?.name || returnRefund.customerName || "—"}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-[var(--text-tertiary)] uppercase">Refund Method</p>
-                <p className="text-sm text-[var(--text-primary)] capitalize">
-                  {returnRefund.refundMethod}
-                </p>
+                <p className="text-xs uppercase text-[var(--text-tertiary)]">Refund Method</p>
+                <p className="text-[var(--text-primary)] capitalize">{returnRefund.refundMethod}</p>
               </div>
               <div>
-                <p className="text-xs text-[var(--text-tertiary)] uppercase">Total Amount</p>
-                <p className="text-lg font-bold text-[var(--accent-gold)]">
+                <p className="text-xs uppercase text-[var(--text-tertiary)]">Total Amount</p>
+                <p className="text-xl font-bold text-[var(--accent-gold)]">
                   ₱{new Decimal(returnRefund.totalAmount).toFixed(2)}
                 </p>
               </div>
               {returnRefund.reason && (
                 <div className="col-span-2">
-                  <p className="text-xs text-[var(--text-tertiary)] uppercase">Reason</p>
-                  <p className="text-sm text-[var(--text-primary)] bg-[var(--card-secondary-bg)] p-2 rounded">
+                  <p className="text-xs uppercase text-[var(--text-tertiary)]">Reason</p>
+                  <p className="text-[var(--text-primary)] bg-[var(--card-secondary-bg)] p-3 rounded-lg border border-[var(--border-color)]">
                     {returnRefund.reason}
                   </p>
                 </div>
@@ -102,54 +98,41 @@ export const ReturnViewDialog: React.FC<ReturnViewDialogProps> = ({
             </div>
 
             {/* Items */}
-            <div className="pt-4 border-t border-[var(--border-color)]">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
-                  <Beef className="w-4 h-4 text-[var(--accent-gold)]" />
-                  Returned Items
-                </h3>
-                <span className="text-xs text-[var(--text-tertiary)]">
+            <div>
+              <h4 className="font-semibold text-[var(--text-primary)] mb-3 flex items-center gap-2">
+                <span className="text-[var(--accent-gold)]">🥩</span>
+                Returned Items
+                <span className="text-xs text-[var(--text-tertiary)] font-normal ml-2">
                   Total Weight: {totalWeight.toFixed(2)} kg
                 </span>
-              </div>
-
+              </h4>
               {returnRefund.items?.length === 0 ? (
                 <p className="text-sm text-[var(--text-tertiary)] text-center py-4">No items returned</p>
               ) : (
-                <div className="bg-[var(--card-secondary-bg)] rounded-lg overflow-hidden border border-[var(--border-color)]">
+                <div className="border border-[var(--border-color)] rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
-                    <thead className="bg-[var(--table-header-bg)]">
+                    <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-[var(--text-tertiary)]">
-                          Meat
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-[var(--text-tertiary)]">
-                          Weight (kg)
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-[var(--text-tertiary)]">
-                          Unit Price
-                        </th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-[var(--text-tertiary)]">
-                          Subtotal
-                        </th>
+                        <th className="text-left py-2 px-4 text-xs uppercase text-[var(--text-tertiary)]">Meat</th>
+                        <th className="text-right py-2 px-4 text-xs uppercase text-[var(--text-tertiary)]">Weight (kg)</th>
+                        <th className="text-right py-2 px-4 text-xs uppercase text-[var(--text-tertiary)]">Unit Price</th>
+                        <th className="text-right py-2 px-4 text-xs uppercase text-[var(--text-tertiary)]">Subtotal</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-[var(--border-color)]">
+                    <tbody className="divide-y divide-[var(--border-light)]">
                       {returnRefund.items.map((item) => (
-                        <tr key={item.id}>
-                          <td className="px-3 py-2 text-[var(--text-primary)]">
+                        <tr key={item.id} className="hover:bg-[var(--table-row-hover)]">
+                          <td className="py-2 px-4 text-[var(--text-primary)]">
                             {item.meat?.name || `Meat #${item.meatId}`}
-                            <span className="text-xs text-[var(--text-tertiary)] ml-2">
-                              {item.meat?.sku}
-                            </span>
+                            <span className="text-xs text-[var(--text-tertiary)] ml-2">{item.meat?.sku}</span>
                           </td>
-                          <td className="px-3 py-2 text-right text-[var(--text-secondary)]">
+                          <td className="py-2 px-4 text-right text-[var(--text-primary)]">
                             {item.weightKg.toFixed(2)}
                           </td>
-                          <td className="px-3 py-2 text-right text-[var(--accent-gold)]">
+                          <td className="py-2 px-4 text-right text-[var(--accent-gold)]">
                             ₱{new Decimal(item.unitPrice).toFixed(2)}
                           </td>
-                          <td className="px-3 py-2 text-right font-semibold text-[var(--accent-gold)]">
+                          <td className="py-2 px-4 text-right font-semibold text-[var(--accent-gold)]">
                             ₱{new Decimal(item.subtotal).toFixed(2)}
                           </td>
                         </tr>
@@ -157,10 +140,10 @@ export const ReturnViewDialog: React.FC<ReturnViewDialogProps> = ({
                     </tbody>
                     <tfoot className="bg-[var(--table-header-bg)]">
                       <tr>
-                        <td colSpan={3} className="px-3 py-2 text-right font-medium text-[var(--text-primary)]">
+                        <td colSpan={3} className="py-2 px-4 text-right font-medium text-[var(--text-primary)]">
                           Total
                         </td>
-                        <td className="px-3 py-2 text-right font-bold text-[var(--accent-gold)]">
+                        <td className="py-2 px-4 text-right font-bold text-[var(--accent-gold)]">
                           ₱{new Decimal(returnRefund.totalAmount).toFixed(2)}
                         </td>
                       </tr>
@@ -172,12 +155,12 @@ export const ReturnViewDialog: React.FC<ReturnViewDialogProps> = ({
 
             {/* Related Sale */}
             {returnRefund.sale && (
-              <div className="pt-4 border-t border-[var(--border-color)]">
-                <h3 className="text-sm font-semibold text-[var(--text-primary)] flex items-center gap-2">
+              <div>
+                <h4 className="font-semibold text-[var(--text-primary)] mb-2 flex items-center gap-2">
                   <FileText className="w-4 h-4 text-[var(--accent-blue)]" />
                   Related Sale
-                </h3>
-                <div className="grid grid-cols-2 gap-4 mt-2">
+                </h4>
+                <div className="grid grid-cols-2 gap-4 bg-[var(--card-secondary-bg)] p-3 rounded-lg border border-[var(--border-color)]">
                   <div>
                     <p className="text-xs text-[var(--text-tertiary)]">Sale ID</p>
                     <p className="text-sm font-mono text-[var(--text-primary)]">
@@ -202,15 +185,15 @@ export const ReturnViewDialog: React.FC<ReturnViewDialogProps> = ({
               )}
             </div>
           </div>
+        </div>
 
-          <div className="flex justify-end p-6 border-t border-[var(--border-color)]">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-[var(--card-secondary-bg)] hover:bg-[var(--card-hover-bg)] text-[var(--text-primary)] rounded-lg transition-colors"
-            >
-              Close
-            </button>
-          </div>
+        <div className="px-6 py-4 border-t border-[var(--border-color)] flex justify-end bg-[var(--card-secondary-bg)]">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-[var(--card-bg)] border border-[var(--border-color)] text-[var(--text-primary)] rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
+          >
+            Close
+          </button>
         </div>
       </div>
     </div>

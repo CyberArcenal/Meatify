@@ -1,6 +1,7 @@
 // src/renderer/pages/Dashboard/index.tsx
 import React from 'react';
 import { format } from 'date-fns';
+import { RefreshCw } from 'lucide-react';
 import useDashboardData from './hooks/useDashboardData';
 import SummaryCards from './components/SummaryCards';
 import SalesChart from './components/SalesChart';
@@ -10,7 +11,6 @@ import TopProductsTable from './components/TopProductsTable';
 import CustomerStats from './components/CustomerStats';
 import AnalyticsQuickLinks from './components/AnalyticsQuickLinks';
 import ExpiryAlert from './components/ExpiryAlert';
-
 
 const DashboardPage: React.FC = () => {
   const {
@@ -22,33 +22,56 @@ const DashboardPage: React.FC = () => {
     customerStats,
     expiringBatches,
     loading,
+    error,
     chartPeriod,
     onPeriodChange,
+    refetch,
   } = useDashboardData();
 
   const today = format(new Date(), 'EEEE, MMMM d, yyyy');
 
+  const anyLoading = Object.values(loading).some(v => v);
+
   return (
-    <div className="p-6 space-y-8 bg-[var(--card-bg)] min-h-screen">
-      {/* Header with greeting */}
-      <div className="flex items-center justify-between">
+    <div className="p-6 space-y-6 bg-[var(--background-color)] min-h-screen">
+      {/* Header with gold accent */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border-color)] pb-4">
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-[var(--accent-gold)] to-[var(--accent-gold-hover)] bg-clip-text text-transparent">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="text-[var(--accent-gold)]">🏠</span>
             Dashboard
           </h1>
-          <p className="text-[var(--text-tertiary)] mt-1">{today}</p>
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">{today}</p>
         </div>
-        <div className="hidden md:block">
+        <div className="flex items-center gap-3">
           <div className="px-4 py-2 rounded-full bg-[var(--accent-gold-light)] text-[var(--accent-gold)] text-sm font-medium border border-[var(--accent-gold)]/20">
             🥩 Meatify POS
           </div>
+          <button
+            onClick={refetch}
+            disabled={anyLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--card-bg)] text-[var(--text-secondary)] rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-gold)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${anyLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="bg-[var(--status-cancelled-bg)] border border-[var(--accent-red)] text-[var(--accent-red)] p-4 rounded-xl">
+          Error: {error}
+          <button onClick={refetch} className="ml-3 underline hover:text-[var(--accent-red)]">
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <SummaryCards summary={summary} isLoading={loading.summary} />
 
-      {/* Expiry Alert - Meatify specific */}
+      {/* Expiry Alert */}
       <ExpiryAlert batches={expiringBatches} isLoading={loading.expiry} />
 
       {/* Analytics Quick Links */}

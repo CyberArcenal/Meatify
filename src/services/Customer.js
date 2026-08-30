@@ -86,7 +86,9 @@ class CustomerService {
     try {
       return await system.auditLogEnabled();
     } catch (error) {
-      logger.warn(`[Customer] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[Customer] Failed to check audit enabled status: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
@@ -98,9 +100,15 @@ class CustomerService {
    */
   async _getDefaultActiveStatus(qr = null) {
     try {
-      return await system.getBool("default_customer_active", SettingType.SALES, true);
+      return await system.getBool(
+        "default_customer_active",
+        SettingType.SALES,
+        true,
+      );
     } catch (error) {
-      logger.warn(`[Customer] Failed to get default active status: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[Customer] Failed to get default active status: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
@@ -112,15 +120,23 @@ class CustomerService {
    */
   async _getDefaultCustomerStatus(qr = null) {
     try {
-      const status = await system.getValue("default_customer_status", SettingType.SALES, "regular");
+      const status = await system.getValue(
+        "default_customer_status",
+        SettingType.SALES,
+        "regular",
+      );
       const validStatuses = ["regular", "vip", "elite"];
       if (!validStatuses.includes(status)) {
-        logger.warn(`[Customer] Invalid default status "${status}", defaulting to "regular"`);
+        logger.warn(
+          `[Customer] Invalid default status "${status}", defaulting to "regular"`,
+        );
         return "regular";
       }
       return status;
     } catch (error) {
-      logger.warn(`[Customer] Failed to get default status: ${error.message}, defaulting to "regular"`);
+      logger.warn(
+        `[Customer] Failed to get default status: ${error.message}, defaulting to "regular"`,
+      );
       return "regular";
     }
   }
@@ -132,11 +148,15 @@ class CustomerService {
    */
   async _getAllowedStatuses(qr = null) {
     try {
-      return await system.getArray("allowed_customer_statuses", SettingType.SALES, [
-        "regular", "vip", "elite"
-      ]);
+      return await system.getArray(
+        "allowed_customer_statuses",
+        SettingType.SALES,
+        ["regular", "vip", "elite"],
+      );
     } catch (error) {
-      logger.warn(`[Customer] Failed to get allowed statuses: ${error.message}, using defaults`);
+      logger.warn(
+        `[Customer] Failed to get allowed statuses: ${error.message}, using defaults`,
+      );
       return ["regular", "vip", "elite"];
     }
   }
@@ -150,7 +170,9 @@ class CustomerService {
     try {
       return await system.loyaltyPointsEnabled();
     } catch (error) {
-      logger.warn(`[Customer] Failed to check loyalty enabled: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[Customer] Failed to check loyalty enabled: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
@@ -164,7 +186,9 @@ class CustomerService {
     try {
       return await system.loyaltyVipThreshold();
     } catch (error) {
-      logger.warn(`[Customer] Failed to get VIP threshold: ${error.message}, defaulting to 1000`);
+      logger.warn(
+        `[Customer] Failed to get VIP threshold: ${error.message}, defaulting to 1000`,
+      );
       return 1000;
     }
   }
@@ -178,7 +202,9 @@ class CustomerService {
     try {
       return await system.loyaltyEliteThreshold();
     } catch (error) {
-      logger.warn(`[Customer] Failed to get Elite threshold: ${error.message}, defaulting to 5000`);
+      logger.warn(
+        `[Customer] Failed to get Elite threshold: ${error.message}, defaulting to 5000`,
+      );
       return 5000;
     }
   }
@@ -248,7 +274,9 @@ class CustomerService {
       if (data.status) {
         const allowedStatuses = await this._getAllowedStatuses(qr);
         if (!allowedStatuses.includes(data.status)) {
-          throw new Error(`Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`);
+          throw new Error(
+            `Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
+          );
         }
       }
 
@@ -337,13 +365,18 @@ class CustomerService {
         // ✅ Validate status if provided
         const allowedStatuses = await this._getAllowedStatuses(qr);
         if (!allowedStatuses.includes(data.status)) {
-          throw new Error(`Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`);
+          throw new Error(
+            `Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
+          );
         }
         throw new Error("Use CustomerStateService to update customer status");
       }
 
       // Only allow loyalty points update through state service
-      if (data.loyaltyPointsBalance !== undefined || data.lifetimePointsEarned !== undefined) {
+      if (
+        data.loyaltyPointsBalance !== undefined ||
+        data.lifetimePointsEarned !== undefined
+      ) {
         throw new Error("Use CustomerStateService to update loyalty points");
       }
 
@@ -476,7 +509,7 @@ class CustomerService {
     const salesCount = await saleRepo.count({ where: { customer: { id } } });
     if (salesCount > 0) {
       throw new Error(
-        `Cannot delete customer #${id} because they have ${salesCount} sale(s)`
+        `Cannot delete customer #${id} because they have ${salesCount} sale(s)`,
       );
     }
 
@@ -486,7 +519,7 @@ class CustomerService {
     });
     if (loyaltyCount > 0) {
       throw new Error(
-        `Cannot delete customer #${id} because they have ${loyaltyCount} loyalty transaction(s)`
+        `Cannot delete customer #${id} because they have ${loyaltyCount} loyalty transaction(s)`,
       );
     }
 
@@ -508,6 +541,10 @@ class CustomerService {
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async findById(id, includeInactive = false, qr = null) {
+    if (id === undefined || id === null || isNaN(id) || id <= 0) {
+      throw new Error(`Invalid customer ID: ${id}`);
+    }
+
     const Customer = require("../entities/Customer");
     const repo = this._getRepo(qr, Customer);
 
@@ -540,35 +577,49 @@ class CustomerService {
 
     // Filters
     if (options.isActive !== undefined) {
-      qb.andWhere("customer.isActive = :isActive", { isActive: options.isActive });
+      qb.andWhere("customer.isActive = :isActive", {
+        isActive: options.isActive,
+      });
     }
     if (options.status) {
-      const statuses = Array.isArray(options.status) ? options.status : [options.status];
+      const statuses = Array.isArray(options.status)
+        ? options.status
+        : [options.status];
       // ✅ Validate statuses against allowed list
       const allowedStatuses = await this._getAllowedStatuses(qr);
-      const invalidStatuses = statuses.filter(s => !allowedStatuses.includes(s));
+      const invalidStatuses = statuses.filter(
+        (s) => !allowedStatuses.includes(s),
+      );
       if (invalidStatuses.length > 0) {
-        logger.warn(`[Customer] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`);
+        logger.warn(
+          `[Customer] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`,
+        );
       }
       qb.andWhere("customer.status IN (:...statuses)", { statuses });
     }
     if (options.minPoints !== undefined) {
-      qb.andWhere("customer.loyaltyPointsBalance >= :minPoints", { minPoints: options.minPoints });
+      qb.andWhere("customer.loyaltyPointsBalance >= :minPoints", {
+        minPoints: options.minPoints,
+      });
     }
     if (options.maxPoints !== undefined) {
-      qb.andWhere("customer.loyaltyPointsBalance <= :maxPoints", { maxPoints: options.maxPoints });
+      qb.andWhere("customer.loyaltyPointsBalance <= :maxPoints", {
+        maxPoints: options.maxPoints,
+      });
     }
     if (options.search) {
       qb.andWhere(
         "(customer.name LIKE :search OR customer.email LIKE :search OR customer.phone LIKE :search OR customer.address LIKE :search)",
-        { search: `%${options.search}%` }
+        { search: `%${options.search}%` },
       );
     }
 
     // Sorting
     let sortBy = options.sortBy || "name";
     if (!ALLOWED_SORT_COLUMNS.has(sortBy)) {
-      console.warn(`[Customer] Invalid sortBy: ${sortBy}, falling back to name`);
+      console.warn(
+        `[Customer] Invalid sortBy: ${sortBy}, falling back to name`,
+      );
       sortBy = "name";
     }
     const sortOrder = options.sortOrder === "ASC" ? "ASC" : "DESC";
@@ -681,9 +732,17 @@ class CustomerService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
-  async exportCustomers(format = "json", filters = {}, user = "system", qr = null) {
+  async exportCustomers(
+    format = "json",
+    filters = {},
+    user = "system",
+    qr = null,
+  ) {
     try {
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
+      const result = await this.findAll(
+        { ...filters, limit: undefined, page: undefined },
+        qr,
+      );
       const customers = result.data;
 
       let exportData;
@@ -735,7 +794,9 @@ class CustomerService {
         await auditLogger.debugExport("Customer", format, filters, user);
       }
 
-      logger.debug(`Exported ${customers.length} customers in ${format} format`);
+      logger.debug(
+        `Exported ${customers.length} customers in ${format} format`,
+      );
       return exportData;
     } catch (error) {
       console.error("Failed to export customers:", error);
@@ -835,9 +896,15 @@ class CustomerService {
     // ✅ Get threshold from settings if not provided
     if (daysOld === 365) {
       try {
-        daysOld = await system.getInt("inactive_customer_cleanup_days", SettingType.SALES, 365);
+        daysOld = await system.getInt(
+          "inactive_customer_cleanup_days",
+          SettingType.SALES,
+          365,
+        );
       } catch (error) {
-        logger.warn(`[Customer] Failed to get inactive cleanup days: ${error.message}, defaulting to 365`);
+        logger.warn(
+          `[Customer] Failed to get inactive cleanup days: ${error.message}, defaulting to 365`,
+        );
       }
     }
 
@@ -852,7 +919,9 @@ class CustomerService {
       .getMany();
 
     if (inactiveCustomers.length === 0) {
-      logger.info(`[Customer] No inactive customers to clean up (threshold: ${daysOld} days)`);
+      logger.info(
+        `[Customer] No inactive customers to clean up (threshold: ${daysOld} days)`,
+      );
       return { count: 0 };
     }
 
@@ -870,18 +939,25 @@ class CustomerService {
             customer.id,
             { isActive: true },
             { isActive: false },
-            user
+            user,
           );
         }
 
         updatedCount++;
-        logger.info(`[Customer] Customer #${customer.id} (${customer.name}) deactivated (inactive for ${daysOld} days)`);
+        logger.info(
+          `[Customer] Customer #${customer.id} (${customer.name}) deactivated (inactive for ${daysOld} days)`,
+        );
       } catch (err) {
-        logger.error(`[Customer] Failed to clean inactive customer #${customer.id}:`, err);
+        logger.error(
+          `[Customer] Failed to clean inactive customer #${customer.id}:`,
+          err,
+        );
       }
     }
 
-    logger.info(`[Customer] Cleaned up ${updatedCount} inactive customers (older than ${daysOld} days)`);
+    logger.info(
+      `[Customer] Cleaned up ${updatedCount} inactive customers (older than ${daysOld} days)`,
+    );
     return { count: updatedCount };
   }
 

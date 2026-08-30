@@ -1,6 +1,6 @@
 // src/renderer/pages/analytics/returns/components/ReturnsTable.tsx
 import React from "react";
-import { Eye, RotateCcw, Package, Beef } from "lucide-react";
+import { Eye, RotateCcw, Beef } from "lucide-react";
 import Decimal from "decimal.js";
 import type { ReturnRefundReport } from "../../../../api/analytics/returnRefundReports";
 
@@ -28,7 +28,7 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 export const ReturnsTable: React.FC<ReturnsTableProps> = ({ returns, onView }) => {
   if (returns.length === 0) {
     return (
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg p-8 text-center">
+      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl p-8 text-center">
         <RotateCcw className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
         <p className="text-[var(--text-primary)] font-medium">No returns found</p>
         <p className="text-sm text-[var(--text-tertiary)] mt-1">Try adjusting your filters</p>
@@ -37,75 +37,69 @@ export const ReturnsTable: React.FC<ReturnsTableProps> = ({ returns, onView }) =
   }
 
   return (
-    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-lg overflow-hidden flex flex-col">
+    <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl overflow-hidden shadow-sm">
+      <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-[var(--text-primary)] flex items-center gap-2">
+          <span className="text-[var(--accent-gold)]">↩️</span>
+          Return Transactions
+        </h3>
+        <span className="text-sm text-[var(--text-tertiary)]">
+          Total: {returns.length} entries
+        </span>
+      </div>
+
       <div className="overflow-x-auto">
-        <table className="w-full">
-          <thead className="bg-[var(--table-header-bg)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Reference
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Date
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Customer
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Items
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Method
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Amount
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Actions
-              </th>
+              <th className="text-left py-3 px-5 text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Reference</th>
+              <th className="text-left py-3 px-5 text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Date</th>
+              <th className="text-left py-3 px-5 text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Customer</th>
+              <th className="text-left py-3 px-5 text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Items</th>
+              <th className="text-left py-3 px-5 text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Method</th>
+              <th className="text-right py-3 px-5 text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Amount</th>
+              <th className="text-center py-3 px-5 text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Status</th>
+              <th className="text-center py-3 px-5 text-xs font-medium uppercase tracking-wider text-[var(--text-tertiary)]">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[var(--border-color)]">
+          <tbody className="divide-y divide-[var(--border-light)]">
             {returns.map((item) => (
               <tr
                 key={item.id}
-                className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
+                className="hover:bg-[var(--table-row-hover)] hover:border-l-2 hover:border-l-[var(--accent-gold)] transition-all duration-150 cursor-pointer"
                 onClick={() => onView(item)}
               >
-                <td className="px-4 py-3 text-sm font-mono text-[var(--text-primary)]">
+                <td className="py-3 px-5 text-sm font-mono text-[var(--text-primary)]">
                   {item.referenceNo || `#${item.id}`}
                 </td>
-                <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
+                <td className="py-3 px-5 text-[var(--text-primary)]">
                   {new Date(item.createdAt).toLocaleDateString()}
                 </td>
-                <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
+                <td className="py-3 px-5 text-[var(--text-primary)]">
                   {item.customer?.name || item.customerName || "—"}
                 </td>
-                <td className="px-4 py-3 text-sm text-[var(--text-secondary)]">
+                <td className="py-3 px-5 text-[var(--text-primary)]">
                   <div className="flex items-center gap-1">
                     <Beef className="w-3 h-3 text-[var(--text-tertiary)]" />
                     <span>{item.items?.length || 0}</span>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-sm text-[var(--text-secondary)] capitalize">
+                <td className="py-3 px-5 text-[var(--text-primary)] capitalize">
                   {item.refundMethod}
                 </td>
-                <td className="px-4 py-3 text-right text-sm font-semibold text-[var(--accent-gold)]">
+                <td className="py-3 px-5 text-right font-semibold text-[var(--accent-gold)]">
                   ₱{new Decimal(item.totalAmount).toFixed(2)}
                 </td>
-                <td className="px-4 py-3 text-center">
+                <td className="py-3 px-5 text-center">
                   <StatusBadge status={item.status} />
                 </td>
-                <td className="px-4 py-3 text-center">
+                <td className="py-3 px-5 text-center">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       onView(item);
                     }}
-                    className="p-1 hover:bg-[var(--card-hover-bg)] rounded text-[var(--text-tertiary)] hover:text-[var(--accent-blue)]"
+                    className="p-1.5 rounded hover:bg-[var(--card-hover-bg)] text-[var(--text-secondary)] hover:text-[var(--accent-gold)] transition-colors"
                     title="View Details"
                   >
                     <Eye className="w-4 h-4" />

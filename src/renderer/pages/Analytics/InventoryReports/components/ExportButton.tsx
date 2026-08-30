@@ -1,3 +1,4 @@
+// src/renderer/pages/Analytics/InventoryReports/components/ExportButton.tsx
 import React, { useState } from 'react';
 import { Download } from 'lucide-react';
 import inventoryReportsAPI from '../../../../api/analytics/inventoryReports';
@@ -15,18 +16,17 @@ const ExportButton: React.FC<Props> = ({ categoryId, supplierId, startDate, endD
   const handleExport = async () => {
     setExporting(true);
     try {
-      // Fetch data and generate CSV from meats list
-      const res = await inventoryReportsAPI.getData({
-        categoryId,
-        supplierId,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        limit: 10000,
-      });
+      const params: any = { limit: 10000 };
+      if (categoryId !== undefined && categoryId !== null) params.categoryId = categoryId;
+      if (supplierId !== undefined && supplierId !== null) params.supplierId = supplierId;
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+
+      const res = await inventoryReportsAPI.getData(params);
       if (res.status) {
         const meats = res.data.meats;
         const headers = ['ID', 'Name', 'SKU', 'Price/kg', 'Total Stock', 'Total Value'];
-        const rows = meats.map(m => [
+        const rows = meats.map((m: any) => [
           m.id,
           m.name,
           m.sku,
@@ -34,7 +34,7 @@ const ExportButton: React.FC<Props> = ({ categoryId, supplierId, startDate, endD
           m.inventory.totalStock,
           m.inventory.totalValue,
         ]);
-        const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+        const csv = [headers.join(','), ...rows.map((r: any[]) => r.join(','))].join('\n');
         const blob = new Blob([csv], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -56,7 +56,7 @@ const ExportButton: React.FC<Props> = ({ categoryId, supplierId, startDate, endD
     <button
       onClick={handleExport}
       disabled={exporting}
-      className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-blue)] text-white rounded-lg hover:bg-[var(--accent-blue-hover)] transition-colors disabled:opacity-50"
+      className="flex items-center gap-2 px-4 py-2 bg-[var(--accent-gold)] text-[var(--btn-primary-text)] rounded-lg hover:bg-[var(--accent-gold-hover)] transition-colors disabled:opacity-50 font-medium shadow-sm"
     >
       <Download className="w-4 h-4" />
       {exporting ? 'Exporting...' : 'Export CSV'}

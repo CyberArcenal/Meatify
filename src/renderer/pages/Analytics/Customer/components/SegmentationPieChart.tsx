@@ -1,19 +1,37 @@
+// src/renderer/pages/Analytics/Customer/components/SegmentationPieChart.tsx
 import React from 'react';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
+import { PieChart } from 'lucide-react';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-interface Props {
-  segmentation: {
-    highValue: number;
-    mediumValue: number;
-    lowValue: number;
-    inactive: number;
-  };
+interface CustomerSegmentation {
+  highValue: number;
+  mediumValue: number;
+  lowValue: number;
+  inactive: number;
 }
 
-const SegmentationPieChart: React.FC<Props> = ({ segmentation }) => {
+interface Props {
+  segmentation: CustomerSegmentation;
+  isLoading?: boolean;
+}
+
+const SegmentationPieChart: React.FC<Props> = ({ segmentation, isLoading }) => {
+  if (isLoading) {
+    return (
+      <div className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] p-5 h-full animate-pulse">
+        <div className="h-6 w-40 bg-[var(--card-secondary-bg)] rounded mb-4" />
+        <div className="flex items-center justify-center h-64">
+          <div className="w-48 h-48 rounded-full bg-[var(--card-secondary-bg)]" />
+        </div>
+      </div>
+    );
+  }
+
+  const total = segmentation.highValue + segmentation.mediumValue + segmentation.lowValue + segmentation.inactive;
+
   const data = {
     labels: ['High Value', 'Medium Value', 'Low Value', 'Inactive'],
     datasets: [
@@ -25,13 +43,14 @@ const SegmentationPieChart: React.FC<Props> = ({ segmentation }) => {
           segmentation.inactive,
         ],
         backgroundColor: [
-          '#22c55e', // bright green
-          '#3b82f6', // bright blue
-          '#f97316', // bright orange
-          '#94a3b8', // light gray
+          '#22c55e',
+          '#3b82f6',
+          '#f97316',
+          '#64748b',
         ],
         borderColor: 'var(--card-bg)',
-        borderWidth: 2,
+        borderWidth: 3,
+        hoverOffset: 10,
       },
     ],
   };
@@ -41,11 +60,14 @@ const SegmentationPieChart: React.FC<Props> = ({ segmentation }) => {
     maintainAspectRatio: true,
     plugins: {
       legend: {
+        position: 'bottom' as const,
         labels: {
           color: 'var(--text-primary)',
-          font: { size: 12 },
+          font: { size: 11 },
+          padding: 12,
+          usePointStyle: true,
+          pointStyle: 'circle',
         },
-        position: 'bottom' as const,
       },
       tooltip: {
         backgroundColor: 'var(--card-bg)',
@@ -53,17 +75,34 @@ const SegmentationPieChart: React.FC<Props> = ({ segmentation }) => {
         bodyColor: 'var(--text-secondary)',
         borderColor: 'var(--border-color)',
         borderWidth: 1,
+        padding: 12,
+        callbacks: {
+          label: (context: any) => {
+            const value = context.parsed;
+            const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+            return `${context.label}: ${value} (${percentage}%)`;
+          },
+        },
       },
     },
   };
 
   return (
-    <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)] h-full flex flex-col">
-      <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Customer Segmentation</h3>
-      <div className="flex-1 flex items-center justify-center min-h-0">
-        <div className="w-full max-w-xs">
-          <Pie data={data} options={options} />
-        </div>
+    <div className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] p-5 shadow-sm hover:border-[var(--accent-gold)] transition-colors h-full flex flex-col">
+      <div className="flex items-center gap-2 mb-4">
+        <PieChart className="w-5 h-5 text-[var(--accent-gold)]" />
+        <h3 className="text-lg font-semibold text-[var(--text-primary)]">Customer Segmentation</h3>
+      </div>
+      <div className="flex-1 flex items-center justify-center">
+        {total === 0 ? (
+          <div className="text-center text-[var(--text-tertiary)] py-8">
+            No segmentation data available
+          </div>
+        ) : (
+          <div className="w-full max-w-xs">
+            <Pie data={data} options={options} />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -21,7 +21,7 @@ const SummaryCard: React.FC<Props> = ({ title, value, icon: Icon, color, isLoadi
 
   return (
     <div
-      className={`rounded-xl p-5 border transition-all duration-300 hover:scale-[1.02] hover:shadow-lg ${colorClasses[color]}`}
+      className={`rounded-xl p-5 border transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:border-[var(--accent-gold)]/50 group ${colorClasses[color]}`}
     >
       <div className="flex items-start justify-between">
         <div>
@@ -32,7 +32,7 @@ const SummaryCard: React.FC<Props> = ({ title, value, icon: Icon, color, isLoadi
             <p className="text-2xl font-bold mt-1">{value}</p>
           )}
         </div>
-        <div className="p-2 rounded-lg bg-black/10">
+        <div className={`p-2.5 rounded-lg bg-black/10 group-hover:bg-black/20 transition-colors`}>
           <Icon className="w-6 h-6" />
         </div>
       </div>

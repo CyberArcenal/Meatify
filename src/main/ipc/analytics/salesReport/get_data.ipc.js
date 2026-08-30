@@ -9,7 +9,7 @@ module.exports = async (params) => {
   const { 
     startDate,
     endDate,
-    groupBy = "day", // day, week, month, year
+    groupBy = "day",
     page = 1,
     limit = 20,
     sortBy = "timestamp",
@@ -34,7 +34,6 @@ module.exports = async (params) => {
       end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
     } else {
-      // Default to last 30 days
       start = new Date();
       start.setDate(start.getDate() - 30);
       start.setHours(0, 0, 0, 0);
@@ -42,13 +41,12 @@ module.exports = async (params) => {
       end.setHours(23, 59, 59, 999);
     }
 
-    // Get sales data
+    // Build sales options - only include customerId if valid
     const salesOptions = {
       startDate: start.toISOString(),
       endDate: end.toISOString(),
       status,
       paymentMethod,
-      customerId,
       minAmount,
       maxAmount,
       page,
@@ -56,6 +54,12 @@ module.exports = async (params) => {
       sortBy,
       sortOrder,
     };
+    
+    // ✅ Only add customerId if it's a valid number
+    if (customerId !== undefined && customerId !== null && !isNaN(customerId)) {
+      salesOptions.customerId = customerId;
+    }
+
     const salesResult = await saleService.findAll(salesOptions);
     const sales = salesResult.data;
 
@@ -87,19 +91,40 @@ module.exports = async (params) => {
     // Get customer data for breakdown
     let customers = [];
     if (includeCustomerBreakdown && sales.length > 0) {
-      const customerIds = [...new Set(sales.map(s => s.customerId).filter(id => id !== null))];
+      // ✅ Filter out null, undefined, and invalid IDs
+      const customerIds = [...new Set(
+        sales
+          .map(s => s.customerId)
+          .filter(id => id !== null && id !== undefined && !isNaN(id) && id > 0)
+      )];
+      
       if (customerIds.length > 0) {
-        const customerPromises = customerIds.map(id => customerService.findById(id));
-        customers = await Promise.all(customerPromises);
+        // ✅ Use try-catch for each customer fetch to prevent one failure from breaking all
+        const customerPromises = customerIds.map(async (id) => {
+          try {
+            return await customerService.findById(id);
+          } catch (err) {
+            console.warn(`[SalesReport] Failed to fetch customer ${id}:`, err.message);
+            return null;
+          }
+        });
+        customers = (await Promise.all(customerPromises)).filter(c => c !== null);
       }
     }
 
     // Build enriched sales data
     const enrichedSales = sales.map(sale => {
       const items = saleItems.filter(item => item.saleId === sale.id);
-      const totalWeight = items.reduce((sum, item) => sum + item.weightKg, 0);
-      const totalDiscount = items.reduce((sum, item) => sum + item.discount, 0);
-      const totalTax = items.reduce((sum, item) => sum + item.tax, 0);
+      const totalWeight = items.reduce((sum, item) => sum + (item.weightKg || 0), 0);
+      const totalDiscount = items.reduce((sum, item) => sum + (item.discount || 0), 0);
+      const totalTax = items.reduce((sum, item) => sum + (item.tax || 0), 0);
+      
+      // Find customer name from fetched customers
+      let customerName = "Walk-in";
+      if (sale.customerId && sale.customerId > 0) {
+        const found = customers.find(c => c.id === sale.customerId);
+        if (found) customerName = found.name;
+      }
       
       return {
         ...sale,
@@ -107,7 +132,7 @@ module.exports = async (params) => {
         totalWeight,
         totalDiscount,
         totalTax,
-        customerName: sale.customer?.name || "Walk-in",
+        customerName,
         itemCount: items.length,
       };
     });
@@ -129,7 +154,7 @@ module.exports = async (params) => {
             averagePrice: 0,
           };
         }
-        productMap[key].totalWeight += item.weightKg;
+        productMap[key].totalWeight += item.weightKg || 0;
         productMap[key].totalRevenue += item.lineTotal || 0;
         productMap[key].quantity += 1;
       });
@@ -149,7 +174,7 @@ module.exports = async (params) => {
         if (!customerMap[id]) {
           customerMap[id] = {
             customerId: id,
-            customerName: sale.customerName || "Walk-in",
+            customerName: "Walk-in",
             totalSpent: 0,
             purchaseCount: 0,
             averageTicket: 0,
@@ -157,6 +182,14 @@ module.exports = async (params) => {
         }
         customerMap[id].totalSpent += sale.totalAmount;
         customerMap[id].purchaseCount += 1;
+      });
+      
+      // Update customer names from fetched customers
+      customers.forEach(c => {
+        const key = c.id;
+        if (customerMap[key]) {
+          customerMap[key].customerName = c.name;
+        }
       });
       
       customerBreakdown = Object.values(customerMap).map(c => ({
@@ -192,7 +225,7 @@ module.exports = async (params) => {
         },
         filters: {
           paymentMethod,
-          customerId,
+          customerId: customerId && !isNaN(customerId) ? customerId : undefined,
           meatId,
           status,
           minAmount,
@@ -230,7 +263,6 @@ function getDailySalesTrend(sales, start, end) {
     }
   });
 
-  // We'd need sale items to add weight, but we'll skip for now
   return Object.values(dailyData);
 }
 
@@ -245,7 +277,6 @@ async function getSalesReportSummary(start, end, sales, refunds) {
   const totalRefunds = refunds.reduce((sum, r) => sum + r.totalAmount, 0);
   const netRevenue = totalRevenue - totalRefunds;
 
-  // Payment method breakdown
   const paymentMethods = {};
   sales.forEach(s => {
     const method = s.paymentMethod || "unknown";
@@ -256,6 +287,8 @@ async function getSalesReportSummary(start, end, sales, refunds) {
     paymentMethods[method].total += s.totalAmount;
   });
 
+  const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+
   return {
     totalRevenue,
     totalTransactions,
@@ -264,9 +297,7 @@ async function getSalesReportSummary(start, end, sales, refunds) {
     totalRefunds,
     netRevenue,
     paymentMethods,
-    days: Math.ceil((end - start) / (1000 * 60 * 60 * 24)),
-    averageDailyRevenue: Math.ceil((end - start) / (1000 * 60 * 60 * 24)) > 0 
-      ? totalRevenue / Math.ceil((end - start) / (1000 * 60 * 60 * 24)) 
-      : 0,
+    days,
+    averageDailyRevenue: totalRevenue / days,
   };
 }

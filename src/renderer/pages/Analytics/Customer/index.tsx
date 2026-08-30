@@ -1,154 +1,123 @@
-import React, { useState, useEffect } from 'react';
+// src/renderer/pages/Analytics/Customer/index.tsx
+import React from 'react';
+import { RefreshCw } from 'lucide-react';
+import { useCustomerInsights } from './hooks/useCustomerInsights';
+import { useCustomerFilters } from './hooks/useCustomerFilters';
 import SummaryCards from './components/SummaryCards';
 import TopSpendersTable from './components/TopSpendersTable';
 import TopLoyaltyTable from './components/TopLoyaltyTable';
 import SegmentationPieChart from './components/SegmentationPieChart';
 import CustomerTable from './components/CustomerTable';
-import customerInsightsAPI from '../../../api/analytics/customerInsights';
-import type {
-  CustomerInsightsSummaryData,
-  CustomerInsight,
-} from '../../../api/analytics/customerInsights';
 
-// Local type aliases based on the API response
-type CustomerSummary = {
-  totalCustomers: number;
-  activeCustomers: number;
-  averageLoyaltyPoints: number;
-  newCustomersThisMonth: number;
-};
+const CustomerInsightsPage: React.FC = () => {
+  const { filters, updateFilters, resetFilters, hasFilters } = useCustomerFilters();
 
-type TopCustomerSpending = {
-  customerId: number;
-  customerName: string;
-  purchaseCount: number;
-  totalSpent: number;
-};
+  const {
+    state: {
+      summary,
+      topSpenders,
+      topLoyalty,
+      segmentation,
+      customers,
+      total,
+      totalPages,
+      loadingSummary,
+      loadingTopSpenders,
+      loadingTopLoyalty,
+      loadingTable,
+      error,
+      page,
+    },
+    updateFilters: updateReportFilters,
+    refetch,
+  } = useCustomerInsights({
+    search: filters.search,
+    minPoints: filters.minPoints,
+    maxPoints: filters.maxPoints,
+    hasLoyaltyPoints: filters.hasLoyaltyPoints,
+    page: 1,
+    limit: 10,
+  });
 
-type TopCustomerLoyalty = {
-  customerId: number;
-  customerName: string;
-  points: number;
-};
+  const handleFilterChange = (newFilters: any) => {
+    updateFilters(newFilters);
+    updateReportFilters({
+      search: newFilters.search,
+      minPoints: newFilters.minPoints,
+      maxPoints: newFilters.maxPoints,
+      hasLoyaltyPoints: newFilters.hasLoyaltyPoints,
+      page: 1,
+    });
+  };
 
-type CustomerSegmentation = {
-  highValue: number;
-  mediumValue: number;
-  lowValue: number;
-  inactive: number;
-};
+  const handlePageChange = (newPage: number) => {
+    updateReportFilters({ page: newPage });
+  };
 
-const CustomerInsights: React.FC = () => {
-  const [summary, setSummary] = useState<CustomerSummary | null>(null);
-  const [topSpenders, setTopSpenders] = useState<TopCustomerSpending[]>([]);
-  const [topLoyalty, setTopLoyalty] = useState<TopCustomerLoyalty[]>([]);
-  const [segmentation, setSegmentation] = useState<CustomerSegmentation | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const handleRefresh = () => {
+    refetch();
+  };
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        setLoading(true);
-
-        // Fetch summary data
-        const sumRes = await customerInsightsAPI.getSummary();
-        if (sumRes.status) {
-          const data = sumRes.data; // CustomerInsightsSummaryData
-          setSummary({
-            totalCustomers: data.totalCustomers,
-            activeCustomers: data.activeCount,
-            averageLoyaltyPoints: data.pointsSummary.average,
-            newCustomersThisMonth: data.totalCustomers - data.inactiveCount, // or any appropriate field
-          });
-
-          // Derive segmentation
-          setSegmentation({
-            highValue: data.byStatus.elite,
-            mediumValue: data.byStatus.vip,
-            lowValue: data.byStatus.regular,
-            inactive: data.inactiveCount,
-          });
-        }
-
-        // Fetch top spenders (using getData with sort)
-        const spendRes = await customerInsightsAPI.getData({
-          sortBy: 'totalSpent',
-          sortOrder: 'DESC',
-          limit: 5,
-        });
-        if (spendRes.status) {
-          const topSpendersList = spendRes.data.customers.slice(0, 5).map((c) => ({
-            customerId: c.id,
-            customerName: c.name,
-            purchaseCount: c.purchaseCount,
-            totalSpent: c.totalSpent,
-          }));
-          setTopSpenders(topSpendersList);
-        }
-
-        // Fetch top loyalty (using getData with sort)
-        const loyaltyRes = await customerInsightsAPI.getData({
-          sortBy: 'loyaltyPointsBalance',
-          sortOrder: 'DESC',
-          limit: 5,
-        });
-        if (loyaltyRes.status) {
-          const topLoyaltyList = loyaltyRes.data.customers.slice(0, 5).map((c) => ({
-            customerId: c.id,
-            customerName: c.name,
-            points: c.loyaltyPointsBalance,
-          }));
-          setTopLoyalty(topLoyaltyList);
-        }
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAll();
-  }, []);
-
-  if (loading) {
-    return (
-      <div className="p-6 flex justify-center items-center h-64">
-        <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--border-color)]">
-          Loading customer insights...
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <div className="bg-[var(--card-bg)] rounded-xl p-5 border border-[var(--danger-color)]/30 text-[var(--danger-color)]">
-          Error: {error}
-        </div>
-      </div>
-    );
-  }
+  const anyLoading = loadingSummary || loadingTopSpenders || loadingTopLoyalty || loadingTable;
 
   return (
     <div className="p-6 space-y-6 bg-[var(--background-color)] min-h-screen">
-      <h1 className="text-2xl font-bold text-[var(--text-primary)]">Customer Insights</h1>
-
-      {summary && <SummaryCards summary={summary} />}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <TopSpendersTable data={topSpenders} />
-          <TopLoyaltyTable data={topLoyalty} />
-        </div>
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border-color)] pb-4">
         <div>
-          {segmentation && <SegmentationPieChart segmentation={segmentation} />}
+          <h1 className="text-2xl font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <span className="text-[var(--accent-gold)]">👥</span>
+            Customer Insights
+          </h1>
+          <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+            Analyze customer behavior, loyalty, and spending patterns
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={anyLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-[var(--card-bg)] text-[var(--text-secondary)] rounded-lg border border-[var(--border-color)] hover:border-[var(--accent-gold)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${anyLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
       </div>
 
-      <CustomerTable />
+      {error && (
+        <div className="bg-[var(--status-cancelled-bg)] border border-[var(--accent-red)] text-[var(--accent-red)] p-4 rounded-xl">
+          Error: {error}
+          <button onClick={handleRefresh} className="ml-3 underline hover:text-[var(--accent-red)]">
+            Retry
+          </button>
+        </div>
+      )}
+
+      {summary && <SummaryCards summary={summary} isLoading={loadingSummary} />}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <TopSpendersTable data={topSpenders} isLoading={loadingTopSpenders} />
+          <TopLoyaltyTable data={topLoyalty} isLoading={loadingTopLoyalty} />
+        </div>
+        <div>
+          {segmentation && <SegmentationPieChart segmentation={segmentation} isLoading={loadingSummary} />}
+        </div>
+      </div>
+
+      <CustomerTable
+        customers={customers}
+        loading={loadingTable}
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        onPageChange={handlePageChange}
+        onFilterChange={handleFilterChange}
+        filters={filters}
+      />
     </div>
   );
 };
 
-export default CustomerInsights;
+export default CustomerInsightsPage;
