@@ -31,9 +31,10 @@ const {
 const {
   initializeDatabase,
   safeCloseDatabase,
+  // @ts-ignore
   isDatabaseInitialized,
 } = require('./core/database');
-const { registerIpcHandlers } = require('./core/ipc-registry');
+const { registerIpcHandlers, runSchedulers } = require('./core/ipc-registry');
 
 // Service Container
 const { defaultContainer } = require('./core/service-container');
@@ -86,6 +87,7 @@ async function startupSequence() {
     logger.info(`User Data Path: ${APP_CONFIG.userDataPath}`);
 
     // 1. Setup global error handlers
+    // @ts-ignore
     setupGlobalErrorHandlers(mainWindow);
 
     // 2. Register custom protocols
@@ -99,15 +101,18 @@ async function startupSequence() {
     await createSplashWindow();
 
     // 5. Initialize database
+    // @ts-ignore
     const dbResult = await initializeDatabase(splashWindow);
 
     if (!dbResult.success) {
+      // @ts-ignore
       logger.error('Database initialization failed:', dbResult.message);
 
       const userChoice = dialog.showMessageBoxSync({
         type: 'warning',
         title: 'Database Warning',
         message: 'Database initialization failed',
+        // @ts-ignore
         detail: `${dbResult.message}\n\nApplication may have limited functionality.`,
         buttons: ['Continue Anyway', 'Quit Application'],
         defaultId: 0,
@@ -124,12 +129,15 @@ async function startupSequence() {
     // 6. Get services from container
     const printerService = defaultContainer.get('printer');
     const cashDrawerService = defaultContainer.get('cashDrawer');
+    // @ts-ignore
     const database = defaultContainer.get('database');
 
     // 7. Create main window
+    // @ts-ignore
     await createMainWindow((window) => {
       // Register IPC handlers with services
       registerIpcHandlers(window, { printerService, cashDrawerService });
+      runSchedulers()
     });
 
     // 8. Log service initialization
@@ -162,6 +170,7 @@ async function startupSequence() {
         errorWindow,
         'Startup Failed',
         'The application failed to start properly.',
+        // @ts-ignore
         error.message
       );
 

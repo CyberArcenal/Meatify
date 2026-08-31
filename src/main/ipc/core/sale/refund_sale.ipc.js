@@ -1,6 +1,6 @@
 // src/main/ipc/core/sale/refund_sale.ipc.js
-const { SaleStateService } = require("../../../../stateServices/Sale");
-const { AppDataSource } = require("../../../db/data-source");
+//@ts-check
+const saleService = require("../../../../services/Sale");
 
 module.exports = async (params, queryRunner) => {
   const { saleId, reason = "", user = "system" } = params;
@@ -10,8 +10,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new SaleStateService(AppDataSource);
-    const result = await stateService.refundSale(saleId, reason, user, queryRunner);
+    const result = await saleService.refundSale(saleId, reason, user, queryRunner);
     return {
       status: true,
       message: `Sale #${saleId} refunded successfully`,
