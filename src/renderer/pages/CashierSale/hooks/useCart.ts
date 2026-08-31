@@ -11,31 +11,46 @@ type CartState = {
 };
 
 type CartAction =
-  | { type: "ADD_TO_CART"; product: Product; weightKg: number; batchId: number | null; batchCode: string | null }
+  | {
+      type: "ADD_TO_CART";
+      product: Product;
+      weightKg: number;
+      batchId: number | null;
+      batchCode: string | null;
+      batchExpiryDate: string | null; // <-- new
+    }
   | { type: "UPDATE_WEIGHT"; productId: number; weightKg: number }
   | { type: "REMOVE_FROM_CART"; productId: number }
   | { type: "UPDATE_LINE_DISCOUNT"; productId: number; discountPercent: number }
   | { type: "UPDATE_LINE_TAX"; productId: number; taxPercent: number }
-  | { type: "UPDATE_BATCH"; productId: number; batchId: number | null; batchCode: string | null }
+  | {
+      type: "UPDATE_BATCH";
+      productId: number;
+      batchId: number | null;
+      batchCode: string | null;
+      batchExpiryDate: string | null; // <-- new
+    }
   | { type: "SET_GLOBAL_DISCOUNT"; value: number }
   | { type: "SET_GLOBAL_TAX"; value: number }
   | { type: "SET_NOTES"; value: string }
   | { type: "CLEAR_CART" };
 
+// helper: total weight of a specific meat in cart
 const getTotalWeightForMeat = (cart: CartItem[], meatId: number) => {
   return cart
     .filter((item) => item.id === meatId)
     .reduce((sum, item) => sum + item.weightKg, 0);
 };
 
-// ✅ Pure reducer – walang side effects (walang dialogs.alert)
+// pure reducer
 const cartReducer = (state: CartState, action: CartAction): CartState => {
   switch (action.type) {
     case "ADD_TO_CART": {
-      const { product, weightKg, batchId, batchCode } = action;
+      const { product, weightKg, batchId, batchCode, batchExpiryDate } = action;
       const existing = state.cart.find((item) => item.id === product.id);
 
       if (existing) {
+        // If product already in cart, just add weight (preserve batch info)
         return {
           ...state,
           cart: state.cart.map((item) =>
@@ -54,8 +69,9 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
               weightKg,
               lineDiscount: 0,
               lineTax: 0,
-              batchId: batchId,
-              batchCode: batchCode,
+              batchId,
+              batchCode,
+              batchExpiryDate, // store expiry date
             },
           ],
         };
@@ -67,6 +83,7 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
       if (!item) return state;
 
       if (action.weightKg <= 0) {
+        // remove item if weight is zero or negative
         return {
           ...state,
           cart: state.cart.filter((i) => i.id !== action.productId),
@@ -112,7 +129,12 @@ const cartReducer = (state: CartState, action: CartAction): CartState => {
         ...state,
         cart: state.cart.map((i) =>
           i.id === action.productId
-            ? { ...i, batchId: action.batchId, batchCode: action.batchCode }
+            ? {
+                ...i,
+                batchId: action.batchId,
+                batchCode: action.batchCode,
+                batchExpiryDate: action.batchExpiryDate, // update expiry date
+              }
             : i
         ),
       };
@@ -142,9 +164,14 @@ export const useCart = () => {
     notes: "",
   });
 
-  // ✅ Validation at alert ay nasa action creator
   const addToCart = useCallback(
-    (product: Product, weightKg: number = 1, batchId: number | null = null, batchCode: string | null = null) => {
+    (
+      product: Product,
+      weightKg: number = 1,
+      batchId: number | null = null,
+      batchCode: string | null = null,
+      batchExpiryDate: string | null = null // new param
+    ) => {
       const currentWeight = getTotalWeightForMeat(state.cart, product.id);
       const newWeight = currentWeight + weightKg;
 
@@ -156,12 +183,18 @@ export const useCart = () => {
         return;
       }
 
-      dispatch({ type: "ADD_TO_CART", product, weightKg, batchId, batchCode });
+      dispatch({
+        type: "ADD_TO_CART",
+        product,
+        weightKg,
+        batchId,
+        batchCode,
+        batchExpiryDate,
+      });
     },
     [state.cart]
   );
 
-  // ✅ Validation at alert ay nasa action creator
   const updateWeight = useCallback(
     (productId: number, weightKg: number) => {
       const item = state.cart.find((i) => i.id === productId);
@@ -198,9 +231,23 @@ export const useCart = () => {
     dispatch({ type: "UPDATE_LINE_TAX", productId, taxPercent });
   }, []);
 
-  const updateBatch = useCallback((productId: number, batchId: number | null, batchCode: string | null) => {
-    dispatch({ type: "UPDATE_BATCH", productId, batchId, batchCode });
-  }, []);
+  const updateBatch = useCallback(
+    (
+      productId: number,
+      batchId: number | null,
+      batchCode: string | null,
+      batchExpiryDate: string | null
+    ) => {
+      dispatch({
+        type: "UPDATE_BATCH",
+        productId,
+        batchId,
+        batchCode,
+        batchExpiryDate,
+      });
+    },
+    []
+  );
 
   const setGlobalDiscount = useCallback((value: number) => {
     dispatch({ type: "SET_GLOBAL_DISCOUNT", value });

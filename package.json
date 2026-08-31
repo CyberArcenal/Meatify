@@ -2,7 +2,7 @@
   "name": "meatify",
   "private": true,
   "version": "v1.0.0",
-  "description": "Meatify - Meat Shop POS System with batch inventory, expiry tracking, and FIFO sales",
+  "description": "Meatify - Meat Shop POS System with batch inventory, expiry tracking",
   "main": "src/main/index.js",
   "author": {
     "name": "CyberArcenal",

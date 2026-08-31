@@ -14,6 +14,7 @@ export interface CartItem extends Product {
   lineTax: number;
   batchId: number | null;        // ✅ Required
   batchCode: string | null;      // ✅ Para display
+  batchExpiryDate: string | null;
 }
 
 export type PaymentMethod = "cash" | "card" | "wallet";

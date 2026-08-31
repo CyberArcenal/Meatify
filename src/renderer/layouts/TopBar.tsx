@@ -14,6 +14,8 @@ import { useNavigate } from "react-router-dom";
 import notificationAPI from "../api/core/notification";
 import UpdateNotifier from "../components/Shared/UpdateNotifier";
 import { NotificationDrawer } from "../components/Shared/NotificationDrawer";
+import StatusIndicators from "../components/Shared/StatusIndicators";
+import DateDisplay from "../components/Shared/DateDisplay";
 
 // TODO: Replace with actual auth context
 const CURRENT_USER_ID = 1;
@@ -171,18 +173,8 @@ const TopBar: React.FC<TopBarProps> = ({ toggleSidebar }) => {
         </div>
 
         {/* Date Display (Desktop) */}
-        <div className="hidden md:flex items-center gap-3 ml-2">
-          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--topbar-search-bg)]/50 border border-[var(--topbar-search-border)]">
-            <Calendar className="w-4 h-4 text-[var(--sidebar-text)]" />
-            <div className="flex flex-col">
-              <div className="text-sm font-medium text-[var(--sidebar-text)]">
-                {today.toLocaleDateString("en-US", { weekday: "long" })}
-              </div>
-              <div className="text-xs text-[var(--text-tertiary)]">
-                {formattedDate}
-              </div>
-            </div>
-          </div>
+        <div className="hidden md:block">
+          <DateDisplay />
         </div>
       </div>
 
@@ -313,6 +305,7 @@ const TopBar: React.FC<TopBarProps> = ({ toggleSidebar }) => {
 
       {/* Right Section - Actions & Profile */}
       <div className="flex items-center gap-3">
+        <StatusIndicators />
         <UpdateNotifier />
         {/* Notification bell */}
         <button

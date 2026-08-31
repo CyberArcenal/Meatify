@@ -41,7 +41,12 @@ interface CartProps {
   onRemove: (id: number) => void;
   onUpdateDiscount: (id: number, discount: number) => void;
   onUpdateTax: (id: number, tax: number) => void;
-  onUpdateBatch: (id: number, batchId: number | null, batchCode: string | null) => void;
+  onUpdateBatch: (
+    id: number,
+    batchId: number | null,
+    batchCode: string | null,
+    batchExpiryDate: string | null
+  ) => void;
   onGlobalDiscountChange: (value: number) => void;
   onGlobalTaxChange: (value: number) => void;
   onNotesChange: (value: string) => void;
@@ -108,11 +113,11 @@ const Cart: React.FC<CartProps> = ({
   const subtotal = useMemo(() => calculateSubtotal(cart), [cart]);
   const loyaltyDeduction = useMemo(
     () => (useLoyalty ? new Decimal(loyaltyPointsToRedeem) : new Decimal(0)),
-    [useLoyalty, loyaltyPointsToRedeem]
+    [useLoyalty, loyaltyPointsToRedeem],
   );
   const total = useMemo(
     () => calculateCartTotal(cart, globalDiscount, globalTax, loyaltyDeduction),
-    [cart, globalDiscount, globalTax, loyaltyDeduction]
+    [cart, globalDiscount, globalTax, loyaltyDeduction],
   );
   const maxRedeemable = useMemo(
     () =>
@@ -120,9 +125,9 @@ const Cart: React.FC<CartProps> = ({
         loyaltyPointsAvailable,
         cart,
         globalDiscount,
-        globalTax
+        globalTax,
       ),
-    [loyaltyPointsAvailable, cart, globalDiscount, globalTax]
+    [loyaltyPointsAvailable, cart, globalDiscount, globalTax],
   );
 
   const handleClearCart = async () => {
@@ -152,7 +157,7 @@ const Cart: React.FC<CartProps> = ({
     (id: number | null, customer: Customer | null) => {
       onCustomerSelect(customer ? customer : null);
     },
-    [onCustomerSelect]
+    [onCustomerSelect],
   );
 
   return (
@@ -188,7 +193,9 @@ const Cart: React.FC<CartProps> = ({
             <div className="w-16 h-16 rounded-full bg-[var(--card-secondary-bg)] flex items-center justify-center mb-3 border border-[var(--border-color)]">
               <ShoppingCart className="w-8 h-8" />
             </div>
-            <p className="font-medium text-[var(--text-secondary)]">Cart is empty</p>
+            <p className="font-medium text-[var(--text-secondary)]">
+              Cart is empty
+            </p>
             <p className="text-sm">Click products to add</p>
           </div>
         ) : (
@@ -214,7 +221,7 @@ const Cart: React.FC<CartProps> = ({
           onChange={(customerId, customer) => {
             handleCustomerSelect(
               customerId,
-              customer === undefined ? null : customer
+              customer === undefined ? null : customer,
             );
           }}
           placeholder="Select customer (optional)"
@@ -223,7 +230,9 @@ const Cart: React.FC<CartProps> = ({
 
         {selectedCustomer && isPointEnabled && (
           <div className="flex items-center justify-between text-xs px-1">
-            <span className="text-[var(--text-tertiary)]">Loyalty points available:</span>
+            <span className="text-[var(--text-tertiary)]">
+              Loyalty points available:
+            </span>
             <span className="font-semibold text-[var(--accent-purple)]">
               {loyaltyPointsAvailable}
             </span>
@@ -260,7 +269,7 @@ const Cart: React.FC<CartProps> = ({
               value={localDiscount}
               onChange={(e) =>
                 setLocalDiscount(
-                  Math.min(maxDiscount, parseFloat(e.target.value) || 0)
+                  Math.min(maxDiscount, parseFloat(e.target.value) || 0),
                 )
               }
               className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--accent-gold)] disabled:opacity-50"
