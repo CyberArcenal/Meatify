@@ -1,6 +1,5 @@
 // src/main/ipc/core/returnRefund/cancel_return.ipc.js
-const { ReturnRefundStateService } = require("../../../../stateServices/ReturnRefund");
-const { AppDataSource } = require("../../../db/data-source");
+const returnRefundService = require("../../../../services/ReturnRefund");
 
 module.exports = async (params, queryRunner) => {
   const { returnId, reason = "", user = "system" } = params;
@@ -10,8 +9,8 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new ReturnRefundStateService(AppDataSource);
-    const result = await stateService.cancelReturn(returnId, reason, user, queryRunner);
+    // ✅ Tama: Use Service (not State Service)
+    const result = await returnRefundService.cancelReturn(returnId, reason, user, queryRunner);
     return {
       status: true,
       message: `Return #${returnId} cancelled successfully`,

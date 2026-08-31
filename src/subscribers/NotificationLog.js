@@ -2,82 +2,13 @@
 //@ts-check
 const NotificationLog = require("../entities/NotificationLog");
 const { AppDataSource } = require("../main/db/data-source");
-const { NotificationLogStateService } = require("../stateServices/NotificationLog");
 const { logger } = require("../utils/logger");
 
 logger.debug("[Subscriber] Loading NotificationLogSubscriber");
 
 class NotificationLogSubscriber {
-  constructor() {
-    this.stateService = null;
-  }
-
-  async getStateService(dataSource) {
-    if (!this.stateService) {
-      this.stateService = new NotificationLogStateService(dataSource);
-    }
-    return this.stateService;
-  }
-
   listenTo() {
     return NotificationLog;
-  }
-
-  /**
-   * After insert – trigger sending
-   * @param {import("../entities/NotificationLog")} entity
-   */
-  async afterInsert(entity, { manager, queryRunner }) {
-    if (!entity) return;
-
-    logger.debug("[NotificationLogSubscriber] afterInsert:", {
-      id: entity.id,
-      recipient: entity.recipient_email,
-      status: entity.status,
-    });
-
-    // Only process if status is 'queued'
-    if (entity.status === "queued") {
-      try {
-        const service = await this.getStateService(manager.connection);
-        await service.onLogCreated(entity, "system", queryRunner);
-      } catch (err) {
-        logger.error("[NotificationLogSubscriber] Failed to process log:", err);
-        // Don't throw – we don't want to break the transaction
-      }
-    }
-  }
-
-  /**
-   * After update – handle retry/resend
-   * @param {{ databaseEntity: any; entity: any }} event
-   */
-  async afterUpdate(event, { manager, queryRunner }) {
-    const { entity, databaseEntity } = event;
-    if (!entity) return;
-
-    logger.debug("[NotificationLogSubscriber] afterUpdate:", {
-      id: entity.id,
-      oldStatus: databaseEntity?.status,
-      newStatus: entity.status,
-    });
-
-    // If status changed from queued to something else, trigger sending
-    if (databaseEntity && databaseEntity.status === "queued" && entity.status !== "queued") {
-      // Already being processed or skipped
-      return;
-    }
-
-    // If status changed to 'resend' or retry is triggered
-    if (entity.status === "resend" && databaseEntity?.status !== "resend") {
-      try {
-        const service = await this.getStateService(manager.connection);
-        // This will send again
-        await service.onLogCreated(entity, "system", queryRunner);
-      } catch (err) {
-        logger.error("[NotificationLogSubscriber] Failed to resend log:", err);
-      }
-    }
   }
 
   /**
@@ -85,10 +16,36 @@ class NotificationLogSubscriber {
    */
   beforeInsert(entity) {
     logger.debug("[NotificationLogSubscriber] beforeInsert:", {
+      id: entity?.id,
       recipient: entity?.recipient_email,
       subject: entity?.subject,
       status: entity?.status,
     });
+  }
+
+  /**
+   * @param {import("../entities/NotificationLog")} entity
+   */
+  async afterInsert(entity, { manager, queryRunner }) {
+    if (!entity) return;
+
+    logger.info("[NotificationLogSubscriber] afterInsert:", {
+      id: entity.id,
+      recipient: entity.recipient_email,
+      status: entity.status,
+    });
+
+    // ✅ Only process if status is 'queued'
+    if (entity.status === "queued") {
+      try {
+        const { NotificationLogStateService } = require("../stateServices/NotificationLog");
+        const stateService = new NotificationLogStateService(AppDataSource);
+        await stateService.onLogCreated(entity, "system", queryRunner);
+      } catch (err) {
+        logger.error(`[NotificationLogSubscriber] Failed to process log #${entity.id}:`, err);
+        // Don't throw – we don't want to break the transaction
+      }
+    }
   }
 
   /**
@@ -102,21 +59,94 @@ class NotificationLogSubscriber {
   }
 
   /**
+   * @param {{ databaseEntity: any; entity: any }} event
+   */
+  async afterUpdate(event, { manager, queryRunner }) {
+    const { entity, databaseEntity } = event;
+    if (!entity) return;
+
+    logger.info("[NotificationLogSubscriber] afterUpdate:", {
+      id: entity.id,
+      oldStatus: databaseEntity?.status,
+      newStatus: entity.status,
+    });
+
+    // Skip if no changes
+    if (!databaseEntity) return;
+
+    const { NotificationLogStateService } = require("../stateServices/NotificationLog");
+    const stateService = new NotificationLogStateService(AppDataSource);
+
+    // ────────────────────────────────────────────────────────────────
+    // ✅ 1. Detect status change
+    // ────────────────────────────────────────────────────────────────
+    if (databaseEntity.status !== entity.status) {
+      logger.info(
+        `[NotificationLogSubscriber] Log #${entity.id} status changed: ${databaseEntity.status} → ${entity.status}`
+      );
+
+      try {
+        const changes = { status: { old: databaseEntity.status, new: entity.status } };
+        await stateService.onLogUpdated(entity.id, entity, changes, "system", queryRunner);
+      } catch (err) {
+        logger.error(`[NotificationLogSubscriber] Failed to handle status change for log #${entity.id}:`, err);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // ✅ 2. Detect other field changes
+    // ────────────────────────────────────────────────────────────────
+    const changedFields = {};
+    const skipKeys = ['id', 'status', 'created_at', 'updated_at'];
+
+    for (const key of Object.keys(entity)) {
+      if (!skipKeys.includes(key)) {
+        if (databaseEntity[key] !== entity[key]) {
+          changedFields[key] = { old: databaseEntity[key], new: entity[key] };
+        }
+      }
+    }
+
+    if (Object.keys(changedFields).length > 0) {
+      logger.info(
+        `[NotificationLogSubscriber] Log #${entity.id} updated (fields: ${Object.keys(changedFields).join(', ')}) → routing to state service`
+      );
+
+      try {
+        await stateService.onLogUpdated(entity.id, entity, changedFields, "system", queryRunner);
+      } catch (err) {
+        logger.error(`[NotificationLogSubscriber] Failed to handle onLogUpdated for log #${entity.id}:`, err);
+      }
+    }
+  }
+
+  /**
    * @param {import("../entities/NotificationLog")} entity
    */
   beforeRemove(entity) {
     logger.debug("[NotificationLogSubscriber] beforeRemove:", {
       id: entity?.id,
+      recipient: entity?.recipient_email,
     });
   }
 
   /**
    * @param {{ databaseEntity?: any; entityId: any }} event
    */
-  afterRemove(event) {
-    logger.debug("[NotificationLogSubscriber] afterRemove:", {
-      id: event.entityId,
+  async afterRemove(event, { manager, queryRunner }) {
+    const { entityId, databaseEntity } = event;
+    logger.info("[NotificationLogSubscriber] afterRemove:", {
+      id: entityId,
     });
+
+    // ✅ Route to state service for side effects
+    try {
+      const { NotificationLogStateService } = require("../stateServices/NotificationLog");
+      const stateService = new NotificationLogStateService(AppDataSource);
+      await stateService.onLogDeleted(entityId, databaseEntity, "system", queryRunner);
+    } catch (err) {
+      logger.error(`[NotificationLogSubscriber] Failed to handle onLogDeleted for log #${entityId}:`, err);
+    }
   }
 }
 

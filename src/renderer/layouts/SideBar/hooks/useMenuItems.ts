@@ -121,7 +121,6 @@ const MENU_ITEMS: MenuItem[] = [
     children: [
       { path: "/system/audit", name: "Audit Trail", icon: ListChecks },
       { path: "/notification-logs", name: "Notification Logs", icon: Bell },
-      { path: "/devices", name: "Device Manager", icon: ComputerIcon },
       { path: "/system/settings", name: "System Settings", icon: Sliders },
     ],
   },

@@ -584,29 +584,6 @@ class NotificationAPI {
   }
 
   /**
-   * Bulk update notifications
-   */
-  async bulkUpdate(updatesArray: Array<{ id: number; updates: any }>): Promise<BulkUpdateResponse> {
-    try {
-      if (!window.backendAPI?.notification) {
-        throw new Error('Electron API (notification) not available');
-      }
-
-      const response = await window.backendAPI.notification({
-        method: 'bulkUpdateNotifications',
-        params: { updatesArray, user: 'system' },
-      });
-
-      if (response.status) {
-        return response;
-      }
-      throw new Error(response.message || 'Failed to bulk update notifications');
-    } catch (error: any) {
-      throw new Error(error.message || 'Failed to bulk update notifications');
-    }
-  }
-
-  /**
    * Import notifications from CSV file
    */
   async importCSV(filePath: string): Promise<ImportResponse> {

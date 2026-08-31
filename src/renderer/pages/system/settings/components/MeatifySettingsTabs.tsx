@@ -11,7 +11,7 @@ import {
   Shield,
 } from "lucide-react";
 
-type TabKey = "general" | "inventory" | "sales" | "cashier" | "notifications" | "reports" | "integrations" | "audit_security";
+type TabKey = "general" | "inventory" | "sales" | "cashier" | "notifications" | "audit_security";
 
 interface TabItem {
   key: TabKey;

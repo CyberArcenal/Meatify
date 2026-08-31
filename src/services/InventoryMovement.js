@@ -3,8 +3,8 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
-const system = require("../utils/system"); // ✅ ADDED - for flexible settings
-const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+const system = require("../utils/system");
+const { SettingType } = require("../entities/systemSettings");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -63,12 +63,9 @@ class InventoryMovementService {
    * @returns {import("typeorm").Repository<any>}
    */
   _getRepo(qr, entityClass) {
-    const qrType =
-      qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
+    const qrType = qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    logger.debug(
-      `[InventoryMovement._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
-    );
+    logger.debug(`[InventoryMovement._getRepo] qr type: ${qrType}, has manager: ${hasManager}`);
 
     if (hasManager && typeof qr.manager.getRepository === "function") {
       return qr.manager.getRepository(entityClass);
@@ -79,7 +76,7 @@ class InventoryMovementService {
   }
 
   /**
-   * ✅ NEW: Check if audit logging is enabled
+   * Check if audit logging is enabled
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -93,7 +90,7 @@ class InventoryMovementService {
   }
 
   /**
-   * ✅ NEW: Get allowed movement types from settings
+   * Get allowed movement types from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<string[]>}
    */
@@ -109,7 +106,7 @@ class InventoryMovementService {
   }
 
   /**
-   * ✅ NEW: Get max notes length from settings
+   * Get max notes length from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
@@ -123,7 +120,7 @@ class InventoryMovementService {
   }
 
   /**
-   * ✅ NEW: Check if FIFO is enabled
+   * Check if FIFO is enabled
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -137,7 +134,7 @@ class InventoryMovementService {
   }
 
   /**
-   * ✅ NEW: Check if negative stock is allowed
+   * Check if negative stock is allowed
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -151,7 +148,7 @@ class InventoryMovementService {
   }
 
   /**
-   * ✅ NEW: Get movement retention days from settings
+   * Get movement retention days from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
@@ -164,211 +161,9 @@ class InventoryMovementService {
     }
   }
 
-  /**
-   * Create a new inventory movement (no side effects – state service handles batch updates)
-   * @param {Object} data - { meatId, batchId?, movementType, qtyChange, notes?, saleId? }
-   * @param {string} user - User performing the action
-   * @param {import("typeorm").QueryRunner | null} qr - Optional transaction query runner
-   */
-  async create(data, user = "system", qr = null) {
-    const { saveDb } = require("../utils/dbUtils/dbActions");
-    const InventoryMovement = require("../entities/InventoryMovement");
-    const Meat = require("../entities/Meat");
-    const Batch = require("../entities/Batch");
-    const Sale = require("../entities/Sale");
-
-    const movementRepo = this._getRepo(qr, InventoryMovement);
-    const meatRepo = this._getRepo(qr, Meat);
-    const batchRepo = this._getRepo(qr, Batch);
-    const saleRepo = this._getRepo(qr, Sale);
-
-    try {
-      // Validate required fields
-      if (!data.meatId) throw new Error("meatId is required");
-      if (!data.movementType) throw new Error("movementType is required");
-      if (data.qtyChange === undefined || data.qtyChange === null) {
-        throw new Error("qtyChange is required");
-      }
-      if (data.qtyChange === 0) {
-        throw new Error("qtyChange cannot be zero");
-      }
-
-      // ✅ Validate movement type against allowed list
-      const allowedTypes = await this._getAllowedMovementTypes(qr);
-      if (!allowedTypes.includes(data.movementType)) {
-        throw new Error(
-          `Invalid movement type: "${data.movementType}". Allowed: ${allowedTypes.join(", ")}`
-        );
-      }
-
-      // ✅ Validate notes length
-      if (data.notes) {
-        const maxLength = await this._getMaxNotesLength(qr);
-        if (data.notes.length > maxLength) {
-          throw new Error(`Notes cannot exceed ${maxLength} characters`);
-        }
-      }
-
-      // ✅ Check if negative stock is allowed (for validation)
-      const negativeAllowed = await this._isNegativeStockAllowed(qr);
-      if (!negativeAllowed && data.qtyChange < 0) {
-        // This is just a warning - actual validation happens in state service
-        logger.warn(`[InventoryMovement] Negative stock is disabled, but creating negative movement of ${data.qtyChange}`);
-      }
-
-      const meat = await meatRepo.findOne({ where: { id: data.meatId, isActive: true } });
-      if (!meat) {
-        throw new Error(`Meat with ID ${data.meatId} not found or inactive`);
-      }
-
-      let batch = null;
-      if (data.batchId) {
-        batch = await batchRepo.findOne({ where: { id: data.batchId } });
-        if (!batch) {
-          throw new Error(`Batch with ID ${data.batchId} not found`);
-        }
-        // Optionally verify batch belongs to the meat
-        if (batch.meatId !== data.meatId) {
-          throw new Error(`Batch #${data.batchId} does not belong to meat #${data.meatId}`);
-        }
-      }
-
-      let sale = null;
-      if (data.saleId) {
-        sale = await saleRepo.findOne({ where: { id: data.saleId } });
-        if (!sale) {
-          throw new Error(`Sale with ID ${data.saleId} not found`);
-        }
-      }
-
-      const movement = movementRepo.create({
-        movementType: data.movementType,
-        qtyChange: data.qtyChange,
-        notes: data.notes || null,
-        timestamp: new Date(),
-        meat: meat,
-        batch: batch || null,
-        sale: sale || null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      const saved = await saveDb(movementRepo, movement, { queryRunner: qr });
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logCreate("InventoryMovement", saved.id, saved, user);
-      }
-
-      logger.debug(`InventoryMovement created: #${saved.id} - ${saved.movementType} (${saved.qtyChange})`);
-      return saved;
-    } catch (error) {
-      console.error("Failed to create inventory movement:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Update an existing movement (only notes, movementType, timestamp allowed – batch/meat should not change)
-   * @param {number} id
-   * @param {Object} data - Fields to update
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async update(id, data, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const InventoryMovement = require("../entities/InventoryMovement");
-    const movementRepo = this._getRepo(qr, InventoryMovement);
-
-    try {
-      const existing = await movementRepo.findOne({ where: { id } });
-      if (!existing) {
-        throw new Error(`InventoryMovement with ID ${id} not found`);
-      }
-
-      // Prevent updating meat, batch, sale, qtyChange (those are immutable)
-      if (data.meatId || data.batchId || data.saleId || data.qtyChange !== undefined) {
-        throw new Error("Cannot change meat, batch, sale, or qtyChange after creation.");
-      }
-
-      // ✅ Validate movement type if provided
-      if (data.movementType) {
-        const allowedTypes = await this._getAllowedMovementTypes(qr);
-        if (!allowedTypes.includes(data.movementType)) {
-          throw new Error(
-            `Invalid movement type: "${data.movementType}". Allowed: ${allowedTypes.join(", ")}`
-          );
-        }
-      }
-
-      // ✅ Validate notes length if provided
-      if (data.notes) {
-        const maxLength = await this._getMaxNotesLength(qr);
-        if (data.notes.length > maxLength) {
-          throw new Error(`Notes cannot exceed ${maxLength} characters`);
-        }
-      }
-
-      const oldData = { ...existing };
-
-      // Only allow updating notes, movementType, timestamp (rarely)
-      Object.assign(existing, data);
-      existing.updatedAt = new Date();
-
-      const saved = await updateDb(movementRepo, existing, { queryRunner: qr });
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logUpdate("InventoryMovement", id, oldData, saved, user);
-      }
-
-      logger.debug(`InventoryMovement updated: #${id}`);
-      return saved;
-    } catch (error) {
-      console.error("Failed to update inventory movement:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Soft delete a movement (set deletedAt) – if your entity supports soft delete; otherwise we skip or just mark as deleted via a flag.
-   * Since InventoryMovement may not have a deletedAt, we can choose to just hard delete, but we'll implement a soft delete using an `isDeleted` flag? 
-   * For consistency with other services, we'll add a `deletedAt` column? But the entity might not have it. For now, we'll just prevent deletion.
-   * To keep it simple, we'll just provide a hard delete (permanent delete) method.
-   */
-  // We'll skip soft delete; implement permanent delete only.
-
-  /**
-   * Permanently delete an inventory movement (hard delete) – use with caution.
-   * @param {number} id
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async permanentlyDelete(id, user = "system", qr = null) {
-    const { removeDb } = require("../utils/dbUtils/dbActions");
-    const InventoryMovement = require("../entities/InventoryMovement");
-    const movementRepo = this._getRepo(qr, InventoryMovement);
-
-    const movement = await movementRepo.findOne({ where: { id } });
-    if (!movement) {
-      throw new Error(`InventoryMovement with ID ${id} not found`);
-    }
-
-    // ✅ Check if movement is too old to delete (optional)
-    // You can add a check based on settings
-
-    await removeDb(movementRepo, movement, { queryRunner: qr });
-
-    // ✅ Check if audit logging is enabled before logging
-    const auditEnabled = await this._isAuditEnabled(qr);
-    if (auditEnabled) {
-      await auditLogger.logCreate("InventoryMovement", id, movement, user);
-    }
-
-    logger.debug(`InventoryMovement #${id} permanently deleted`);
-  }
+  // ============================================================
+  // 🔍 READ-ONLY METHODS
+  // ============================================================
 
   /**
    * Find movement by ID
@@ -409,7 +204,7 @@ class InventoryMovementService {
       .leftJoinAndSelect("movement.batch", "batch")
       .leftJoinAndSelect("movement.sale", "sale");
 
-    // ✅ Apply retention days filter automatically if not specified
+    // Apply retention days filter automatically if not specified
     if (!options.startDate && !options.endDate && !options.ignoreRetention) {
       const retentionDays = await this._getMovementRetentionDays(qr);
       const cutoffDate = new Date();
@@ -429,7 +224,6 @@ class InventoryMovementService {
     }
     if (options.movementType) {
       const types = Array.isArray(options.movementType) ? options.movementType : [options.movementType];
-      // ✅ Validate movement types against allowed list
       const allowedTypes = await this._getAllowedMovementTypes(qr);
       const invalidTypes = types.filter(t => !allowedTypes.includes(t));
       if (invalidTypes.length > 0) {
@@ -473,7 +267,7 @@ class InventoryMovementService {
     });
 
     await logger.debug("InventoryMovement", null, "system");
-    return result; // { data: [], pagination: {} }
+    return result;
   }
 
   /**
@@ -484,12 +278,10 @@ class InventoryMovementService {
     const InventoryMovement = require("../entities/InventoryMovement");
     const movementRepo = this._getRepo(qr, InventoryMovement);
 
-    // ✅ Apply retention days filter
     const retentionDays = await this._getMovementRetentionDays(qr);
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
-    // Count by type (with retention filter)
     const byType = await movementRepo
       .createQueryBuilder("movement")
       .select("movement.movementType", "type")
@@ -499,7 +291,6 @@ class InventoryMovementService {
       .groupBy("movement.movementType")
       .getRawMany();
 
-    // Total net movement (with retention filter)
     const totalNetResult = await movementRepo
       .createQueryBuilder("movement")
       .select("SUM(movement.qtyChange)", "net")
@@ -507,7 +298,6 @@ class InventoryMovementService {
       .getRawOne();
     const totalNet = parseFloat(totalNetResult.net) || 0;
 
-    // Positive movements sum (with retention filter)
     const totalInResult = await movementRepo
       .createQueryBuilder("movement")
       .select("SUM(movement.qtyChange)", "in")
@@ -516,7 +306,6 @@ class InventoryMovementService {
       .getRawOne();
     const totalIn = parseFloat(totalInResult.in) || 0;
 
-    // Negative movements sum (absolute) (with retention filter)
     const totalOutResult = await movementRepo
       .createQueryBuilder("movement")
       .select("SUM(ABS(movement.qtyChange))", "out")
@@ -525,7 +314,6 @@ class InventoryMovementService {
       .getRawOne();
     const totalOut = parseFloat(totalOutResult.out) || 0;
 
-    // Last 7 days count
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     const last7Days = await movementRepo
@@ -533,7 +321,6 @@ class InventoryMovementService {
       .where("movement.timestamp >= :sevenDaysAgo", { sevenDaysAgo })
       .getCount();
 
-    // ✅ Get total movement count (with retention filter)
     const totalCount = await movementRepo
       .createQueryBuilder("movement")
       .where("movement.timestamp >= :cutoffDate", { cutoffDate })
@@ -560,7 +347,6 @@ class InventoryMovementService {
    */
   async exportMovements(format = "json", filters = {}, user = "system", qr = null) {
     try {
-      // Fetch all data without pagination for export
       const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
       const movements = result.data;
 
@@ -601,7 +387,6 @@ class InventoryMovementService {
         };
       }
 
-      // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
         await auditLogger.debugExport("InventoryMovement", format, filters, user);
@@ -615,8 +400,258 @@ class InventoryMovementService {
     }
   }
 
+  // ============================================================
+  // ✏️ WRITE OPERATIONS (CRUD)
+  // ============================================================
+
   /**
-   * Bulk create movements (no side effects)
+   * Create a new inventory movement
+   * @param {Object} data - { meatId, batchId?, movementType, qtyChange, notes?, saleId? }
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async create(data, user = "system", qr = null) {
+    const { saveDb } = require("../utils/dbUtils/dbActions");
+    const InventoryMovement = require("../entities/InventoryMovement");
+    const Meat = require("../entities/Meat");
+    const Batch = require("../entities/Batch");
+    const Sale = require("../entities/Sale");
+
+    const movementRepo = this._getRepo(qr, InventoryMovement);
+    const meatRepo = this._getRepo(qr, Meat);
+    const batchRepo = this._getRepo(qr, Batch);
+    const saleRepo = this._getRepo(qr, Sale);
+
+    try {
+      if (!data.meatId) throw new Error("meatId is required");
+      if (!data.movementType) throw new Error("movementType is required");
+      if (data.qtyChange === undefined || data.qtyChange === null) {
+        throw new Error("qtyChange is required");
+      }
+      if (data.qtyChange === 0) {
+        throw new Error("qtyChange cannot be zero");
+      }
+
+      const allowedTypes = await this._getAllowedMovementTypes(qr);
+      if (!allowedTypes.includes(data.movementType)) {
+        throw new Error(
+          `Invalid movement type: "${data.movementType}". Allowed: ${allowedTypes.join(", ")}`
+        );
+      }
+
+      if (data.notes) {
+        const maxLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxLength) {
+          throw new Error(`Notes cannot exceed ${maxLength} characters`);
+        }
+      }
+
+      const negativeAllowed = await this._isNegativeStockAllowed(qr);
+      if (!negativeAllowed && data.qtyChange < 0) {
+        logger.warn(`[InventoryMovement] Negative stock is disabled, but creating negative movement of ${data.qtyChange}`);
+      }
+
+      const meat = await meatRepo.findOne({ where: { id: data.meatId, isActive: true } });
+      if (!meat) {
+        throw new Error(`Meat with ID ${data.meatId} not found or inactive`);
+      }
+
+      let batch = null;
+      if (data.batchId) {
+        batch = await batchRepo.findOne({ where: { id: data.batchId } });
+        if (!batch) {
+          throw new Error(`Batch with ID ${data.batchId} not found`);
+        }
+        if (batch.meatId !== data.meatId) {
+          throw new Error(`Batch #${data.batchId} does not belong to meat #${data.meatId}`);
+        }
+      }
+
+      let sale = null;
+      if (data.saleId) {
+        sale = await saleRepo.findOne({ where: { id: data.saleId } });
+        if (!sale) {
+          throw new Error(`Sale with ID ${data.saleId} not found`);
+        }
+      }
+
+      const movement = movementRepo.create({
+        movementType: data.movementType,
+        qtyChange: data.qtyChange,
+        notes: data.notes || null,
+        timestamp: new Date(),
+        meat: meat,
+        batch: batch || null,
+        sale: sale || null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const saved = await saveDb(movementRepo, movement, { queryRunner: qr });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("InventoryMovement", saved.id, saved, user);
+      }
+
+      logger.debug(`InventoryMovement created: #${saved.id} - ${saved.movementType} (${saved.qtyChange})`);
+      return saved;
+    } catch (error) {
+      console.error("Failed to create inventory movement:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing movement
+   * @param {number} id
+   * @param {Object} data - Fields to update
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async update(id, data, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const InventoryMovement = require("../entities/InventoryMovement");
+    const movementRepo = this._getRepo(qr, InventoryMovement);
+
+    try {
+      const existing = await movementRepo.findOne({ where: { id } });
+      if (!existing) {
+        throw new Error(`InventoryMovement with ID ${id} not found`);
+      }
+
+      if (data.meatId || data.batchId || data.saleId || data.qtyChange !== undefined) {
+        throw new Error("Cannot change meat, batch, sale, or qtyChange after creation.");
+      }
+
+      if (data.movementType) {
+        const allowedTypes = await this._getAllowedMovementTypes(qr);
+        if (!allowedTypes.includes(data.movementType)) {
+          throw new Error(
+            `Invalid movement type: "${data.movementType}". Allowed: ${allowedTypes.join(", ")}`
+          );
+        }
+      }
+
+      if (data.notes) {
+        const maxLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxLength) {
+          throw new Error(`Notes cannot exceed ${maxLength} characters`);
+        }
+      }
+
+      const oldData = { ...existing };
+      Object.assign(existing, data);
+      existing.updatedAt = new Date();
+
+      const saved = await updateDb(movementRepo, existing, { queryRunner: qr });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("InventoryMovement", id, oldData, saved, user);
+      }
+
+      logger.debug(`InventoryMovement updated: #${id}`);
+      return saved;
+    } catch (error) {
+      console.error("Failed to update inventory movement:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Permanently delete an inventory movement
+   * @param {number} id
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async permanentlyDelete(id, user = "system", qr = null) {
+    const { removeDb } = require("../utils/dbUtils/dbActions");
+    const InventoryMovement = require("../entities/InventoryMovement");
+    const movementRepo = this._getRepo(qr, InventoryMovement);
+
+    const movement = await movementRepo.findOne({ where: { id } });
+    if (!movement) {
+      throw new Error(`InventoryMovement with ID ${id} not found`);
+    }
+
+    await removeDb(movementRepo, movement, { queryRunner: qr });
+
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logCreate("InventoryMovement", id, movement, user);
+    }
+
+    logger.debug(`InventoryMovement #${id} permanently deleted`);
+  }
+
+  // ============================================================
+  // 🔄 BUSINESS LOGIC METHODS
+  // ============================================================
+
+  /**
+   * Recalculate batch remaining quantities from all movements
+   * @param {number} batchId
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async recalcBatchRemaining(batchId, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Batch = require("../entities/Batch");
+    const InventoryMovement = require("../entities/InventoryMovement");
+
+    const batchRepo = this._getRepo(qr, Batch);
+    const movementRepo = this._getRepo(qr, InventoryMovement);
+
+    const batch = await batchRepo.findOne({ where: { id: batchId } });
+    if (!batch) {
+      throw new Error(`Batch #${batchId} not found`);
+    }
+
+    const result = await movementRepo
+      .createQueryBuilder("movement", qr)
+      .select("SUM(movement.qtyChange)", "total")
+      .where("movement.batchId = :batchId", { batchId })
+      .getRawOne();
+    const netChange = parseFloat(result.total) || 0;
+
+    const newRemaining = batch.initialQuantity + netChange;
+    if (newRemaining < 0) {
+      throw new Error(`Recalculated remaining quantity for batch #${batchId} is negative (${newRemaining})`);
+    }
+
+    const oldRemaining = batch.remainingQuantity;
+    batch.remainingQuantity = newRemaining;
+    if (batch.remainingQuantity === 0 && batch.status !== "expired") {
+      batch.status = "depleted";
+    } else if (batch.remainingQuantity > 0 && batch.status === "depleted") {
+      batch.status = "active";
+    }
+    batch.updatedAt = new Date();
+
+    await updateDb(batchRepo, batch, { queryRunner: qr, skipSignal: false });
+
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logUpdate(
+        "Batch",
+        batchId,
+        { remainingQuantity: oldRemaining },
+        { remainingQuantity: batch.remainingQuantity },
+        user
+      );
+    }
+
+    logger.info(`[InventoryMovement] Recalculated batch #${batchId}: ${oldRemaining} → ${batch.remainingQuantity}`);
+    return batch;
+  }
+
+  // ============================================================
+  // 📤 BULK & IMPORT OPERATIONS
+  // ============================================================
+
+  /**
+   * Bulk create movements
    * @param {Array<Object>} movementsArray
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
@@ -629,6 +664,25 @@ class InventoryMovementService {
         results.created.push(saved);
       } catch (err) {
         results.errors.push({ movement: data, error: err.message });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Bulk update movements
+   * @param {Array<{ id: number, updates: Object }>} updatesArray
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async bulkUpdate(updatesArray, user = "system", qr = null) {
+    const results = { updated: [], errors: [] };
+    for (const { id, updates } of updatesArray) {
+      try {
+        const saved = await this.update(id, updates, user, qr);
+        results.updated.push(saved);
+      } catch (err) {
+        results.errors.push({ id, updates, error: err.message });
       }
     }
     return results;
@@ -673,9 +727,13 @@ class InventoryMovementService {
     return results;
   }
 
+  // ============================================================
+  // 🧹 CLEANUP & RETENTION
+  // ============================================================
+
   /**
-   * ✅ NEW: Clean up old movements (hard delete)
-   * @param {number} daysOld - Delete movements older than this (overrides settings)
+   * Clean up old movements (hard delete)
+   * @param {number} daysOld
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
@@ -684,7 +742,6 @@ class InventoryMovementService {
     const InventoryMovement = require("../entities/InventoryMovement");
     const movementRepo = this._getRepo(qr, InventoryMovement);
 
-    // ✅ Use settings if not provided
     if (daysOld === null) {
       daysOld = await this._getMovementRetentionDays(qr);
     }
@@ -692,11 +749,10 @@ class InventoryMovementService {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-    // ✅ Only delete movements that are not linked to active sales or batches (optional)
     const oldMovements = await movementRepo
       .createQueryBuilder("movement")
       .where("movement.timestamp < :cutoffDate", { cutoffDate })
-      .andWhere("movement.saleId IS NULL") // Optional: only delete movements not linked to sales
+      .andWhere("movement.saleId IS NULL")
       .getMany();
 
     if (oldMovements.length === 0) {
@@ -726,9 +782,9 @@ class InventoryMovementService {
   }
 
   /**
-   * ✅ NEW: Get movement summary by meat
+   * Get movement summary by meat
    * @param {number} meatId
-   * @param {number} days - Look back period in days
+   * @param {number} days
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async getMovementSummaryByMeat(meatId, days = 30, qr = null) {
@@ -753,7 +809,7 @@ class InventoryMovementService {
       netChange: 0,
       totalMovements: movements.length,
       byType: {},
-      movements: movements.slice(0, 50), // Return last 50 movements
+      movements: movements.slice(0, 50),
     };
 
     for (const movement of movements) {
@@ -771,12 +827,11 @@ class InventoryMovementService {
     }
 
     summary.netChange = summary.totalIn - summary.totalOut;
-
     return summary;
   }
 
   /**
-   * ✅ NEW: Get movement retention info
+   * Get movement retention info
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async getRetentionInfo(qr = null) {

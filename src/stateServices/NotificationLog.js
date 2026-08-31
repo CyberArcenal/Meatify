@@ -8,9 +8,13 @@ const smsSender = require("../channels/sms.sender");
 const { LOG_STATUS } = require("../services/NotificationLog");
 
 /**
- * NotificationLogStateService handles state transitions and side effects for notification logs.
- * It does NOT contain CRUD operations – those belong to NotificationLogService.
- * This service triggers actual email/SMS sending when a log is created or retried.
+ * NotificationLogStateService handles SIDE EFFECTS only for notification logs.
+ * It does NOT contain CRUD or business logic – those belong to NotificationLogService.
+ * All methods here are event handlers (onLogCreated, onLogUpdated, onLogDeleted)
+ * and are called by the subscriber after a change is detected.
+ *
+ * ✅ Every method sends IPC events to the UI for real-time updates.
+ * ✅ onLogCreated triggers the actual email/SMS sending as a side effect.
  */
 class NotificationLogStateService {
   /**
@@ -37,7 +41,41 @@ class NotificationLogStateService {
   }
 
   /**
-   * Called after a log is created – sends the actual email/SMS
+   * Send event to all renderer windows (UI)
+   * @param {string} channel
+   * @param {any} data
+   */
+  _sendToRenderers(channel, data) {
+    try {
+      const { BrowserWindow } = require("electron");
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, data);
+        }
+      });
+    } catch (error) {
+      logger.warn(
+        "[NotificationLogState] Failed to send IPC event (maybe not in Electron):",
+        error.message,
+      );
+    }
+  }
+
+  // ============================================================
+  // 🔄 SIDE EFFECTS (called by subscriber)
+  // ============================================================
+
+  /**
+   * Side effect after a notification log is created
+   * Called from NotificationLogSubscriber.afterInsert
+   * 
+   * This handler:
+   * 1. Sends the actual email/SMS (the core side effect)
+   * 2. Updates the log status based on send result (data mutation tied to side effect)
+   * 3. Broadcasts to UI
+   * 4. Writes audit log
+   * 
    * @param {Object} log - The notification log entity
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
@@ -45,10 +83,20 @@ class NotificationLogStateService {
   async onLogCreated(log, user = "system", queryRunner = null) {
     const { updateDb } = require("../utils/dbUtils/dbActions");
     logger.info(
-      `[NotificationLogState] Processing log #${log.id} (${log.channel || "email"}) → ${log.recipient_email}`
+      `[NotificationLogState] ✅ Processing log #${log.id} (${log.channel || "email"}) → ${log.recipient_email}`
     );
 
     const repo = this._getRepo(queryRunner, NotificationLog);
+
+    // Broadcast to UI
+    this._sendToRenderers("notificationLog:created", {
+      id: log.id,
+      recipient: log.recipient_email,
+      subject: log.subject,
+      channel: log.channel,
+      status: log.status,
+      createdAt: log.created_at,
+    });
 
     // Determine channel and send
     const channel = log.channel || "email";
@@ -91,6 +139,14 @@ class NotificationLogStateService {
 
       const saved = await updateDb(repo, log, { queryRunner, skipSignal: true });
 
+      // Broadcast status update to UI
+      this._sendToRenderers("notificationLog:statusChanged", {
+        id: log.id,
+        oldStatus,
+        newStatus: log.status,
+        updatedAt: log.updated_at,
+      });
+
       // Audit log for status change
       await auditLogger.logUpdate(
         "NotificationLog",
@@ -117,6 +173,16 @@ class NotificationLogStateService {
 
       const saved = await updateDb(repo, log, { queryRunner, skipSignal: true });
 
+      // Broadcast status update to UI
+      this._sendToRenderers("notificationLog:statusChanged", {
+        id: log.id,
+        oldStatus,
+        newStatus: LOG_STATUS.FAILED,
+        error: error.message,
+        updatedAt: log.updated_at,
+      });
+
+      // Audit log for status change
       await auditLogger.logUpdate(
         "NotificationLog",
         log.id,
@@ -131,185 +197,55 @@ class NotificationLogStateService {
   }
 
   /**
-   * Retry a failed log
+   * Side effect after a notification log is updated
+   * Called from NotificationLogSubscriber.afterUpdate
    * @param {number} logId
+   * @param {Object} log
+   * @param {Object} changes
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async retryLog(logId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, NotificationLog);
+  async onLogUpdated(logId, log, changes, user = "system", queryRunner = null) {
+    logger.info(`[NotificationLogState] ✅ Log #${logId} updated (fields: ${Object.keys(changes).join(", ")})`);
 
-    const log = await repo.findOne({ where: { id: logId } });
-    if (!log) {
-      throw new Error(`NotificationLog #${logId} not found`);
-    }
+    // Broadcast to UI
+    this._sendToRenderers("notificationLog:updated", {
+      id: logId,
+      changes,
+      updatedAt: log.updated_at,
+    });
 
-    if (log.status !== LOG_STATUS.FAILED && log.status !== LOG_STATUS.QUEUED) {
-      throw new Error(`Cannot retry log with status: ${log.status}`);
-    }
-
-    const MAX_RETRIES = 3;
-    if (log.retry_count >= MAX_RETRIES) {
-      throw new Error(`Log #${logId} has reached max retries (${MAX_RETRIES})`);
-    }
-
-    // Increment retry count and reset status to queued
-    const oldStatus = log.status;
-    log.retry_count = (log.retry_count || 0) + 1;
-    log.status = LOG_STATUS.RESEND;
-    log.updated_at = new Date();
-
-    await updateDb(repo, log, { queryRunner, skipSignal: true });
-
+    // Audit log
     await auditLogger.logUpdate(
       "NotificationLog",
       logId,
-      { status: oldStatus },
-      { status: LOG_STATUS.RESEND },
+      changes,
+      log,
       user
     );
-
-    // Now send the log again
-    return await this.onLogCreated(log, user, queryRunner);
   }
 
   /**
-   * Resend a log (manual resend, regardless of status)
+   * Side effect after a notification log is soft-deleted
+   * Called from NotificationLogSubscriber.afterRemove
    * @param {number} logId
+   * @param {Object} log
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async resendLog(logId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, NotificationLog);
+  async onLogDeleted(logId, log, user = "system", queryRunner = null) {
+    logger.info(`[NotificationLogState] ✅ Log #${logId} soft-deleted by ${user}`);
 
-    const log = await repo.findOne({ where: { id: logId } });
-    if (!log) {
-      throw new Error(`NotificationLog #${logId} not found`);
-    }
+    // Broadcast to UI
+    this._sendToRenderers("notificationLog:deleted", {
+      id: logId,
+      recipient: log?.recipient_email,
+      subject: log?.subject,
+      deletedAt: new Date().toISOString(),
+    });
 
-    // Increment resend count
-    const oldStatus = log.status;
-    log.resend_count = (log.resend_count || 0) + 1;
-    log.status = LOG_STATUS.RESEND;
-    log.updated_at = new Date();
-
-    await updateDb(repo, log, { queryRunner, skipSignal: true });
-
-    await auditLogger.logUpdate(
-      "NotificationLog",
-      logId,
-      { status: oldStatus },
-      { status: LOG_STATUS.RESEND },
-      user
-    );
-
-    // Now send the log again
-    return await this.onLogCreated(log, user, queryRunner);
-  }
-
-  /**
-   * Retry all failed logs
-   * @param {Object} options
-   * @param {number} [options.limit] - Max number to retry
-   * @param {string} [options.channel] - Filter by channel (email/sms)
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async retryAllFailedLogs(options = {}, user = "system", queryRunner = null) {
-    const { limit = 100, channel } = options;
-    const repo = this._getRepo(queryRunner, NotificationLog);
-
-    const qb = repo
-      .createQueryBuilder("log")
-      .where("log.status IN (:...statuses)", { statuses: [LOG_STATUS.FAILED, LOG_STATUS.QUEUED] })
-      .andWhere("log.retry_count < 3")
-      .orderBy("log.created_at", "ASC")
-      .limit(limit);
-
-    if (channel) {
-      qb.andWhere("log.channel = :channel", { channel });
-    }
-
-    const logs = await qb.getMany();
-
-    const results = { success: [], failed: [] };
-
-    for (const log of logs) {
-      try {
-        const result = await this.retryLog(log.id, user, queryRunner);
-        results.success.push({ id: log.id, result });
-      } catch (err) {
-        results.failed.push({ id: log.id, error: err.message });
-        logger.error(`[NotificationLogState] Failed to retry log #${log.id}:`, err);
-      }
-    }
-
-    logger.info(
-      `[NotificationLogState] Retry all: ${results.success.length} succeeded, ${results.failed.length} failed`
-    );
-    return results;
-  }
-
-  /**
-   * Clean up old logs (hard delete)
-   * @param {number} daysOld - Delete logs older than this
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async cleanOldLogs(daysOld = 30, user = "system", queryRunner = null) {
-    const { removeDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, NotificationLog);
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-
-    const logs = await repo
-      .createQueryBuilder("log")
-      .where("log.created_at < :cutoffDate", { cutoffDate })
-      .andWhere("log.status IN (:...statuses)", { statuses: [LOG_STATUS.SENT, LOG_STATUS.FAILED] })
-      .getMany();
-
-    if (logs.length === 0) {
-      logger.info(`[NotificationLogState] No old logs to clean up`);
-      return { count: 0 };
-    }
-
-    for (const log of logs) {
-      await removeDb(repo, log, { queryRunner });
-      await auditLogger.logCreate("NotificationLog", log.id, log, user);
-    }
-
-    logger.info(`[NotificationLogState] Cleaned up ${logs.length} old logs`);
-    return { count: logs.length };
-  }
-
-  /**
-   * Get delivery status summary for a recipient
-   * @param {string} recipient_email
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async getRecipientStatus(recipient_email, queryRunner = null) {
-    const repo = this._getRepo(queryRunner, NotificationLog);
-
-    const logs = await repo
-      .createQueryBuilder("log")
-      .where("log.recipient_email = :email", { email: recipient_email })
-      .orderBy("log.created_at", "DESC")
-      .getMany();
-
-    const summary = {
-      recipient: recipient_email,
-      total: logs.length,
-      sent: logs.filter((l) => l.status === LOG_STATUS.SENT).length,
-      failed: logs.filter((l) => l.status === LOG_STATUS.FAILED).length,
-      queued: logs.filter((l) => l.status === LOG_STATUS.QUEUED).length,
-      lastSent: logs.find((l) => l.status === LOG_STATUS.SENT)?.sent_at || null,
-      lastFailed: logs.find((l) => l.status === LOG_STATUS.FAILED)?.last_error_at || null,
-    };
-
-    return { summary, logs: logs.slice(0, 20) };
+    // Audit log
+    await auditLogger.logCreate("NotificationLog", logId, log, user);
   }
 }
 

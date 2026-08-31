@@ -13,7 +13,7 @@ export interface Customer {
   notes: string | null;
   loyaltyPointsBalance: number;
   lifetimePointsEarned: number;
-  status: 'regular' | 'vip' | 'elite';
+  status: "regular" | "vip" | "elite";
   isActive: boolean;
   createdAt: string;
   updatedAt: string | null;
@@ -45,28 +45,41 @@ export interface CustomerStatistics {
   }>;
 }
 
-export interface LoyaltySummary {
-  customerId: number;
-  name: string;
-  currentBalance: number;
-  lifetimeEarned: number;
-  status: string;
-  totalEarned: number;
-  totalRedeemed: number;
-  totalAdjusted: number;
-  transactionCount: number;
-}
-
 export interface LoyaltyTransaction {
   id: number;
   pointsChange: number;
-  transactionType: 'earn' | 'redeem' | 'adjustment' | 'refund';
+  transactionType: "earn" | "redeem" | "adjustment" | "refund";
   notes: string | null;
   customerId: number;
   saleId: number | null;
   timestamp: string;
   createdAt: string;
   updatedAt: string | null;
+}
+
+export interface LoyaltySummary {
+  customerId: number;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  currentBalance: number;
+  lifetimeEarned: number;
+  status: "regular" | "vip" | "elite";
+  vipThreshold: number;
+  eliteThreshold: number;
+  pointRate: number;
+  totalEarned: number;
+  totalRedeemed: number;
+  totalAdjusted: number;
+  transactionCount: number;
+  nextTier: "vip" | "elite" | null;
+  pointsToNextTier: number;
+}
+
+export interface LoyaltySummaryData {
+  customer: Customer;
+  summary: LoyaltySummary;
+  transactions: LoyaltyTransaction[];
 }
 
 export interface BulkCreateResult {
@@ -88,16 +101,6 @@ export interface CustomerExportData {
   format: string;
   data: string | Customer[];
   filename: string;
-}
-
-export interface LoyaltySummaryResponse {
-  status: boolean;
-  message: string;
-  data: {
-    customer: Customer;
-    summary: Omit<LoyaltySummary, 'customerId' | 'name' | 'currentBalance' | 'lifetimeEarned' | 'status'>;
-    transactions: LoyaltyTransaction[];
-  };
 }
 
 export interface EarnPointsResult {
@@ -173,17 +176,6 @@ export interface LoyaltySummaryResponse {
   data: LoyaltySummaryData;
 }
 
-export interface LoyaltySummaryData {
-  customer: Customer;
-  summary: {
-    totalEarned: number;
-    totalRedeemed: number;
-    totalAdjusted: number;
-    transactionCount: number;
-  };
-  transactions: LoyaltyTransaction[];
-}
-
 export interface EarnPointsResponse {
   status: boolean;
   message: string;
@@ -229,47 +221,50 @@ class CustomerAPI {
     maxPoints?: number;
     search?: string;
     sortBy?: string;
-    sortOrder?: 'ASC' | 'DESC';
+    sortOrder?: "ASC" | "DESC";
   }): Promise<CustomersResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'getAllCustomers',
+        method: "getAllCustomers",
         params: params || {},
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch customers');
+      throw new Error(response.message || "Failed to fetch customers");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch customers');
+      throw new Error(error.message || "Failed to fetch customers");
     }
   }
 
   /**
    * Get a single customer by ID
    */
-  async getById(id: number, includeInactive: boolean = false): Promise<CustomerResponse> {
+  async getById(
+    id: number,
+    includeInactive: boolean = false,
+  ): Promise<CustomerResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'getCustomerById',
+        method: "getCustomerById",
         params: { id, includeInactive },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch customer');
+      throw new Error(response.message || "Failed to fetch customer");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch customer');
+      throw new Error(error.message || "Failed to fetch customer");
     }
   }
 
@@ -279,20 +274,20 @@ class CustomerAPI {
   async getActive(): Promise<CustomersResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'getActiveCustomers',
+        method: "getActiveCustomers",
         params: {},
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch active customers');
+      throw new Error(response.message || "Failed to fetch active customers");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch active customers');
+      throw new Error(error.message || "Failed to fetch active customers");
     }
   }
 
@@ -302,20 +297,22 @@ class CustomerAPI {
   async getStatistics(): Promise<CustomerStatisticsResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'getCustomerStatistics',
+        method: "getCustomerStatistics",
         params: {},
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch customer statistics');
+      throw new Error(
+        response.message || "Failed to fetch customer statistics",
+      );
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch customer statistics');
+      throw new Error(error.message || "Failed to fetch customer statistics");
     }
   }
 
@@ -333,20 +330,20 @@ class CustomerAPI {
   }): Promise<CustomersResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'searchCustomers',
+        method: "searchCustomers",
         params,
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to search customers');
+      throw new Error(response.message || "Failed to search customers");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to search customers');
+      throw new Error(error.message || "Failed to search customers");
     }
   }
 
@@ -367,20 +364,20 @@ class CustomerAPI {
   }): Promise<CustomerResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'createCustomer',
-        params: { ...data, user: 'system' },
+        method: "createCustomer",
+        params: { ...data, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to create customer');
+      throw new Error(response.message || "Failed to create customer");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to create customer');
+      throw new Error(error.message || "Failed to create customer");
     }
   }
 
@@ -398,24 +395,24 @@ class CustomerAPI {
       address: string;
       notes: string;
       isActive: boolean;
-    }>
+    }>,
   ): Promise<CustomerResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'updateCustomer',
-        params: { id, ...data, user: 'system' },
+        method: "updateCustomer",
+        params: { id, ...data, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to update customer');
+      throw new Error(response.message || "Failed to update customer");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to update customer');
+      throw new Error(error.message || "Failed to update customer");
     }
   }
 
@@ -425,20 +422,20 @@ class CustomerAPI {
   async delete(id: number): Promise<{ status: boolean; message: string }> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'deleteCustomer',
-        params: { id, user: 'system' },
+        method: "deleteCustomer",
+        params: { id, user: "system" },
       });
 
       return {
         status: response.status,
-        message: response.message || 'Customer deleted successfully',
+        message: response.message || "Customer deleted successfully",
       };
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to delete customer');
+      throw new Error(error.message || "Failed to delete customer");
     }
   }
 
@@ -448,43 +445,45 @@ class CustomerAPI {
   async restore(id: number): Promise<CustomerResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'restoreCustomer',
-        params: { id, user: 'system' },
+        method: "restoreCustomer",
+        params: { id, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to restore customer');
+      throw new Error(response.message || "Failed to restore customer");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to restore customer');
+      throw new Error(error.message || "Failed to restore customer");
     }
   }
 
   /**
    * Permanently delete a customer
    */
-  async permanentlyDelete(id: number): Promise<{ status: boolean; message: string }> {
+  async permanentlyDelete(
+    id: number,
+  ): Promise<{ status: boolean; message: string }> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'permanentlyDeleteCustomer',
-        params: { id, user: 'system' },
+        method: "permanentlyDeleteCustomer",
+        params: { id, user: "system" },
       });
 
       return {
         status: response.status,
-        message: response.message || 'Customer permanently deleted',
+        message: response.message || "Customer permanently deleted",
       };
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to permanently delete customer');
+      throw new Error(error.message || "Failed to permanently delete customer");
     }
   }
 
@@ -498,24 +497,24 @@ class CustomerAPI {
   async earnPoints(
     customerId: number,
     amountSpent: number,
-    saleId: number
+    saleId: number,
   ): Promise<EarnPointsResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'earnPoints',
-        params: { customerId, amountSpent, saleId, user: 'system' },
+        method: "earnPoints",
+        params: { customerId, amountSpent, saleId, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to earn points');
+      throw new Error(response.message || "Failed to earn points");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to earn points');
+      throw new Error(error.message || "Failed to earn points");
     }
   }
 
@@ -525,24 +524,24 @@ class CustomerAPI {
   async redeemPoints(
     customerId: number,
     pointsToRedeem: number,
-    saleId: number
+    saleId: number,
   ): Promise<RedeemPointsResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'redeemPoints',
-        params: { customerId, pointsToRedeem, saleId, user: 'system' },
+        method: "redeemPoints",
+        params: { customerId, pointsToRedeem, saleId, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to redeem points');
+      throw new Error(response.message || "Failed to redeem points");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to redeem points');
+      throw new Error(error.message || "Failed to redeem points");
     }
   }
 
@@ -552,24 +551,24 @@ class CustomerAPI {
   async adjustPoints(
     customerId: number,
     pointsChange: number,
-    reason: string
+    reason: string,
   ): Promise<AdjustPointsResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'adjustPoints',
-        params: { customerId, pointsChange, reason, user: 'system' },
+        method: "adjustPoints",
+        params: { customerId, pointsChange, reason, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to adjust points');
+      throw new Error(response.message || "Failed to adjust points");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to adjust points');
+      throw new Error(error.message || "Failed to adjust points");
     }
   }
 
@@ -578,24 +577,24 @@ class CustomerAPI {
    */
   async reverseTransaction(
     transactionId: number,
-    reason: string
+    reason: string,
   ): Promise<ReverseTransactionResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'reverseTransaction',
-        params: { transactionId, reason, user: 'system' },
+        method: "reverseTransaction",
+        params: { transactionId, reason, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to reverse transaction');
+      throw new Error(response.message || "Failed to reverse transaction");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to reverse transaction');
+      throw new Error(error.message || "Failed to reverse transaction");
     }
   }
 
@@ -605,20 +604,20 @@ class CustomerAPI {
   async getLoyaltySummary(customerId: number): Promise<LoyaltySummaryResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'getLoyaltySummary',
+        method: "getLoyaltySummary",
         params: { customerId },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to get loyalty summary');
+      throw new Error(response.message || "Failed to get loyalty summary");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to get loyalty summary');
+      throw new Error(error.message || "Failed to get loyalty summary");
     }
   }
 
@@ -632,43 +631,45 @@ class CustomerAPI {
   async bulkCreate(customersArray: any[]): Promise<BulkCreateResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'bulkCreateCustomers',
-        params: { customersArray, user: 'system' },
+        method: "bulkCreateCustomers",
+        params: { customersArray, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to bulk create customers');
+      throw new Error(response.message || "Failed to bulk create customers");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to bulk create customers');
+      throw new Error(error.message || "Failed to bulk create customers");
     }
   }
 
   /**
    * Bulk update customers
    */
-  async bulkUpdate(updatesArray: Array<{ id: number; updates: any }>): Promise<BulkUpdateResponse> {
+  async bulkUpdate(
+    updatesArray: Array<{ id: number; updates: any }>,
+  ): Promise<BulkUpdateResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'bulkUpdateCustomers',
-        params: { updatesArray, user: 'system' },
+        method: "bulkUpdateCustomers",
+        params: { updatesArray, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to bulk update customers');
+      throw new Error(response.message || "Failed to bulk update customers");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to bulk update customers');
+      throw new Error(error.message || "Failed to bulk update customers");
     }
   }
 
@@ -678,20 +679,20 @@ class CustomerAPI {
   async importCSV(filePath: string): Promise<ImportResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'importCustomersCSV',
-        params: { filePath, user: 'system' },
+        method: "importCustomersCSV",
+        params: { filePath, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to import customers');
+      throw new Error(response.message || "Failed to import customers");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to import customers');
+      throw new Error(error.message || "Failed to import customers");
     }
   }
 
@@ -699,25 +700,25 @@ class CustomerAPI {
    * Export customers to CSV or JSON
    */
   async export(params?: {
-    format?: 'csv' | 'json';
+    format?: "csv" | "json";
     filters?: any;
   }): Promise<CustomerExportResponse> {
     try {
       if (!window.backendAPI?.customer) {
-        throw new Error('Electron API (customer) not available');
+        throw new Error("Electron API (customer) not available");
       }
 
       const response = await window.backendAPI.customer({
-        method: 'exportCustomers',
-        params: params || { format: 'json' },
+        method: "exportCustomers",
+        params: params || { format: "json" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to export customers');
+      throw new Error(response.message || "Failed to export customers");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to export customers');
+      throw new Error(error.message || "Failed to export customers");
     }
   }
 
@@ -729,7 +730,7 @@ class CustomerAPI {
    * Check if the backend API is available
    */
   async isAvailable(): Promise<boolean> {
-    return !!(window.backendAPI?.customer);
+    return !!window.backendAPI?.customer;
   }
 
   /**
@@ -740,7 +741,7 @@ class CustomerAPI {
       const response = await this.getStatistics();
       return response.data.totalActive;
     } catch (error) {
-      console.error('Error fetching active customer count:', error);
+      console.error("Error fetching active customer count:", error);
       return 0;
     }
   }
@@ -753,7 +754,7 @@ class CustomerAPI {
       const response = await this.search({ searchTerm: email, limit: 1 });
       return response.data.items[0] || null;
     } catch (error) {
-      console.error('Error fetching customer by email:', error);
+      console.error("Error fetching customer by email:", error);
       return null;
     }
   }
@@ -766,7 +767,7 @@ class CustomerAPI {
       const response = await this.search({ searchTerm: phone, limit: 1 });
       return response.data.items[0] || null;
     } catch (error) {
-      console.error('Error fetching customer by phone:', error);
+      console.error("Error fetching customer by phone:", error);
       return null;
     }
   }
@@ -776,10 +777,10 @@ class CustomerAPI {
    */
   async getVIPCustomers(): Promise<Customer[]> {
     try {
-      const response = await this.search({ status: 'vip', isActive: true });
+      const response = await this.search({ status: "vip", isActive: true });
       return response.data.items;
     } catch (error) {
-      console.error('Error fetching VIP customers:', error);
+      console.error("Error fetching VIP customers:", error);
       return [];
     }
   }
@@ -789,10 +790,10 @@ class CustomerAPI {
    */
   async getEliteCustomers(): Promise<Customer[]> {
     try {
-      const response = await this.search({ status: 'elite', isActive: true });
+      const response = await this.search({ status: "elite", isActive: true });
       return response.data.items;
     } catch (error) {
-      console.error('Error fetching Elite customers:', error);
+      console.error("Error fetching Elite customers:", error);
       return [];
     }
   }

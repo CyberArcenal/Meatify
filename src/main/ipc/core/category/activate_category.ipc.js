@@ -1,6 +1,6 @@
 // src/main/ipc/core/category/activate_category.ipc.js
-const { CategoryStateService } = require("../../../../stateServices/Category");
-const { AppDataSource } = require("../../../db/data-source");
+//@ts-check
+const categoryService = require("../../../../services/Category");  // ✅ CHANGED
 
 module.exports = async (params, queryRunner) => {
   const { categoryId, user = "system" } = params;
@@ -10,8 +10,8 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new CategoryStateService(AppDataSource);
-    const result = await stateService.activate(categoryId, user, queryRunner);
+    // ✅ Calls CategoryService.updateIsActive (not StateService)
+    const result = await categoryService.updateIsActive(categoryId, true, user, queryRunner);
     return {
       status: true,
       message: `Category #${categoryId} activated successfully`,

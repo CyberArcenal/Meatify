@@ -3,20 +3,15 @@
 const { logger } = require("../utils/logger");
 const auditLogger = require("../utils/auditLogger");
 const Notification = require("../entities/Notification");
-const NotificationLog = require("../entities/NotificationLog");
-const notificationService = require("../services/Notification");
-const system = require("../utils/system"); // ✅ ADDED - for flexible settings
-
-// ❌ REMOVED hardcoded functions:
-// const emailEnabled = async () => true;
-// const smsEnabled = async () => true;
-// const inAppNotificationsEnabled = async () => true;
-// const companyName = async () => "Meatify Shop";
+const { BrowserWindow } = require("electron");
 
 /**
- * NotificationStateService handles state transitions and side effects for notifications.
- * It does NOT contain CRUD operations – those belong to NotificationService.
- * All methods here manage marking as read/unread and sending notifications via email/SMS.
+ * NotificationStateService handles side effects for notification state changes.
+ * It does NOT perform CRUD updates – those belong to NotificationService.
+ * All methods here are event handlers (onCreate, onMarkAsRead, etc.)
+ * and are called by the subscriber after a change is detected.
+ * 
+ * ✅ Every method sends IPC events to the UI for real-time updates (toast popups, etc.)
  */
 class NotificationStateService {
   /**
@@ -25,7 +20,6 @@ class NotificationStateService {
   constructor(dataSource) {
     this.dataSource = dataSource;
     this.notificationRepo = dataSource.getRepository(Notification);
-    this.notificationLogRepo = dataSource.getRepository(NotificationLog);
   }
 
   /**
@@ -42,488 +36,291 @@ class NotificationStateService {
   }
 
   /**
-   * Mark a notification as read
+   * Send event to all renderer windows (UI)
+   * @param {string} channel
+   * @param {any} data
+   */
+  _sendToRenderers(channel, data) {
+    try {
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, data);
+        }
+      });
+    } catch (error) {
+      // If running outside Electron (e.g., tests), ignore
+      logger.warn(
+        "[NotificationState] Failed to send IPC event (maybe not in Electron):",
+        error.message,
+      );
+    }
+  }
+
+  // ============================================================
+  // 🔄 STATE TRANSITION SIDE EFFECTS (on...)
+  // ============================================================
+
+  /**
+   * Side effect after a notification is created
+   * Called from NotificationSubscriber.afterInsert
    * @param {number} notificationId
+   * @param {Notification} notification - The created entity
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async markAsRead(notificationId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Notification);
+  async onCreate(notificationId, notification, user = "system", queryRunner = null) {
+    logger.info(`[NotificationState] ✅ Notification #${notificationId} created by ${user}`);
 
-    const notification = await repo.findOne({ where: { id: notificationId } });
-    if (!notification) {
-      throw new Error(`Notification with ID ${notificationId} not found`);
-    }
+    // Broadcast to UI for toast popup
+    this._sendToRenderers("notification:created", {
+      id: notification.id,
+      userId: notification.userId,
+      title: notification.title,
+      message: notification.message,
+      type: notification.type,
+      isRead: notification.isRead,
+      metadata: notification.metadata,
+      createdAt: notification.createdAt,
+    });
 
-    if (notification.isRead) {
-      logger.warn(`[NotificationState] Notification #${notificationId} is already read`);
-      return notification;
-    }
+    // Audit log
+    await auditLogger.logCreate("Notification", notificationId, notification, user);
+  }
 
-    const oldStatus = notification.isRead;
-    notification.isRead = true;
-    notification.updatedAt = new Date();
+  /**
+   * Side effect after a notification is marked as read
+   * Called from NotificationSubscriber.afterUpdate
+   * @param {number} notificationId
+   * @param {Notification} updatedNotification - The updated entity
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onMarkAsRead(notificationId, updatedNotification, user = "system", queryRunner = null) {
+    // Broadcast to UI for read status update
+    this._sendToRenderers("notification:read", {
+      id: updatedNotification.id,
+      userId: updatedNotification.userId,
+      title: updatedNotification.title,
+      isRead: true,
+      updatedAt: updatedNotification.updatedAt,
+    });
 
-    const updated = await updateDb(repo, notification, { queryRunner, skipSignal: false });
-
+    // Audit log
     await auditLogger.logUpdate(
       "Notification",
       notificationId,
-      { isRead: oldStatus },
+      { isRead: false },
       { isRead: true },
       user
     );
 
-    logger.info(`[NotificationState] Notification #${notificationId} marked as read`);
-    return updated;
+    logger.info(`[NotificationState] ✅ Notification #${notificationId} marked as read (side effects applied)`);
   }
 
   /**
-   * Mark a notification as unread
+   * Side effect after a notification is marked as unread
+   * Called from NotificationSubscriber.afterUpdate
    * @param {number} notificationId
+   * @param {Notification} updatedNotification
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async markAsUnread(notificationId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Notification);
+  async onMarkAsUnread(notificationId, updatedNotification, user = "system", queryRunner = null) {
+    // Broadcast to UI for unread status update
+    this._sendToRenderers("notification:unread", {
+      id: updatedNotification.id,
+      userId: updatedNotification.userId,
+      title: updatedNotification.title,
+      isRead: false,
+      updatedAt: updatedNotification.updatedAt,
+    });
 
-    const notification = await repo.findOne({ where: { id: notificationId } });
-    if (!notification) {
-      throw new Error(`Notification with ID ${notificationId} not found`);
-    }
-
-    if (!notification.isRead) {
-      logger.warn(`[NotificationState] Notification #${notificationId} is already unread`);
-      return notification;
-    }
-
-    const oldStatus = notification.isRead;
-    notification.isRead = false;
-    notification.updatedAt = new Date();
-
-    const updated = await updateDb(repo, notification, { queryRunner, skipSignal: false });
-
+    // Audit log
     await auditLogger.logUpdate(
       "Notification",
       notificationId,
-      { isRead: oldStatus },
+      { isRead: true },
       { isRead: false },
       user
     );
 
-    logger.info(`[NotificationState] Notification #${notificationId} marked as unread`);
-    return updated;
+    logger.info(`[NotificationState] ✅ Notification #${notificationId} marked as unread (side effects applied)`);
   }
 
   /**
-   * Mark all notifications for a user as read
-   * @param {number} userId
+   * Side effect after a notification is updated (generic)
+   * Called from NotificationSubscriber.afterUpdate for other field changes
+   * @param {number} notificationId
+   * @param {Notification} updatedNotification
+   * @param {Object} changes - The changes made
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async markAllAsRead(userId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Notification);
-
-    const unreadNotifications = await repo
-      .createQueryBuilder("notification")
-      .where("notification.userId = :userId", { userId })
-      .andWhere("notification.isRead = false")
-      .andWhere("notification.deletedAt IS NULL")
-      .getMany();
-
-    if (unreadNotifications.length === 0) {
-      logger.info(`[NotificationState] No unread notifications for user #${userId}`);
-      return { count: 0, notifications: [] };
-    }
-
-    const updatedNotifications = [];
-    for (const notification of unreadNotifications) {
-      const oldStatus = notification.isRead;
-      notification.isRead = true;
-      notification.updatedAt = new Date();
-      const updated = await updateDb(repo, notification, { queryRunner, skipSignal: false });
-      updatedNotifications.push(updated);
-
-      await auditLogger.logUpdate(
-        "Notification",
-        notification.id,
-        { isRead: oldStatus },
-        { isRead: true },
-        user
-      );
-    }
-
-    logger.info(`[NotificationState] Marked ${updatedNotifications.length} notifications as read for user #${userId}`);
-    return { count: updatedNotifications.length, notifications: updatedNotifications };
-  }
-
-  /**
-   * Mark all notifications for a user as unread
-   * @param {number} userId
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async markAllAsUnread(userId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Notification);
-
-    const readNotifications = await repo
-      .createQueryBuilder("notification")
-      .where("notification.userId = :userId", { userId })
-      .andWhere("notification.isRead = true")
-      .andWhere("notification.deletedAt IS NULL")
-      .getMany();
-
-    if (readNotifications.length === 0) {
-      logger.info(`[NotificationState] No read notifications for user #${userId}`);
-      return { count: 0, notifications: [] };
-    }
-
-    const updatedNotifications = [];
-    for (const notification of readNotifications) {
-      const oldStatus = notification.isRead;
-      notification.isRead = false;
-      notification.updatedAt = new Date();
-      const updated = await updateDb(repo, notification, { queryRunner, skipSignal: false });
-      updatedNotifications.push(updated);
-
-      await auditLogger.logUpdate(
-        "Notification",
-        notification.id,
-        { isRead: oldStatus },
-        { isRead: false },
-        user
-      );
-    }
-
-    logger.info(`[NotificationState] Marked ${updatedNotifications.length} notifications as unread for user #${userId}`);
-    return { count: updatedNotifications.length, notifications: updatedNotifications };
-  }
-
-  /**
-   * Delete all read notifications for a user (soft delete)
-   * @param {number} userId
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async deleteAllRead(userId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Notification);
-
-    const readNotifications = await repo
-      .createQueryBuilder("notification")
-      .where("notification.userId = :userId", { userId })
-      .andWhere("notification.isRead = true")
-      .andWhere("notification.deletedAt IS NULL")
-      .getMany();
-
-    if (readNotifications.length === 0) {
-      logger.info(`[NotificationState] No read notifications to delete for user #${userId}`);
-      return { count: 0 };
-    }
-
-    for (const notification of readNotifications) {
-      const oldData = { ...notification };
-      notification.deletedAt = new Date();
-      notification.updatedAt = new Date();
-      await updateDb(repo, notification, { queryRunner, skipSignal: false });
-
-      await auditLogger.logCreate("Notification", notification.id, oldData, user);
-    }
-
-    logger.info(`[NotificationState] Deleted ${readNotifications.length} read notifications for user #${userId}`);
-    return { count: readNotifications.length };
-  }
-
-  /**
-   * Send an in-app notification
-   * @param {Object} data - { userId, title, message, type?, metadata? }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async sendInApp(data, user = "system", queryRunner = null) {
-    // ✅ Use system setting instead of hardcoded value
-    const enabled = await system.inAppNotificationsEnabled();
-    if (!enabled) {
-      logger.info(`[NotificationState] In-app notifications disabled, skipping`);
-      return null;
-    }
-
-    return await notificationService.create(data, user, queryRunner);
-  }
-
-  /**
-   * Send an email notification (queued via NotificationLog)
-   * @param {Object} data - { to, subject, html, text, metadata? }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async sendEmail(data, user = "system", queryRunner = null) {
-    const { saveDb } = require("../utils/dbUtils/dbActions");
-    // ✅ Use system setting instead of hardcoded value
-    const enabled = await system.emailEnabled();
-    if (!enabled) {
-      logger.info(`[NotificationState] Email notifications disabled, skipping`);
-      return null;
-    }
-
-    if (!data.to) throw new Error("Email recipient (to) is required");
-    if (!data.subject) throw new Error("Email subject is required");
-    if (!data.html && !data.text) throw new Error("Email body (html or text) is required");
-
-    const repo = this._getRepo(queryRunner, NotificationLog);
-
-    const log = repo.create({
-      recipient_email: data.to,
-      subject: data.subject,
-      payload: data.html || data.text || "",
-      status: "queued",
-      retry_count: 0,
-      resend_count: 0,
-      created_at: new Date(),
-      updated_at: new Date(),
+  async onUpdate(notificationId, updatedNotification, changes, user = "system", queryRunner = null) {
+    // Broadcast to UI
+    this._sendToRenderers("notification:updated", {
+      id: updatedNotification.id,
+      userId: updatedNotification.userId,
+      title: updatedNotification.title,
+      changes,
+      updatedAt: updatedNotification.updatedAt,
     });
 
-    const saved = await saveDb(repo, log, { queryRunner });
-    await auditLogger.logCreate("NotificationLog", saved.id, saved, user);
+    // Audit log
+    await auditLogger.logUpdate(
+      "Notification",
+      notificationId,
+      changes,
+      updatedNotification,
+      user
+    );
 
-    logger.info(`[NotificationState] Email queued for ${data.to}: ${data.subject}`);
-
-    // Note: Actual sending will be handled by a cron job or queue worker
-    // For now, we just queue it
-
-    return saved;
+    logger.info(`[NotificationState] ✅ Notification #${notificationId} updated (side effects applied)`);
   }
 
   /**
-   * Send an SMS notification (queued via NotificationLog)
-   * @param {Object} data - { to, message, metadata? }
+   * Side effect after a notification is soft-deleted
+   * Called from NotificationSubscriber.afterRemove
+   * @param {number} notificationId
+   * @param {Notification} notification - The deleted entity
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async sendSms(data, user = "system", queryRunner = null) {
-    const { saveDb } = require("../utils/dbUtils/dbActions");
-    // ✅ Use system setting instead of hardcoded value
-    const enabled = await system.smsEnabled();
-    if (!enabled) {
-      logger.info(`[NotificationState] SMS notifications disabled, skipping`);
-      return null;
-    }
-
-    if (!data.to) throw new Error("SMS recipient (to) is required");
-    if (!data.message) throw new Error("SMS message is required");
-
-    const repo = this._getRepo(queryRunner, NotificationLog);
-
-    const log = repo.create({
-      recipient_email: data.to, // Using email field for phone number
-      subject: "SMS Notification",
-      payload: data.message,
-      status: "queued",
-      retry_count: 0,
-      resend_count: 0,
-      created_at: new Date(),
-      updated_at: new Date(),
+  async onDelete(notificationId, notification, user = "system", queryRunner = null) {
+    // Broadcast to UI
+    this._sendToRenderers("notification:deleted", {
+      id: notificationId,
+      userId: notification?.userId,
+      title: notification?.title,
+      deletedAt: new Date().toISOString(),
     });
 
-    const saved = await saveDb(repo, log, { queryRunner });
-    await auditLogger.logCreate("NotificationLog", saved.id, saved, user);
+    // Audit log
+    await auditLogger.logCreate("Notification", notificationId, notification, user);
 
-    logger.info(`[NotificationState] SMS queued for ${data.to}: ${data.message}`);
-
-    // Note: Actual sending will be handled by a cron job or queue worker
-    // For now, we just queue it
-
-    return saved;
+    logger.info(`[NotificationState] ✅ Notification #${notificationId} soft-deleted (side effects applied)`);
   }
 
   /**
-   * Send a combined notification (in-app + email + SMS) based on settings
-   * @param {Object} data - { userId, title, message, type?, metadata?, email?, sms? }
+   * Side effect after a notification is restored
+   * @param {number} notificationId
+   * @param {Notification} restoredNotification
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async sendNotification(data, user = "system", queryRunner = null) {
-    const results = {
-      inApp: null,
-      email: null,
-      sms: null,
-    };
+  async onRestore(notificationId, restoredNotification, user = "system", queryRunner = null) {
+    // Broadcast to UI
+    this._sendToRenderers("notification:restored", {
+      id: restoredNotification.id,
+      userId: restoredNotification.userId,
+      title: restoredNotification.title,
+      restoredAt: new Date().toISOString(),
+    });
 
-    // Send in-app notification
-    if (data.userId) {
-      results.inApp = await this.sendInApp(
-        {
-          userId: data.userId,
-          title: data.title,
-          message: data.message,
-          type: data.type,
-          metadata: data.metadata,
-        },
-        user,
-        queryRunner
+    // Audit log
+    await auditLogger.logUpdate(
+      "Notification",
+      notificationId,
+      { deletedAt: restoredNotification.deletedAt },
+      { deletedAt: null },
+      user
+    );
+
+    logger.info(`[NotificationState] ✅ Notification #${notificationId} restored (side effects applied)`);
+  }
+
+  /**
+   * Side effect after all notifications for a user are marked as read
+   * @param {number} userId
+   * @param {Notification[]} updatedNotifications
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onMarkAllAsRead(userId, updatedNotifications, user = "system", queryRunner = null) {
+    const count = updatedNotifications.length;
+    if (count > 0) {
+      // Broadcast to UI
+      this._sendToRenderers("notification:allRead", {
+        userId,
+        count,
+        updatedAt: new Date().toISOString(),
+        notificationIds: updatedNotifications.map(n => n.id),
+      });
+
+      // Audit log
+      await auditLogger.logUpdate(
+        "Notification",
+        null,
+        { userId, previousStatus: "unread" },
+        { userId, newStatus: "read all", count },
+        user
       );
-    }
 
-    // Send email if requested - ✅ Uses system setting via sendEmail()
-    if (data.email) {
-      // ✅ Use system for company name
-      const company = await system.companyName();
-      results.email = await this.sendEmail(
-        {
-          to: data.email,
-          subject: data.title,
-          html: data.message,
-          text: data.message,
-          metadata: data.metadata,
-        },
-        user,
-        queryRunner
+      logger.info(`[NotificationState] ✅ Marked ${count} notifications as read for user #${userId} (side effects applied)`);
+    }
+  }
+
+  /**
+   * Side effect after all notifications for a user are marked as unread
+   * @param {number} userId
+   * @param {Notification[]} updatedNotifications
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onMarkAllAsUnread(userId, updatedNotifications, user = "system", queryRunner = null) {
+    const count = updatedNotifications.length;
+    if (count > 0) {
+      // Broadcast to UI
+      this._sendToRenderers("notification:allUnread", {
+        userId,
+        count,
+        updatedAt: new Date().toISOString(),
+        notificationIds: updatedNotifications.map(n => n.id),
+      });
+
+      // Audit log
+      await auditLogger.logUpdate(
+        "Notification",
+        null,
+        { userId, previousStatus: "read" },
+        { userId, newStatus: "unread all", count },
+        user
       );
-    }
 
-    // Send SMS if requested - ✅ Uses system setting via sendSms()
-    if (data.sms) {
-      results.sms = await this.sendSms(
-        {
-          to: data.sms,
-          message: data.message,
-          metadata: data.metadata,
-        },
-        user,
-        queryRunner
+      logger.info(`[NotificationState] ✅ Marked ${count} notifications as unread for user #${userId} (side effects applied)`);
+    }
+  }
+
+  /**
+   * Side effect after all read notifications for a user are soft-deleted
+   * @param {number} userId
+   * @param {number[]} deletedIds
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onDeleteAllRead(userId, deletedIds, user = "system", queryRunner = null) {
+    const count = deletedIds.length;
+    if (count > 0) {
+      // Broadcast to UI
+      this._sendToRenderers("notification:allReadDeleted", {
+        userId,
+        count,
+        deletedIds,
+        deletedAt: new Date().toISOString(),
+      });
+
+      // Audit log
+      await auditLogger.logUpdate(
+        "Notification",
+        null,
+        { userId, action: "delete all read" },
+        { userId, deletedCount: count, ids: deletedIds },
+        user
       );
+
+      logger.info(`[NotificationState] ✅ Deleted ${count} read notifications for user #${userId} (side effects applied)`);
     }
-
-    return results;
-  }
-
-  /**
-   * Bulk send notifications to multiple recipients
-   * @param {Array<Object>} notificationsArray - Array of { userId, title, message, type?, metadata?, email?, sms? }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async bulkSendNotifications(notificationsArray, user = "system", queryRunner = null) {
-    const results = { sent: [], errors: [] };
-
-    for (const data of notificationsArray) {
-      try {
-        const result = await this.sendNotification(data, user, queryRunner);
-        results.sent.push({ data, result });
-      } catch (err) {
-        results.errors.push({ data, error: err.message });
-      }
-    }
-
-    return results;
-  }
-
-  /**
-   * Retry failed email logs (called by cron job)
-   * @param {number} limit - Max number to retry
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async retryFailedEmails(limit = 100, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, NotificationLog);
-
-    const failedLogs = await repo
-      .createQueryBuilder("log")
-      .where("log.status = 'failed'")
-      .andWhere("log.retry_count < 3")
-      .orderBy("log.created_at", "ASC")
-      .limit(limit)
-      .getMany();
-
-    const results = { retried: [], failed: [] };
-
-    for (const log of failedLogs) {
-      try {
-        // Simulate sending email
-        // In real implementation, this would call emailSender.send()
-        const success = true; // Simulate success
-
-        const oldStatus = log.status;
-        if (success) {
-          log.status = "sent";
-          log.sent_at = new Date();
-          log.error_message = null;
-          log.last_error_at = null;
-        } else {
-          log.status = "failed";
-          log.last_error_at = new Date();
-          log.error_message = "Retry failed";
-        }
-        log.retry_count += 1;
-        log.updated_at = new Date();
-
-        await updateDb(repo, log, { queryRunner, skipSignal: false });
-
-        await auditLogger.logUpdate(
-          "NotificationLog",
-          log.id,
-          { status: oldStatus },
-          { status: log.status },
-          user
-        );
-
-        if (success) {
-          results.retried.push(log);
-          logger.info(`[NotificationState] Email #${log.id} retried successfully`);
-        } else {
-          results.failed.push(log);
-          logger.warn(`[NotificationState] Email #${log.id} retry failed`);
-        }
-      } catch (err) {
-        results.failed.push(log);
-        logger.error(`[NotificationState] Error retrying email #${log.id}:`, err);
-      }
-    }
-
-    return results;
-  }
-
-  /**
-   * Clean up old notifications (soft delete)
-   * @param {number} daysOld - Delete notifications older than this
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async cleanOldNotifications(daysOld = 90, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Notification);
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-
-    const oldNotifications = await repo
-      .createQueryBuilder("notification")
-      .where("notification.createdAt < :cutoffDate", { cutoffDate })
-      .andWhere("notification.isRead = true")
-      .andWhere("notification.deletedAt IS NULL")
-      .getMany();
-
-    if (oldNotifications.length === 0) {
-      logger.info(`[NotificationState] No old notifications to clean up`);
-      return { count: 0 };
-    }
-
-    for (const notification of oldNotifications) {
-      const oldData = { ...notification };
-      notification.deletedAt = new Date();
-      notification.updatedAt = new Date();
-      await updateDb(repo, notification, { queryRunner, skipSignal: false });
-
-      await auditLogger.logCreate("Notification", notification.id, oldData, user);
-    }
-
-    logger.info(`[NotificationState] Cleaned up ${oldNotifications.length} old notifications`);
-    return { count: oldNotifications.length };
   }
 }
 

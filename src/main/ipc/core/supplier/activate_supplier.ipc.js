@@ -1,6 +1,6 @@
 // src/main/ipc/core/supplier/activate_supplier.ipc.js
-const { SupplierStateService } = require("../../../../stateServices/Supplier");
-const { AppDataSource } = require("../../../db/data-source");
+//@ts-check
+const supplierService = require("../../../../services/Supplier");
 
 module.exports = async (params, queryRunner) => {
   const { supplierId, user = "system" } = params;
@@ -10,8 +10,8 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new SupplierStateService(AppDataSource);
-    const result = await stateService.activate(supplierId, user, queryRunner);
+    // ✅ Tama: Use SupplierService (not State Service)
+    const result = await supplierService.activate(supplierId, user, queryRunner);
     return {
       status: true,
       message: `Supplier #${supplierId} activated successfully`,

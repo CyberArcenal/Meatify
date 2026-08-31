@@ -1,6 +1,5 @@
 // src/main/ipc/core/notification/mark_as_unread.ipc.js
-const { NotificationStateService } = require("../../../../stateServices/Notification");
-const { AppDataSource } = require("../../../db/data-source");
+const notificationService = require("../../../../services/Notification");
 
 module.exports = async (params, queryRunner) => {
   const { notificationId, user = "system" } = params;
@@ -10,8 +9,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new NotificationStateService(AppDataSource);
-    const result = await stateService.markAsUnread(notificationId, user, queryRunner);
+    const result = await notificationService.markAsUnread(notificationId, user, queryRunner);
     return {
       status: true,
       message: `Notification #${notificationId} marked as unread`,

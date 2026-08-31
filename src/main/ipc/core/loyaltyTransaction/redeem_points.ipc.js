@@ -1,6 +1,5 @@
 // src/main/ipc/core/loyaltyTransaction/redeem_points.ipc.js
-const { LoyaltyTransactionStateService } = require("../../../../stateServices/LoyaltyTransaction");
-const { AppDataSource } = require("../../../db/data-source");
+const loyaltyTransactionService = require("../../../../services/LoyaltyTransaction");
 
 module.exports = async (params, queryRunner) => {
   const { customerId, pointsToRedeem, saleId, user = "system" } = params;
@@ -16,8 +15,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new LoyaltyTransactionStateService(AppDataSource);
-    const result = await stateService.redeemPoints(
+    const result = await loyaltyTransactionService.redeemPoints(
       customerId,
       pointsToRedeem,
       saleId,

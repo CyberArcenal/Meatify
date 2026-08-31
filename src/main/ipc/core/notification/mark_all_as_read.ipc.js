@@ -1,6 +1,5 @@
 // src/main/ipc/core/notification/mark_all_as_read.ipc.js
-const { NotificationStateService } = require("../../../../stateServices/Notification");
-const { AppDataSource } = require("../../../db/data-source");
+const notificationService = require("../../../../services/Notification");
 
 module.exports = async (params, queryRunner) => {
   const { userId, user = "system" } = params;
@@ -10,8 +9,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new NotificationStateService(AppDataSource);
-    const result = await stateService.markAllAsRead(userId, user, queryRunner);
+    const result = await notificationService.markAllAsRead(userId, user, queryRunner);
     return {
       status: true,
       message: `${result.count} notifications marked as read for user #${userId}`,

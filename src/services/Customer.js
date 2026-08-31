@@ -3,8 +3,8 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
-const system = require("../utils/system"); // ✅ ADDED - for flexible settings
-const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+const system = require("../utils/system");
+const { SettingType } = require("../entities/systemSettings");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -78,7 +78,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Check if audit logging is enabled
+   * Check if audit logging is enabled
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -94,7 +94,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Get default active status from settings
+   * Get default active status from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -114,7 +114,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Get default customer status from settings
+   * Get default customer status from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<string>}
    */
@@ -142,7 +142,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Get allowed customer statuses from settings
+   * Get allowed customer statuses from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<string[]>}
    */
@@ -162,7 +162,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Check if loyalty points are enabled
+   * Check if loyalty points are enabled
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -178,7 +178,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Get VIP threshold from settings
+   * Get VIP threshold from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
@@ -194,7 +194,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Get Elite threshold from settings
+   * Get Elite threshold from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
@@ -210,7 +210,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Validate email format
+   * Validate email format
    * @param {string} email
    * @returns {boolean}
    */
@@ -220,7 +220,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Validate phone format
+   * Validate phone format
    * @param {string} phone
    * @returns {boolean}
    */
@@ -229,310 +229,9 @@ class CustomerService {
     return phoneRegex.test(phone);
   }
 
-  /**
-   * Create a new customer
-   * @param {Object} data - { name, email?, phone?, address?, notes? }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async create(data, user = "system", qr = null) {
-    const { saveDb } = require("../utils/dbUtils/dbActions");
-    const Customer = require("../entities/Customer");
-    const repo = this._getRepo(qr, Customer);
-
-    try {
-      // Validate required fields
-      if (!data.name) throw new Error("name is required");
-
-      // ✅ Validate email format if provided
-      if (data.email && !this._isValidEmail(data.email)) {
-        throw new Error(`Invalid email format: "${data.email}"`);
-      }
-
-      // ✅ Validate phone format if provided
-      if (data.phone && !this._isValidPhone(data.phone)) {
-        throw new Error(`Invalid phone format: "${data.phone}"`);
-      }
-
-      // Check email uniqueness if provided
-      if (data.email) {
-        const existing = await repo.findOne({ where: { email: data.email } });
-        if (existing) {
-          throw new Error(`Email "${data.email}" already exists`);
-        }
-      }
-
-      // Check phone uniqueness if provided
-      if (data.phone) {
-        const existing = await repo.findOne({ where: { phone: data.phone } });
-        if (existing) {
-          throw new Error(`Phone "${data.phone}" already exists`);
-        }
-      }
-
-      // ✅ Validate status if provided
-      if (data.status) {
-        const allowedStatuses = await this._getAllowedStatuses(qr);
-        if (!allowedStatuses.includes(data.status)) {
-          throw new Error(
-            `Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
-          );
-        }
-      }
-
-      // ✅ Use system settings for defaults
-      const defaultActive = await this._getDefaultActiveStatus(qr);
-      const defaultStatus = await this._getDefaultCustomerStatus(qr);
-
-      // ✅ Check if loyalty is enabled (for initial points)
-      const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
-      const initialPoints = loyaltyEnabled ? 0 : 0; // Always start at 0
-
-      const customer = repo.create({
-        name: data.name,
-        email: data.email || null,
-        phone: data.phone || null,
-        address: data.address || null,
-        notes: data.notes || null,
-        loyaltyPointsBalance: initialPoints,
-        lifetimePointsEarned: 0,
-        status: data.status || defaultStatus,
-        isActive: data.isActive !== undefined ? data.isActive : defaultActive,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      const saved = await saveDb(repo, customer, { queryRunner: qr });
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logCreate("Customer", saved.id, saved, user);
-      }
-
-      logger.debug(`Customer created: #${saved.id} - ${saved.name}`);
-      return saved;
-    } catch (error) {
-      console.error("Failed to create customer:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Update an existing customer
-   * @param {number} id
-   * @param {Object} data - Fields to update
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async update(id, data, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const Customer = require("../entities/Customer");
-    const repo = this._getRepo(qr, Customer);
-
-    try {
-      const existing = await repo.findOne({ where: { id } });
-      if (!existing) {
-        throw new Error(`Customer with ID ${id} not found`);
-      }
-
-      const oldData = { ...existing };
-
-      // ✅ Validate email format if changed
-      if (data.email && data.email !== existing.email) {
-        if (!this._isValidEmail(data.email)) {
-          throw new Error(`Invalid email format: "${data.email}"`);
-        }
-        const duplicate = await repo.findOne({ where: { email: data.email } });
-        if (duplicate && duplicate.id !== id) {
-          throw new Error(`Email "${data.email}" already exists`);
-        }
-      }
-
-      // ✅ Validate phone format if changed
-      if (data.phone && data.phone !== existing.phone) {
-        if (!this._isValidPhone(data.phone)) {
-          throw new Error(`Invalid phone format: "${data.phone}"`);
-        }
-        const duplicate = await repo.findOne({ where: { phone: data.phone } });
-        if (duplicate && duplicate.id !== id) {
-          throw new Error(`Phone "${data.phone}" already exists`);
-        }
-      }
-
-      // Only allow status update through state service
-      if (data.status !== undefined && data.status !== existing.status) {
-        // ✅ Validate status if provided
-        const allowedStatuses = await this._getAllowedStatuses(qr);
-        if (!allowedStatuses.includes(data.status)) {
-          throw new Error(
-            `Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
-          );
-        }
-        throw new Error("Use CustomerStateService to update customer status");
-      }
-
-      // Only allow loyalty points update through state service
-      if (
-        data.loyaltyPointsBalance !== undefined ||
-        data.lifetimePointsEarned !== undefined
-      ) {
-        throw new Error("Use CustomerStateService to update loyalty points");
-      }
-
-      Object.assign(existing, data);
-      existing.updatedAt = new Date();
-
-      const saved = await updateDb(repo, existing, { queryRunner: qr });
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logUpdate("Customer", id, oldData, saved, user);
-      }
-
-      logger.debug(`Customer updated: #${id}`);
-      return saved;
-    } catch (error) {
-      console.error("Failed to update customer:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Soft delete a customer (set isActive = false)
-   * @param {number} id
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async delete(id, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const Customer = require("../entities/Customer");
-    const repo = this._getRepo(qr, Customer);
-
-    try {
-      const customer = await repo.findOne({ where: { id } });
-      if (!customer) {
-        throw new Error(`Customer with ID ${id} not found`);
-      }
-
-      if (!customer.isActive) {
-        throw new Error(`Customer #${id} is already inactive`);
-      }
-
-      // Check if customer has pending returns or active debts (optional)
-      // You can add checks here if needed
-
-      const oldData = { ...customer };
-      customer.isActive = false;
-      customer.updatedAt = new Date();
-
-      const saved = await updateDb(repo, customer, { queryRunner: qr });
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logCreate("Customer", id, oldData, user);
-      }
-
-      logger.debug(`Customer deactivated: #${id}`);
-      return saved;
-    } catch (error) {
-      console.error("Failed to delete customer:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Restore a soft-deleted customer (set isActive = true)
-   * @param {number} id
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async restore(id, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const Customer = require("../entities/Customer");
-    const repo = this._getRepo(qr, Customer);
-
-    try {
-      const customer = await repo.findOne({ where: { id } });
-      if (!customer) {
-        throw new Error(`Customer with ID ${id} not found`);
-      }
-
-      if (customer.isActive) {
-        throw new Error(`Customer #${id} is already active`);
-      }
-
-      const oldData = { ...customer };
-      customer.isActive = true;
-      customer.updatedAt = new Date();
-
-      const saved = await updateDb(repo, customer, { queryRunner: qr });
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logUpdate("Customer", id, oldData, saved, user);
-      }
-
-      logger.debug(`Customer restored: #${id}`);
-      return saved;
-    } catch (error) {
-      console.error("Failed to restore customer:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Permanently delete a customer (hard delete) – only if no sales or loyalty transactions
-   * @param {number} id
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async permanentlyDelete(id, user = "system", qr = null) {
-    const { removeDb } = require("../utils/dbUtils/dbActions");
-    const Customer = require("../entities/Customer");
-    const Sale = require("../entities/Sale");
-    const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
-
-    const customerRepo = this._getRepo(qr, Customer);
-    const saleRepo = this._getRepo(qr, Sale);
-    const loyaltyRepo = this._getRepo(qr, LoyaltyTransaction);
-
-    const customer = await customerRepo.findOne({ where: { id } });
-    if (!customer) {
-      throw new Error(`Customer with ID ${id} not found`);
-    }
-
-    // Check if customer has sales
-    const salesCount = await saleRepo.count({ where: { customer: { id } } });
-    if (salesCount > 0) {
-      throw new Error(
-        `Cannot delete customer #${id} because they have ${salesCount} sale(s)`,
-      );
-    }
-
-    // Check if customer has loyalty transactions
-    const loyaltyCount = await loyaltyRepo.count({
-      where: { customer: { id } },
-    });
-    if (loyaltyCount > 0) {
-      throw new Error(
-        `Cannot delete customer #${id} because they have ${loyaltyCount} loyalty transaction(s)`,
-      );
-    }
-
-    await removeDb(customerRepo, customer, { queryRunner: qr });
-
-    // ✅ Check if audit logging is enabled before logging
-    const auditEnabled = await this._isAuditEnabled(qr);
-    if (auditEnabled) {
-      await auditLogger.logCreate("Customer", id, customer, user);
-    }
-
-    logger.debug(`Customer #${id} permanently deleted`);
-  }
+  // ============================================================
+  // 🔍 READ-ONLY METHODS
+  // ============================================================
 
   /**
    * Find customer by ID
@@ -585,7 +284,6 @@ class CustomerService {
       const statuses = Array.isArray(options.status)
         ? options.status
         : [options.status];
-      // ✅ Validate statuses against allowed list
       const allowedStatuses = await this._getAllowedStatuses(qr);
       const invalidStatuses = statuses.filter(
         (s) => !allowedStatuses.includes(s),
@@ -643,7 +341,6 @@ class CustomerService {
     const Customer = require("../entities/Customer");
     const repo = this._getRepo(qr, Customer);
 
-    // ✅ Get thresholds from settings
     const vipThreshold = await this._getVipThreshold(qr);
     const eliteThreshold = await this._getEliteThreshold(qr);
     const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
@@ -687,7 +384,7 @@ class CustomerService {
         .getMany();
     }
 
-    // ✅ Count customers by tier
+    // Count customers by tier
     const vipCount = await repo.count({
       where: {
         isActive: true,
@@ -788,7 +485,6 @@ class CustomerService {
         };
       }
 
-      // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
         await auditLogger.debugExport("Customer", format, filters, user);
@@ -803,6 +499,307 @@ class CustomerService {
       throw error;
     }
   }
+
+  // ============================================================
+  // ✏️ WRITE OPERATIONS (CRUD – data mutation only)
+  // ============================================================
+
+  /**
+   * Create a new customer
+   * @param {Object} data - { name, email?, phone?, address?, notes?, status?, isActive? }
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async create(data, user = "system", qr = null) {
+    const { saveDb } = require("../utils/dbUtils/dbActions");
+    const Customer = require("../entities/Customer");
+    const repo = this._getRepo(qr, Customer);
+
+    try {
+      // Validate required fields
+      if (!data.name) throw new Error("name is required");
+
+      // Validate email format if provided
+      if (data.email && !this._isValidEmail(data.email)) {
+        throw new Error(`Invalid email format: "${data.email}"`);
+      }
+
+      // Validate phone format if provided
+      if (data.phone && !this._isValidPhone(data.phone)) {
+        throw new Error(`Invalid phone format: "${data.phone}"`);
+      }
+
+      // Check email uniqueness if provided
+      if (data.email) {
+        const existing = await repo.findOne({ where: { email: data.email } });
+        if (existing) {
+          throw new Error(`Email "${data.email}" already exists`);
+        }
+      }
+
+      // Check phone uniqueness if provided
+      if (data.phone) {
+        const existing = await repo.findOne({ where: { phone: data.phone } });
+        if (existing) {
+          throw new Error(`Phone "${data.phone}" already exists`);
+        }
+      }
+
+      // Validate status if provided
+      if (data.status) {
+        const allowedStatuses = await this._getAllowedStatuses(qr);
+        if (!allowedStatuses.includes(data.status)) {
+          throw new Error(
+            `Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
+          );
+        }
+      }
+
+      // Use system settings for defaults
+      const defaultActive = await this._getDefaultActiveStatus(qr);
+      const defaultStatus = await this._getDefaultCustomerStatus(qr);
+
+      const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
+      const initialPoints = loyaltyEnabled ? 0 : 0; // Always start at 0
+
+      const customer = repo.create({
+        name: data.name,
+        email: data.email || null,
+        phone: data.phone || null,
+        address: data.address || null,
+        notes: data.notes || null,
+        loyaltyPointsBalance: initialPoints,
+        lifetimePointsEarned: 0,
+        status: data.status || defaultStatus,
+        isActive: data.isActive !== undefined ? data.isActive : defaultActive,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const saved = await saveDb(repo, customer, { queryRunner: qr });
+
+      // Audit log for creation
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Customer", saved.id, saved, user);
+      }
+
+      logger.debug(`Customer created: #${saved.id} - ${saved.name}`);
+      return saved;
+    } catch (error) {
+      console.error("Failed to create customer:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing customer (basic fields only – not status or points)
+   * @param {number} id
+   * @param {Object} data - Fields to update (name, email, phone, address, notes, isActive)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async update(id, data, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Customer = require("../entities/Customer");
+    const repo = this._getRepo(qr, Customer);
+
+    try {
+      const existing = await repo.findOne({ where: { id } });
+      if (!existing) {
+        throw new Error(`Customer with ID ${id} not found`);
+      }
+
+      const oldData = { ...existing };
+
+      // Validate email format if changed
+      if (data.email && data.email !== existing.email) {
+        if (!this._isValidEmail(data.email)) {
+          throw new Error(`Invalid email format: "${data.email}"`);
+        }
+        const duplicate = await repo.findOne({ where: { email: data.email } });
+        if (duplicate && duplicate.id !== id) {
+          throw new Error(`Email "${data.email}" already exists`);
+        }
+      }
+
+      // Validate phone format if changed
+      if (data.phone && data.phone !== existing.phone) {
+        if (!this._isValidPhone(data.phone)) {
+          throw new Error(`Invalid phone format: "${data.phone}"`);
+        }
+        const duplicate = await repo.findOne({ where: { phone: data.phone } });
+        if (duplicate && duplicate.id !== id) {
+          throw new Error(`Phone "${data.phone}" already exists`);
+        }
+      }
+
+      // Prevent direct update of status or loyalty points – these should go through state service / subscriber
+      if (data.status !== undefined) {
+        throw new Error("Use CustomerStateService to update customer status");
+      }
+      if (
+        data.loyaltyPointsBalance !== undefined ||
+        data.lifetimePointsEarned !== undefined
+      ) {
+        throw new Error("Use CustomerStateService to update loyalty points");
+      }
+
+      // Apply changes
+      Object.assign(existing, data);
+      existing.updatedAt = new Date();
+
+      const saved = await updateDb(repo, existing, { queryRunner: qr });
+
+      // Audit log for update
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Customer", id, oldData, saved, user);
+      }
+
+      logger.debug(`Customer updated: #${id}`);
+      return saved;
+    } catch (error) {
+      console.error("Failed to update customer:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Soft delete a customer (set isActive = false)
+   * @param {number} id
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async delete(id, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Customer = require("../entities/Customer");
+    const repo = this._getRepo(qr, Customer);
+
+    try {
+      const customer = await repo.findOne({ where: { id } });
+      if (!customer) {
+        throw new Error(`Customer with ID ${id} not found`);
+      }
+
+      if (!customer.isActive) {
+        throw new Error(`Customer #${id} is already inactive`);
+      }
+
+      const oldData = { ...customer };
+      customer.isActive = false;
+      customer.updatedAt = new Date();
+
+      const saved = await updateDb(repo, customer, { queryRunner: qr });
+
+      // Audit log for deletion (soft delete)
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Customer", id, oldData, user);
+      }
+
+      logger.debug(`Customer deactivated: #${id}`);
+      return saved;
+    } catch (error) {
+      console.error("Failed to delete customer:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Restore a soft-deleted customer (set isActive = true)
+   * @param {number} id
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async restore(id, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Customer = require("../entities/Customer");
+    const repo = this._getRepo(qr, Customer);
+
+    try {
+      const customer = await repo.findOne({ where: { id } });
+      if (!customer) {
+        throw new Error(`Customer with ID ${id} not found`);
+      }
+
+      if (customer.isActive) {
+        throw new Error(`Customer #${id} is already active`);
+      }
+
+      const oldData = { ...customer };
+      customer.isActive = true;
+      customer.updatedAt = new Date();
+
+      const saved = await updateDb(repo, customer, { queryRunner: qr });
+
+      // Audit log for restore
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Customer", id, oldData, saved, user);
+      }
+
+      logger.debug(`Customer restored: #${id}`);
+      return saved;
+    } catch (error) {
+      console.error("Failed to restore customer:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Permanently delete a customer (hard delete) – only if no sales or loyalty transactions
+   * @param {number} id
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async permanentlyDelete(id, user = "system", qr = null) {
+    const { removeDb } = require("../utils/dbUtils/dbActions");
+    const Customer = require("../entities/Customer");
+    const Sale = require("../entities/Sale");
+    const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
+
+    const customerRepo = this._getRepo(qr, Customer);
+    const saleRepo = this._getRepo(qr, Sale);
+    const loyaltyRepo = this._getRepo(qr, LoyaltyTransaction);
+
+    const customer = await customerRepo.findOne({ where: { id } });
+    if (!customer) {
+      throw new Error(`Customer with ID ${id} not found`);
+    }
+
+    // Check if customer has sales
+    const salesCount = await saleRepo.count({ where: { customer: { id } } });
+    if (salesCount > 0) {
+      throw new Error(
+        `Cannot delete customer #${id} because they have ${salesCount} sale(s)`,
+      );
+    }
+
+    // Check if customer has loyalty transactions
+    const loyaltyCount = await loyaltyRepo.count({
+      where: { customer: { id } },
+    });
+    if (loyaltyCount > 0) {
+      throw new Error(
+        `Cannot delete customer #${id} because they have ${loyaltyCount} loyalty transaction(s)`,
+      );
+    }
+
+    await removeDb(customerRepo, customer, { queryRunner: qr });
+
+    // Audit log for hard delete
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logCreate("Customer", id, customer, user);
+    }
+
+    logger.debug(`Customer #${id} permanently deleted`);
+  }
+
+  // ============================================================
+  // 📤 BULK & IMPORT OPERATIONS
+  // ============================================================
 
   /**
    * Bulk create customers
@@ -882,8 +879,12 @@ class CustomerService {
     return results;
   }
 
+  // ============================================================
+  // 🧹 CLEANUP & MAINTENANCE
+  // ============================================================
+
   /**
-   * ✅ NEW: Clean up inactive customers (soft delete)
+   * Clean up inactive customers (soft delete)
    * @param {number} daysOld - Inactive for this many days
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
@@ -893,7 +894,7 @@ class CustomerService {
     const Customer = require("../entities/Customer");
     const repo = this._getRepo(qr, Customer);
 
-    // ✅ Get threshold from settings if not provided
+    // Get threshold from settings if not provided
     if (daysOld === 365) {
       try {
         daysOld = await system.getInt(
@@ -962,7 +963,7 @@ class CustomerService {
   }
 
   /**
-   * ✅ NEW: Get customer tier info
+   * Get customer tier info
    * @param {number} lifetimePoints
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<{ tier: string, nextTier: string | null, pointsToNext: number }>}

@@ -1,23 +1,10 @@
 // src/subscribers/BatchSubscriber.js
 const Batch = require("../entities/Batch");
 const { logger } = require("../utils/logger");
-const { BatchStateService } = require("../stateServices/Batch");
-const { AppDataSource } = require("../main/db/data-source");
 
 logger.debug("[Subscriber] Loading BatchSubscriber");
 
 class BatchSubscriber {
-  constructor() {
-    this.stateService = null;
-  }
-
-  async getStateService(dataSource) {
-    if (!this.stateService) {
-      this.stateService = new BatchStateService(dataSource);
-    }
-    return this.stateService;
-  }
-
   listenTo() {
     return Batch;
   }
@@ -38,7 +25,7 @@ class BatchSubscriber {
   /**
    * @param {import("../entities/Batch")} entity
    */
-  afterInsert(entity, { manager, queryRunner }) {
+  async afterInsert(entity, { manager, queryRunner }) {
     logger.info("[BatchSubscriber] afterInsert:", {
       id: entity.id,
       batchCode: entity.batchCode,
@@ -47,13 +34,24 @@ class BatchSubscriber {
       status: entity.status,
     });
 
-    // Check if batch is expiring soon
-    const expiryDate = new Date(entity.expiryDate);
-    const now = new Date();
-    const daysUntilExpiry = Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24));
-    if (daysUntilExpiry <= 7 && daysUntilExpiry >= 0) {
-      logger.warn(`[BatchSubscriber] Batch #${entity.id} expires in ${daysUntilExpiry} days`);
-      // TODO: Schedule notification
+    // ✅ Route to state service for side effects (UI broadcast, audit log)
+    try {
+      const { BatchStateService } = require("../stateServices/Batch");
+      const { AppDataSource } = require("../main/db/data-source");
+      const stateService = new BatchStateService(AppDataSource);
+      await stateService.onCreate(entity.id, entity, "system", queryRunner);
+    } catch (err) {
+      logger.error(`[BatchSubscriber] Failed to handle onCreate for #${entity.id}:`, err);
+    }
+
+    // ✅ Check if batch is expiring soon (side effect)
+    try {
+      const { BatchStateService } = require("../stateServices/Batch");
+      const { AppDataSource } = require("../main/db/data-source");
+      const stateService = new BatchStateService(AppDataSource);
+      await stateService.onExpiringSoon(entity.id, entity, "system", queryRunner);
+    } catch (err) {
+      logger.error(`[BatchSubscriber] Failed to check expiring soon for #${entity.id}:`, err);
     }
   }
 
@@ -83,16 +81,81 @@ class BatchSubscriber {
       newRemaining: entity.remainingQuantity,
     });
 
-    // If status changed to 'depleted', trigger notification
-    if (databaseEntity && databaseEntity.status !== "depleted" && entity.status === "depleted") {
-      logger.info(`[BatchSubscriber] Batch #${entity.id} depleted`);
-      // TODO: Send depletion notification
+    // Skip if no changes
+    if (!databaseEntity) return;
+
+    const { BatchStateService } = require("../stateServices/Batch");
+    const { AppDataSource } = require("../main/db/data-source");
+    const stateService = new BatchStateService(AppDataSource);
+
+    // ✅ Detect when status changed to 'depleted'
+    if (databaseEntity.status !== "depleted" && entity.status === "depleted") {
+      logger.info(`[BatchSubscriber] Batch #${entity.id} depleted → routing to state service`);
+      try {
+        await stateService.onDepleted(entity.id, entity, "system", queryRunner);
+      } catch (err) {
+        logger.error(`[BatchSubscriber] Failed to handle onDepleted for #${entity.id}:`, err);
+      }
+      return;
     }
 
-    // If status changed to 'expired', trigger notification
-    if (databaseEntity && databaseEntity.status !== "expired" && entity.status === "expired") {
-      logger.info(`[BatchSubscriber] Batch #${entity.id} expired`);
-      // TODO: Send expiration notification
+    // ✅ Detect when status changed to 'expired'
+    if (databaseEntity.status !== "expired" && entity.status === "expired") {
+      logger.info(`[BatchSubscriber] Batch #${entity.id} expired → routing to state service`);
+      try {
+        await stateService.onExpired(entity.id, entity, "system", queryRunner);
+      } catch (err) {
+        logger.error(`[BatchSubscriber] Failed to handle onExpired for #${entity.id}:`, err);
+      }
+      return;
+    }
+
+    // ✅ Detect status changes to other statuses (on_hold, active)
+    if (databaseEntity.status !== entity.status) {
+      logger.info(`[BatchSubscriber] Batch #${entity.id} status changed: ${databaseEntity.status} → ${entity.status} → routing to state service`);
+      try {
+        // For generic status changes, we can use onUpdate with the changes
+        const changes = { status: { old: databaseEntity.status, new: entity.status } };
+        await stateService.onUpdate(entity.id, entity, changes, "system", queryRunner);
+      } catch (err) {
+        logger.error(`[BatchSubscriber] Failed to handle status change for #${entity.id}:`, err);
+      }
+      return;
+    }
+
+    // ✅ Detect remainingQuantity changes (significant)
+    if (databaseEntity.remainingQuantity !== entity.remainingQuantity) {
+      const diff = entity.remainingQuantity - databaseEntity.remainingQuantity;
+      // Only log significant changes (more than 0.1 kg)
+      if (Math.abs(diff) > 0.1) {
+        logger.info(`[BatchSubscriber] Batch #${entity.id} remaining quantity changed by ${diff}kg → routing to state service`);
+        try {
+          const changes = { remainingQuantity: { old: databaseEntity.remainingQuantity, new: entity.remainingQuantity } };
+          await stateService.onUpdate(entity.id, entity, changes, "system", queryRunner);
+        } catch (err) {
+          logger.error(`[BatchSubscriber] Failed to handle quantity change for #${entity.id}:`, err);
+        }
+      }
+    }
+
+    // ✅ Detect other field changes (note, unitCost, expiryDate)
+    const changedFields = {};
+    const skipKeys = ['id', 'status', 'remainingQuantity', 'updatedAt', 'createdAt', 'receivedDate'];
+    for (const key of Object.keys(entity)) {
+      if (!skipKeys.includes(key)) {
+        if (databaseEntity[key] !== entity[key]) {
+          changedFields[key] = { old: databaseEntity[key], new: entity[key] };
+        }
+      }
+    }
+
+    if (Object.keys(changedFields).length > 0) {
+      logger.info(`[BatchSubscriber] Batch #${entity.id} updated (fields: ${Object.keys(changedFields).join(', ')}) → routing to state service`);
+      try {
+        await stateService.onUpdate(entity.id, entity, changedFields, "system", queryRunner);
+      } catch (err) {
+        logger.error(`[BatchSubscriber] Failed to handle onUpdate for #${entity.id}:`, err);
+      }
     }
   }
 
@@ -109,10 +172,21 @@ class BatchSubscriber {
   /**
    * @param {{ databaseEntity?: any; entityId: any }} event
    */
-  afterRemove(event) {
+  async afterRemove(event, { manager, queryRunner }) {
+    const { entityId, databaseEntity } = event;
     logger.info("[BatchSubscriber] afterRemove:", {
-      id: event.entityId,
+      id: entityId,
     });
+
+    // ✅ Route to state service for side effects
+    try {
+      const { BatchStateService } = require("../stateServices/Batch");
+      const { AppDataSource } = require("../main/db/data-source");
+      const stateService = new BatchStateService(AppDataSource);
+      await stateService.onDelete(entityId, databaseEntity, "system", queryRunner);
+    } catch (err) {
+      logger.error(`[BatchSubscriber] Failed to handle onDelete for #${entityId}:`, err);
+    }
   }
 }
 

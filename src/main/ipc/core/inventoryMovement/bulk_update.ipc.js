@@ -1,4 +1,5 @@
 // src/main/ipc/core/inventoryMovement/bulk_update.ipc.js
+//@ts-check
 const inventoryMovementService = require("../../../../services/InventoryMovement");
 
 module.exports = async (params, queryRunner) => {

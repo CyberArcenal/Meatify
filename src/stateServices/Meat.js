@@ -6,9 +6,12 @@ const Meat = require("../entities/Meat");
 const notificationService = require("../services/Notification");
 
 /**
- * MeatStateService handles state transitions and side effects for meat products.
- * It does NOT contain CRUD operations – those belong to MeatService.
- * Methods here handle toggling active status, price changes, and other business rules.
+ * MeatStateService handles SIDE EFFECTS only for meat products.
+ * It does NOT contain CRUD or business logic – those belong to MeatService.
+ * All methods here are event handlers (onCreated, onActivated, onDeactivated, etc.)
+ * and are called by the subscriber after a change is detected.
+ *
+ * ✅ Every method sends IPC events to the UI for real-time updates.
  */
 class MeatStateService {
   /**
@@ -33,40 +36,89 @@ class MeatStateService {
   }
 
   /**
-   * Activate a meat product (set isActive = true)
+   * Send event to all renderer windows (UI)
+   * @param {string} channel
+   * @param {any} data
+   */
+  _sendToRenderers(channel, data) {
+    try {
+      const { BrowserWindow } = require("electron");
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, data);
+        }
+      });
+    } catch (error) {
+      logger.warn(
+        "[MeatState] Failed to send IPC event (maybe not in Electron):",
+        error.message,
+      );
+    }
+  }
+
+  // ============================================================
+  // 🔄 SIDE EFFECTS (called by subscriber)
+  // ============================================================
+
+  /**
+   * Side effect after a meat is created
+   * Called from MeatSubscriber.afterInsert
    * @param {number} meatId
+   * @param {Meat} meat
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async activate(meatId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Meat);
+  async onCreated(meatId, meat, user = "system", queryRunner = null) {
+    logger.info(`[MeatState] ✅ Meat #${meatId} (${meat.name}) created by ${user}`);
 
-    const meat = await repo.findOne({ where: { id: meatId } });
-    if (!meat) {
-      throw new Error(`Meat with ID ${meatId} not found`);
-    }
+    // Broadcast to UI
+    this._sendToRenderers("meat:created", {
+      id: meat.id,
+      name: meat.name,
+      sku: meat.sku,
+      barcode: meat.barcode,
+      pricePerKg: meat.pricePerKg,
+      isActive: meat.isActive,
+      categoryId: meat.categoryId,
+      supplierId: meat.supplierId,
+      createdAt: meat.createdAt,
+    });
 
-    if (meat.isActive) {
-      logger.warn(`[MeatState] Meat #${meatId} is already active`);
-      return meat;
-    }
+    // Audit log
+    await auditLogger.logCreate("Meat", meatId, meat, user);
+  }
 
-    const oldStatus = meat.isActive;
-    meat.isActive = true;
-    meat.updatedAt = new Date();
+  /**
+   * Side effect after a meat is activated (isActive: false → true)
+   * Called from MeatSubscriber.afterUpdate
+   * @param {number} meatId
+   * @param {Meat} meat
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onActivated(meatId, meat, user = "system", queryRunner = null) {
+    logger.info(`[MeatState] ✅ Meat #${meatId} (${meat.name}) activated by ${user}`);
 
-    const updated = await updateDb(repo, meat, { queryRunner, skipSignal: false });
+    // Broadcast to UI
+    this._sendToRenderers("meat:activated", {
+      id: meat.id,
+      name: meat.name,
+      sku: meat.sku,
+      pricePerKg: meat.pricePerKg,
+      activatedAt: new Date().toISOString(),
+    });
 
+    // Audit log
     await auditLogger.logUpdate(
       "Meat",
       meatId,
-      { isActive: oldStatus },
+      { action: "activated" },
       { isActive: true },
       user
     );
 
-    // Side effect: send notification (optional)
+    // Send notification (in-app)
     try {
       await notificationService.create(
         {
@@ -74,7 +126,11 @@ class MeatStateService {
           title: "Meat Product Activated",
           message: `Meat "${meat.name}" (SKU: ${meat.sku}) has been activated.`,
           type: "info",
-          metadata: { meatId: meat.id },
+          metadata: {
+            meatId: meat.id,
+            meatName: meat.name,
+            sku: meat.sku,
+          },
         },
         user,
         queryRunner
@@ -82,66 +138,58 @@ class MeatStateService {
     } catch (err) {
       logger.error(`[MeatState] Failed to send activation notification for meat #${meatId}:`, err);
     }
-
-    logger.info(`[MeatState] Meat #${meatId} activated`);
-    return updated;
   }
 
   /**
-   * Deactivate a meat product (set isActive = false)
+   * Side effect after a meat is deactivated (isActive: true → false)
+   * Called from MeatSubscriber.afterUpdate
    * @param {number} meatId
+   * @param {Meat} meat
+   * @param {Object} options
+   * @param {number} [options.activeBatchCount] - Number of active batches that were cleared
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async deactivate(meatId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Meat);
+  async onDeactivated(meatId, meat, options = {}, user = "system", queryRunner = null) {
+    const { activeBatchCount = 0 } = options;
 
-    const meat = await repo.findOne({ where: { id: meatId } });
-    if (!meat) {
-      throw new Error(`Meat with ID ${meatId} not found`);
-    }
+    logger.info(`[MeatState] ✅ Meat #${meatId} (${meat.name}) deactivated by ${user}`);
 
-    if (!meat.isActive) {
-      logger.warn(`[MeatState] Meat #${meatId} is already inactive`);
-      return meat;
-    }
-
-    // Check if there are active batches – cannot deactivate if there are active batches
-    const Batch = require("../entities/Batch");
-    const batchRepo = this._getRepo(queryRunner, Batch);
-    const activeBatches = await batchRepo.count({
-      where: { meat: { id: meatId }, status: "active" },
+    // Broadcast to UI
+    this._sendToRenderers("meat:deactivated", {
+      id: meat.id,
+      name: meat.name,
+      sku: meat.sku,
+      activeBatchCount,
+      deactivatedAt: new Date().toISOString(),
     });
-    if (activeBatches > 0) {
-      throw new Error(
-        `Cannot deactivate meat #${meatId} because it has ${activeBatches} active batch(es). Please deplete or expire them first.`
-      );
-    }
 
-    const oldStatus = meat.isActive;
-    meat.isActive = false;
-    meat.updatedAt = new Date();
-
-    const updated = await updateDb(repo, meat, { queryRunner, skipSignal: false });
-
+    // Audit log
     await auditLogger.logUpdate(
       "Meat",
       meatId,
-      { isActive: oldStatus },
+      { action: "deactivated", activeBatchCount },
       { isActive: false },
       user
     );
 
-    // Side effect: send notification
+    // Send notification (in-app)
     try {
+      const message = `Meat "${meat.name}" (SKU: ${meat.sku}) has been deactivated.` +
+        (activeBatchCount > 0 ? ` ${activeBatchCount} active batch(es) were cleared.` : "");
+
       await notificationService.create(
         {
           userId: 1,
           title: "Meat Product Deactivated",
-          message: `Meat "${meat.name}" (SKU: ${meat.sku}) has been deactivated. All active batches must be cleared.`,
+          message,
           type: "warning",
-          metadata: { meatId: meat.id },
+          metadata: {
+            meatId: meat.id,
+            meatName: meat.name,
+            sku: meat.sku,
+            activeBatchCount,
+          },
         },
         user,
         queryRunner
@@ -149,37 +197,32 @@ class MeatStateService {
     } catch (err) {
       logger.error(`[MeatState] Failed to send deactivation notification for meat #${meatId}:`, err);
     }
-
-    logger.info(`[MeatState] Meat #${meatId} deactivated`);
-    return updated;
   }
 
   /**
-   * Update price per kg with side effects (e.g., notify, audit)
+   * Side effect after a meat's price changes
+   * Called from MeatSubscriber.afterUpdate
    * @param {number} meatId
+   * @param {number} oldPrice
    * @param {number} newPrice
+   * @param {Meat} meat
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async updatePrice(meatId, newPrice, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Meat);
+  async onPriceChange(meatId, oldPrice, newPrice, meat, user = "system", queryRunner = null) {
+    logger.info(`[MeatState] ✅ Meat #${meatId} (${meat.name}) price changed: ${oldPrice} → ${newPrice} by ${user}`);
 
-    if (newPrice < 0) {
-      throw new Error("Price cannot be negative");
-    }
+    // Broadcast to UI
+    this._sendToRenderers("meat:priceChanged", {
+      id: meat.id,
+      name: meat.name,
+      sku: meat.sku,
+      oldPrice,
+      newPrice,
+      changedAt: new Date().toISOString(),
+    });
 
-    const meat = await repo.findOne({ where: { id: meatId } });
-    if (!meat) {
-      throw new Error(`Meat with ID ${meatId} not found`);
-    }
-
-    const oldPrice = meat.pricePerKg;
-    meat.pricePerKg = newPrice;
-    meat.updatedAt = new Date();
-
-    const updated = await updateDb(repo, meat, { queryRunner, skipSignal: false });
-
+    // Audit log
     await auditLogger.logUpdate(
       "Meat",
       meatId,
@@ -188,15 +231,20 @@ class MeatStateService {
       user
     );
 
-    // Side effect: notify about price change (optional)
+    // Send notification (in-app)
     try {
       await notificationService.create(
         {
           userId: 1,
-          title: "Price Updated",
-          message: `Price for "${meat.name}" changed from ${oldPrice} to ${newPrice} per kg.`,
+          title: "Meat Price Updated",
+          message: `Price for "${meat.name}" (SKU: ${meat.sku}) changed from ₱${oldPrice} to ₱${newPrice} per kg.`,
           type: "info",
-          metadata: { meatId: meat.id, oldPrice, newPrice },
+          metadata: {
+            meatId: meat.id,
+            meatName: meat.name,
+            oldPrice,
+            newPrice,
+          },
         },
         user,
         queryRunner
@@ -204,28 +252,88 @@ class MeatStateService {
     } catch (err) {
       logger.error(`[MeatState] Failed to send price update notification for meat #${meatId}:`, err);
     }
-
-    logger.info(`[MeatState] Price updated for meat #${meatId}: ${oldPrice} → ${newPrice}`);
-    return updated;
   }
 
   /**
-   * Bulk price update (side effects for each)
-   * @param {Array<{ id: number, price: number }>} updates
+   * Side effect after a meat is updated (generic)
+   * Called from MeatSubscriber.afterUpdate for other changes
+   * @param {number} meatId
+   * @param {Meat} meat
+   * @param {Object} changes
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async bulkUpdatePrice(updates, user = "system", queryRunner = null) {
-    const results = { updated: [], errors: [] };
-    for (const { id, price } of updates) {
-      try {
-        const saved = await this.updatePrice(id, price, user, queryRunner);
-        results.updated.push(saved);
-      } catch (err) {
-        results.errors.push({ id, price, error: err.message });
-      }
-    }
-    return results;
+  async onUpdated(meatId, meat, changes, user = "system", queryRunner = null) {
+    logger.info(`[MeatState] ✅ Meat #${meatId} (${meat.name}) updated (fields: ${Object.keys(changes).join(", ")})`);
+
+    // Broadcast to UI
+    this._sendToRenderers("meat:updated", {
+      id: meat.id,
+      name: meat.name,
+      sku: meat.sku,
+      changes,
+      updatedAt: meat.updatedAt,
+    });
+
+    // Audit log
+    await auditLogger.logUpdate(
+      "Meat",
+      meatId,
+      changes,
+      meat,
+      user
+    );
+  }
+
+  /**
+   * Side effect after a meat is soft-deleted
+   * Called from MeatSubscriber.afterRemove
+   * @param {number} meatId
+   * @param {Meat} meat
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onDeleted(meatId, meat, user = "system", queryRunner = null) {
+    logger.info(`[MeatState] ✅ Meat #${meatId} (${meat?.name}) soft-deleted by ${user}`);
+
+    // Broadcast to UI
+    this._sendToRenderers("meat:deleted", {
+      id: meatId,
+      name: meat?.name,
+      sku: meat?.sku,
+      deletedAt: new Date().toISOString(),
+    });
+
+    // Audit log
+    await auditLogger.logCreate("Meat", meatId, meat, user);
+  }
+
+  /**
+   * Side effect after a meat is restored
+   * @param {number} meatId
+   * @param {Meat} meat
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onRestored(meatId, meat, user = "system", queryRunner = null) {
+    logger.info(`[MeatState] ✅ Meat #${meatId} (${meat.name}) restored by ${user}`);
+
+    // Broadcast to UI
+    this._sendToRenderers("meat:restored", {
+      id: meat.id,
+      name: meat.name,
+      sku: meat.sku,
+      restoredAt: new Date().toISOString(),
+    });
+
+    // Audit log
+    await auditLogger.logUpdate(
+      "Meat",
+      meatId,
+      { action: "restored" },
+      { isActive: true },
+      user
+    );
   }
 }
 

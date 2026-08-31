@@ -1,6 +1,5 @@
 // src/main/ipc/core/meat/update_price.ipc.js
-const { MeatStateService } = require("../../../../stateServices/Meat");
-const { AppDataSource } = require("../../../db/data-source");
+const meatService = require("../../../../services/Meat");
 
 module.exports = async (params, queryRunner) => {
   const { meatId, newPrice, user = "system" } = params;
@@ -13,8 +12,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new MeatStateService(AppDataSource);
-    const result = await stateService.updatePrice(meatId, newPrice, user, queryRunner);
+    const result = await meatService.updatePrice(meatId, newPrice, user, queryRunner);
     return {
       status: true,
       message: `Price for meat #${meatId} updated successfully`,

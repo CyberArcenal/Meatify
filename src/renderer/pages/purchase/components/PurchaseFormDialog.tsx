@@ -175,77 +175,110 @@ export const PurchaseFormDialog: React.FC<PurchaseFormDialogProps> = ({
             </button>
           </div>
 
+          {/* ─── Column Headers ─────────────────────────────── */}
+          <div className="grid grid-cols-[1fr_80px_100px_130px_80px_32px] gap-2 px-1 mb-1 text-xs font-medium text-[var(--text-secondary)]">
+            <span>Meat</span>
+            <span>Qty</span>
+            <span>Unit Price</span>
+            <span>Expiry</span>
+            <span className="text-right">Subtotal</span>
+            <span></span>
+          </div>
+
           <div className="space-y-2 max-h-80 overflow-y-auto border border-[var(--border-color)] rounded-lg p-2">
-            {fields.map((field, index) => (
-              <div key={field.id} className="flex items-center gap-2">
-                <div className="flex-1">
-                  <MeatSelect
-                    value={watch(`items.${index}.meatId`)}
-                    onChange={(id) =>
-                      setValue(`items.${index}.meatId`, id as number, { shouldValidate: true })
-                    }
-                    disabled={isSubmitting}
-                    placeholder="Select meat"
-                    activeOnly
-                  />
-                  {errors.items?.[index]?.meatId && (
-                    <p className="mt-1 text-xs text-[var(--accent-red)]">
-                      {errors.items[index].meatId?.message}
-                    </p>
-                  )}
+            {fields.map((field, index) => {
+              // Auto-populate unitPrice when meat is selected
+              const handleMeatChange = (id: number | null, meat?: any) => {
+                setValue(`items.${index}.meatId`, id as number, { shouldValidate: true });
+                if (meat && meat.pricePerKg !== undefined) {
+                  // Only auto-fill if current unitPrice is 0 (or you can always overwrite)
+                  const currentUnitPrice = watch(`items.${index}.unitPrice`);
+                  if (currentUnitPrice === 0 || currentUnitPrice === undefined) {
+                    setValue(`items.${index}.unitPrice`, meat.pricePerKg, { shouldValidate: true });
+                  }
+                }
+              };
+
+              return (
+                <div key={field.id} className="grid grid-cols-[1fr_80px_100px_130px_80px_32px] gap-2 items-center">
+                  <div>
+                    <MeatSelect
+                      value={watch(`items.${index}.meatId`)}
+                      onChange={handleMeatChange}
+                      disabled={isSubmitting}
+                      placeholder="Select meat"
+                      activeOnly
+                    />
+                    {errors.items?.[index]?.meatId && (
+                      <p className="mt-1 text-xs text-[var(--accent-red)]">
+                        {errors.items[index].meatId?.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <input
+                      type="number"
+                      step="any"
+                      {...register(`items.${index}.quantity`, {
+                        required: "Required",
+                        min: { value: 0.001, message: "Min 0.001" },
+                      })}
+                      placeholder="Qty"
+                      className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded px-2 py-1 text-sm text-[var(--text-primary)]"
+                    />
+                    {errors.items?.[index]?.quantity && (
+                      <p className="mt-1 text-xs text-[var(--accent-red)]">
+                        {errors.items[index].quantity?.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      {...register(`items.${index}.unitPrice`, {
+                        required: "Required",
+                        min: { value: 0, message: "Min 0" },
+                      })}
+                      placeholder="Price"
+                      className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded px-2 py-1 text-sm text-[var(--text-primary)]"
+                    />
+                    {errors.items?.[index]?.unitPrice && (
+                      <p className="mt-1 text-xs text-[var(--accent-red)]">
+                        {errors.items[index].unitPrice?.message}
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <input
+                      type="date"
+                      {...register(`items.${index}.expiryDate`)}
+                      className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded px-2 py-1 text-sm text-[var(--text-primary)]"
+                    />
+                  </div>
+
+                  <span className="text-sm text-[var(--text-secondary)] text-right">
+                    ₱
+                    {(
+                      (watch(`items.${index}.quantity`) || 0) *
+                      (watch(`items.${index}.unitPrice`) || 0)
+                    ).toFixed(2)}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => remove(index)}
+                    disabled={fields.length === 1}
+                    className="p-1 text-[var(--text-tertiary)] hover:text-[var(--accent-red)] disabled:opacity-30 transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-
-                <div className="w-20">
-                  <input
-                    type="number"
-                    {...register(`items.${index}.quantity`, {
-                      required: "Qty req",
-                      min: { value: 1, message: "Min 1" },
-                    })}
-                    placeholder="Qty"
-                    className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded px-2 py-1 text-sm text-[var(--text-primary)]"
-                  />
-                </div>
-
-                <div className="w-24">
-                  <input
-                    type="number"
-                    step="0.01"
-                    {...register(`items.${index}.unitPrice`, {
-                      required: "Price req",
-                      min: { value: 0, message: "Min 0" },
-                    })}
-                    placeholder="Price"
-                    className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded px-2 py-1 text-sm text-[var(--text-primary)]"
-                  />
-                </div>
-
-                <div className="w-32">
-                  <input
-                    type="date"
-                    {...register(`items.${index}.expiryDate`)}
-                    className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded px-2 py-1 text-sm text-[var(--text-primary)]"
-                  />
-                </div>
-
-                <span className="text-sm text-[var(--text-secondary)] w-20 text-right">
-                  ₱
-                  {(
-                    (watch(`items.${index}.quantity`) || 0) *
-                    (watch(`items.${index}.unitPrice`) || 0)
-                  ).toFixed(2)}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => remove(index)}
-                  disabled={fields.length === 1}
-                  className="p-1 text-[var(--text-tertiary)] hover:text-[var(--accent-red)] disabled:opacity-30 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

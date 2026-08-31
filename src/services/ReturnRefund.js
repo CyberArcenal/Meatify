@@ -3,8 +3,9 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
-const system = require("../utils/system"); // ✅ ADDED - for flexible settings
-const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+const system = require("../utils/system");
+const { SettingType } = require("../entities/systemSettings");
+const batchService = require("./Batch"); // ✅ Import BatchService
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -28,6 +29,7 @@ class ReturnRefundService {
     this.customerRepository = null;
     this.meatRepository = null;
     this.batchRepository = null;
+    this.loyaltyRepository = null;
   }
 
   async initialize() {
@@ -38,6 +40,7 @@ class ReturnRefundService {
     const Customer = require("../entities/Customer");
     const Meat = require("../entities/Meat");
     const Batch = require("../entities/Batch");
+    const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 
     if (!AppDataSource.isInitialized) {
       await AppDataSource.initialize();
@@ -48,6 +51,7 @@ class ReturnRefundService {
     this.customerRepository = AppDataSource.getRepository(Customer);
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.batchRepository = AppDataSource.getRepository(Batch);
+    this.loyaltyRepository = AppDataSource.getRepository(LoyaltyTransaction);
     logger.debug("ReturnRefundService initialized");
   }
 
@@ -62,6 +66,7 @@ class ReturnRefundService {
       customer: this.customerRepository,
       meat: this.meatRepository,
       batch: this.batchRepository,
+      loyalty: this.loyaltyRepository,
     };
   }
 
@@ -88,7 +93,7 @@ class ReturnRefundService {
   }
 
   /**
-   * ✅ NEW: Check if audit logging is enabled
+   * Check if audit logging is enabled
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -96,48 +101,60 @@ class ReturnRefundService {
     try {
       return await system.auditLogEnabled();
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[ReturnRefund] Failed to check audit enabled status: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
 
   /**
-   * ✅ NEW: Get allowed return statuses from settings
+   * Get allowed return statuses from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<string[]>}
    */
   async _getAllowedStatuses(qr = null) {
     try {
-      return await system.getArray("allowed_return_statuses", SettingType.SALES, [
-        "pending", "processed", "cancelled"
-      ]);
+      return await system.getArray(
+        "allowed_return_statuses",
+        SettingType.SALES,
+        ["pending", "processed", "cancelled"],
+      );
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to get allowed statuses: ${error.message}, using defaults`);
+      logger.warn(
+        `[ReturnRefund] Failed to get allowed statuses: ${error.message}, using defaults`,
+      );
       return ["pending", "processed", "cancelled"];
     }
   }
 
   /**
-   * ✅ NEW: Get reference prefix from settings
+   * Get reference prefix from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<string>}
    */
   async _getReferencePrefix(qr = null) {
     try {
-      const prefix = await system.getValue("return_reference_prefix", SettingType.SALES, null);
+      const prefix = await system.getValue(
+        "return_reference_prefix",
+        SettingType.SALES,
+        null,
+      );
       if (prefix && prefix.trim()) {
         return prefix.trim().toUpperCase();
       }
       const company = await system.companyName();
       return company.substring(0, 3).toUpperCase() || "RET";
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to get reference prefix: ${error.message}, defaulting to "RET"`);
+      logger.warn(
+        `[ReturnRefund] Failed to get reference prefix: ${error.message}, defaulting to "RET"`,
+      );
       return "RET";
     }
   }
 
   /**
-   * ✅ NEW: Check if refunds are enabled
+   * Check if refunds are enabled
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -145,13 +162,15 @@ class ReturnRefundService {
     try {
       return await system.enableRefunds();
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to check refunds enabled: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[ReturnRefund] Failed to check refunds enabled: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
 
   /**
-   * ✅ NEW: Get refund window days from settings
+   * Get refund window days from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
@@ -159,13 +178,15 @@ class ReturnRefundService {
     try {
       return await system.refundWindowDays();
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to get refund window days: ${error.message}, defaulting to 7`);
+      logger.warn(
+        `[ReturnRefund] Failed to get refund window days: ${error.message}, defaulting to 7`,
+      );
       return 7;
     }
   }
 
   /**
-   * ✅ NEW: Check if receipt is required for refund
+   * Check if receipt is required for refund
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -173,13 +194,15 @@ class ReturnRefundService {
     try {
       return await system.requireReceiptForRefund();
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to check receipt required: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[ReturnRefund] Failed to check receipt required: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
 
   /**
-   * ✅ NEW: Check if restock is enabled for refunds
+   * Check if restock is enabled for refunds
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -187,545 +210,116 @@ class ReturnRefundService {
     try {
       return await system.refundRestockEnabled();
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to check restock enabled: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[ReturnRefund] Failed to check restock enabled: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
 
   /**
-   * ✅ NEW: Get max reason length from settings
+   * Get max reason length from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
   async _getMaxReasonLength(qr = null) {
     try {
-      return await system.getInt("max_return_reason_length", SettingType.SALES, 500);
+      return await system.getInt(
+        "max_return_reason_length",
+        SettingType.SALES,
+        500,
+      );
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to get max reason length: ${error.message}, defaulting to 500`);
+      logger.warn(
+        `[ReturnRefund] Failed to get max reason length: ${error.message}, defaulting to 500`,
+      );
       return 500;
     }
   }
 
   /**
-   * ✅ NEW: Get retention days from settings
+   * Get retention days from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
   async _getRetentionDays(qr = null) {
     try {
-      return await system.getInt("return_retention_days", SettingType.SALES, 730);
+      return await system.getInt(
+        "return_retention_days",
+        SettingType.SALES,
+        730,
+      );
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to get retention days: ${error.message}, defaulting to 730`);
+      logger.warn(
+        `[ReturnRefund] Failed to get retention days: ${error.message}, defaulting to 730`,
+      );
       return 730;
     }
   }
 
   /**
-   * ✅ NEW: Get max weight per item from settings
+   * Get max weight per item from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
   async _getMaxWeightKg(qr = null) {
     try {
-      return await system.getDecimal("max_return_weight_kg", SettingType.SALES, 999.999);
+      return await system.getDecimal(
+        "max_return_weight_kg",
+        SettingType.SALES,
+        999.999,
+      );
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to get max weight: ${error.message}, defaulting to 999.999`);
+      logger.warn(
+        `[ReturnRefund] Failed to get max weight: ${error.message}, defaulting to 999.999`,
+      );
       return 999.999;
     }
   }
 
   /**
-   * ✅ NEW: Get max unit price from settings
+   * Get max unit price from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
   async _getMaxUnitPrice(qr = null) {
     try {
-      return await system.getDecimal("max_return_unit_price", SettingType.SALES, 9999.99);
+      return await system.getDecimal(
+        "max_return_unit_price",
+        SettingType.SALES,
+        9999.99,
+      );
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to get max unit price: ${error.message}, defaulting to 9999.99`);
+      logger.warn(
+        `[ReturnRefund] Failed to get max unit price: ${error.message}, defaulting to 9999.99`,
+      );
       return 9999.99;
     }
   }
 
   /**
-   * ✅ NEW: Get max total amount from settings
+   * Get max total amount from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
   async _getMaxTotalAmount(qr = null) {
     try {
-      return await system.getDecimal("max_return_total_amount", SettingType.SALES, 999999.99);
+      return await system.getDecimal(
+        "max_return_total_amount",
+        SettingType.SALES,
+        999999.99,
+      );
     } catch (error) {
-      logger.warn(`[ReturnRefund] Failed to get max total amount: ${error.message}, defaulting to 999999.99`);
+      logger.warn(
+        `[ReturnRefund] Failed to get max total amount: ${error.message}, defaulting to 999999.99`,
+      );
       return 999999.99;
     }
   }
 
-  /**
-   * Create a new return/refund request (pending status)
-   * @param {Object} data - { saleId, customerId, reason?, refundMethod, items: [{ meatId, batchId, weightKg, unitPrice, reason? }] }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async create(data, user = "system", qr = null) {
-    const { saveDb } = require("../utils/dbUtils/dbActions");
-    const ReturnRefund = require("../entities/ReturnRefund");
-    const ReturnRefundItem = require("../entities/ReturnRefundItem");
-    const Sale = require("../entities/Sale");
-    const Customer = require("../entities/Customer");
-    const Meat = require("../entities/Meat");
-    const Batch = require("../entities/Batch");
-
-    const returnRepo = this._getRepo(qr, ReturnRefund);
-    const returnItemRepo = this._getRepo(qr, ReturnRefundItem);
-    const saleRepo = this._getRepo(qr, Sale);
-    const customerRepo = this._getRepo(qr, Customer);
-    const meatRepo = this._getRepo(qr, Meat);
-    const batchRepo = this._getRepo(qr, Batch);
-
-    try {
-      // ✅ Check if refunds are enabled
-      const refundsEnabled = await this._isRefundsEnabled(qr);
-      if (!refundsEnabled) {
-        throw new Error("Refunds are disabled in system settings");
-      }
-
-      // Validate required fields
-      if (!data.saleId) throw new Error("saleId is required");
-      if (!data.customerId) throw new Error("customerId is required");
-      if (!data.refundMethod) throw new Error("refundMethod is required");
-      if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
-        throw new Error("At least one return item is required");
-      }
-
-      // ✅ Validate reason length
-      if (data.reason) {
-        const maxReasonLength = await this._getMaxReasonLength(qr);
-        if (data.reason.length > maxReasonLength) {
-          throw new Error(`Reason cannot exceed ${maxReasonLength} characters`);
-        }
-      }
-
-      // ✅ Validate status if provided
-      if (data.status) {
-        const allowedStatuses = await this._getAllowedStatuses(qr);
-        if (!allowedStatuses.includes(data.status)) {
-          throw new Error(
-            `Invalid return status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`
-          );
-        }
-      }
-
-      // Validate sale exists and is paid
-      const sale = await saleRepo.findOne({ where: { id: data.saleId } });
-      if (!sale) {
-        throw new Error(`Sale with ID ${data.saleId} not found`);
-      }
-      if (sale.status !== "paid") {
-        throw new Error(`Cannot return from a sale with status "${sale.status}"`);
-      }
-
-      // ✅ Validate refund window
-      const windowDays = await this._getRefundWindowDays(qr);
-      const saleDate = new Date(sale.timestamp);
-      const now = new Date();
-      const daysDiff = (now - saleDate) / (1000 * 60 * 60 * 24);
-      if (daysDiff > windowDays) {
-        throw new Error(`Refund window of ${windowDays} days has passed (sale was ${Math.floor(daysDiff)} days ago)`);
-      }
-
-      // ✅ Check if receipt is required
-      const receiptRequired = await this._isReceiptRequired(qr);
-      if (receiptRequired) {
-        // TODO: Implement receipt validation logic here
-        // For now, we'll just log a warning
-        logger.warn("[ReturnRefund] Receipt validation not implemented, but receipt is required by settings");
-      }
-
-      // Validate customer exists
-      const customer = await customerRepo.findOne({ where: { id: data.customerId } });
-      if (!customer) {
-        throw new Error(`Customer with ID ${data.customerId} not found`);
-      }
-
-      // ✅ Get max values for validation
-      const maxWeight = await this._getMaxWeightKg(qr);
-      const maxUnitPrice = await this._getMaxUnitPrice(qr);
-      const maxTotalAmount = await this._getMaxTotalAmount(qr);
-
-      // Validate items and prepare return items
-      const returnItems = [];
-      let totalAmount = 0;
-
-      for (const itemData of data.items) {
-        if (!itemData.meatId) throw new Error("meatId is required for each item");
-        if (!itemData.batchId) throw new Error("batchId is required for each item");
-        if (!itemData.weightKg || itemData.weightKg <= 0) {
-          throw new Error("weightKg must be greater than 0");
-        }
-        // ✅ Validate max weight
-        if (itemData.weightKg > maxWeight) {
-          throw new Error(`Weight ${itemData.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`);
-        }
-
-        const meat = await meatRepo.findOne({ where: { id: itemData.meatId, isActive: true } });
-        if (!meat) {
-          throw new Error(`Meat with ID ${itemData.meatId} not found or inactive`);
-        }
-
-        const batch = await batchRepo.findOne({ where: { id: itemData.batchId } });
-        if (!batch) {
-          throw new Error(`Batch with ID ${itemData.batchId} not found`);
-        }
-        if (batch.meatId !== itemData.meatId) {
-          throw new Error(`Batch #${itemData.batchId} does not belong to meat #${itemData.meatId}`);
-        }
-
-        const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
-        // ✅ Validate max unit price
-        if (unitPrice > maxUnitPrice) {
-          throw new Error(`Unit price ₱${unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
-        }
-
-        const subtotal = unitPrice * itemData.weightKg;
-        totalAmount += subtotal;
-
-        // ✅ Validate max total amount
-        if (totalAmount > maxTotalAmount) {
-          throw new Error(`Total amount ₱${totalAmount} exceeds maximum allowed of ₱${maxTotalAmount}`);
-        }
-
-        returnItems.push({
-          weightKg: itemData.weightKg,
-          unitPrice: unitPrice,
-          subtotal: subtotal,
-          reason: itemData.reason || null,
-          meat: meat,
-          batch: batch,
-        });
-      }
-
-      // Generate reference number if not provided
-      let referenceNo = data.referenceNo;
-      if (!referenceNo) {
-        const prefix = await this._getReferencePrefix(qr);
-        referenceNo = await this.generateReference(returnRepo, prefix);
-      } else {
-        const existing = await returnRepo.findOne({ where: { referenceNo } });
-        if (existing) {
-          throw new Error(`Reference "${referenceNo}" already exists`);
-        }
-      }
-
-      // Create return
-      const returnRefund = returnRepo.create({
-        referenceNo,
-        reason: data.reason || null,
-        refundMethod: data.refundMethod,
-        totalAmount: Math.round(totalAmount * 100) / 100,
-        status: data.status || "pending",
-        sale: sale,
-        customer: customer,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      const savedReturn = await saveDb(returnRepo, returnRefund, { queryRunner: qr });
-
-      // Create return items
-      for (const itemData of returnItems) {
-        const returnItem = returnItemRepo.create({
-          ...itemData,
-          returnRefund: savedReturn,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        });
-        await saveDb(returnItemRepo, returnItem, { queryRunner: qr });
-      }
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logCreate("ReturnRefund", savedReturn.id, savedReturn, user);
-      }
-
-      logger.debug(`ReturnRefund created: #${savedReturn.id} - ${savedReturn.referenceNo}`);
-
-      // Reload with relations
-      const fullReturn = await returnRepo.findOne({
-        where: { id: savedReturn.id },
-        relations: ["sale", "customer", "items", "items.meat", "items.batch"],
-      });
-
-      return fullReturn;
-    } catch (error) {
-      console.error("Failed to create return:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Update an existing return (only allowed for pending status)
-   * @param {number} id
-   * @param {Object} data - { reason?, refundMethod?, items?, customerId?, saleId? }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async update(id, data, user = "system", qr = null) {
-    const { updateDb, saveDb, removeDb } = require("../utils/dbUtils/dbActions");
-    const ReturnRefund = require("../entities/ReturnRefund");
-    const ReturnRefundItem = require("../entities/ReturnRefundItem");
-    const Sale = require("../entities/Sale");
-    const Customer = require("../entities/Customer");
-    const Meat = require("../entities/Meat");
-    const Batch = require("../entities/Batch");
-
-    const returnRepo = this._getRepo(qr, ReturnRefund);
-    const returnItemRepo = this._getRepo(qr, ReturnRefundItem);
-    const saleRepo = this._getRepo(qr, Sale);
-    const customerRepo = this._getRepo(qr, Customer);
-    const meatRepo = this._getRepo(qr, Meat);
-    const batchRepo = this._getRepo(qr, Batch);
-
-    try {
-      const existing = await returnRepo.findOne({
-        where: { id },
-        relations: ["items", "items.meat", "items.batch", "sale", "customer"],
-      });
-      if (!existing) {
-        throw new Error(`ReturnRefund with ID ${id} not found`);
-      }
-
-      // Only allow updates for pending status
-      if (existing.status !== "pending") {
-        throw new Error(`Cannot update a return with status "${existing.status}"`);
-      }
-
-      const oldData = { ...existing };
-
-      // ✅ Validate reason length
-      if (data.reason !== undefined) {
-        const maxReasonLength = await this._getMaxReasonLength(qr);
-        if (data.reason.length > maxReasonLength) {
-          throw new Error(`Reason cannot exceed ${maxReasonLength} characters`);
-        }
-      }
-
-      // Handle sale change
-      if (data.saleId && data.saleId !== existing.sale.id) {
-        const sale = await saleRepo.findOne({ where: { id: data.saleId } });
-        if (!sale) {
-          throw new Error(`Sale with ID ${data.saleId} not found`);
-        }
-        existing.sale = sale;
-        delete data.saleId;
-      }
-
-      // Handle customer change
-      if (data.customerId && data.customerId !== existing.customer.id) {
-        const customer = await customerRepo.findOne({ where: { id: data.customerId } });
-        if (!customer) {
-          throw new Error(`Customer with ID ${data.customerId} not found`);
-        }
-        existing.customer = customer;
-        delete data.customerId;
-      }
-
-      // Handle items update (replace all items)
-      if (data.items) {
-        if (!Array.isArray(data.items) || data.items.length === 0) {
-          throw new Error("At least one return item is required");
-        }
-
-        // ✅ Get max values for validation
-        const maxWeight = await this._getMaxWeightKg(qr);
-        const maxUnitPrice = await this._getMaxUnitPrice(qr);
-        const maxTotalAmount = await this._getMaxTotalAmount(qr);
-
-        // Remove old items
-        for (const oldItem of existing.items) {
-          await removeDb(returnItemRepo, oldItem, { queryRunner: qr });
-        }
-
-        // Create new items
-        const newItems = [];
-        let totalAmount = 0;
-
-        for (const itemData of data.items) {
-          if (!itemData.meatId) throw new Error("meatId is required for each item");
-          if (!itemData.batchId) throw new Error("batchId is required for each item");
-          if (!itemData.weightKg || itemData.weightKg <= 0) {
-            throw new Error("weightKg must be greater than 0");
-          }
-          if (itemData.weightKg > maxWeight) {
-            throw new Error(`Weight ${itemData.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`);
-          }
-
-          const meat = await meatRepo.findOne({ where: { id: itemData.meatId, isActive: true } });
-          if (!meat) {
-            throw new Error(`Meat with ID ${itemData.meatId} not found or inactive`);
-          }
-
-          const batch = await batchRepo.findOne({ where: { id: itemData.batchId } });
-          if (!batch) {
-            throw new Error(`Batch with ID ${itemData.batchId} not found`);
-          }
-          if (batch.meatId !== itemData.meatId) {
-            throw new Error(`Batch #${itemData.batchId} does not belong to meat #${itemData.meatId}`);
-          }
-
-          const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
-          if (unitPrice > maxUnitPrice) {
-            throw new Error(`Unit price ₱${unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
-          }
-
-          const subtotal = unitPrice * itemData.weightKg;
-          totalAmount += subtotal;
-
-          if (totalAmount > maxTotalAmount) {
-            throw new Error(`Total amount ₱${totalAmount} exceeds maximum allowed of ₱${maxTotalAmount}`);
-          }
-
-          newItems.push({
-            weightKg: itemData.weightKg,
-            unitPrice: unitPrice,
-            subtotal: subtotal,
-            reason: itemData.reason || null,
-            meat: meat,
-            batch: batch,
-            returnRefund: existing,
-          });
-        }
-
-        existing.totalAmount = Math.round(totalAmount * 100) / 100;
-
-        // Save new items
-        for (const itemData of newItems) {
-          const returnItem = returnItemRepo.create({
-            ...itemData,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          });
-          await saveDb(returnItemRepo, returnItem, { queryRunner: qr });
-        }
-
-        delete data.items;
-      }
-
-      // Update other fields
-      if (data.reason !== undefined) existing.reason = data.reason;
-      if (data.refundMethod !== undefined) existing.refundMethod = data.refundMethod;
-
-      existing.updatedAt = new Date();
-
-      const saved = await updateDb(returnRepo, existing, { queryRunner: qr });
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logUpdate("ReturnRefund", id, oldData, saved, user);
-      }
-
-      logger.debug(`ReturnRefund updated: #${id}`);
-
-      // Reload with relations
-      const fullReturn = await returnRepo.findOne({
-        where: { id: saved.id },
-        relations: ["sale", "customer", "items", "items.meat", "items.batch"],
-      });
-      return fullReturn;
-    } catch (error) {
-      console.error("Failed to update return:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Soft delete a return (set status to cancelled) – use state service instead
-   * We'll keep this as a simple status update to cancelled.
-   * For business logic, use ReturnRefundStateService.cancelReturn()
-   */
-  async delete(id, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const ReturnRefund = require("../entities/ReturnRefund");
-    const returnRepo = this._getRepo(qr, ReturnRefund);
-
-    try {
-      const returnRefund = await returnRepo.findOne({ where: { id } });
-      if (!returnRefund) {
-        throw new Error(`ReturnRefund with ID ${id} not found`);
-      }
-
-      if (returnRefund.status === "cancelled") {
-        throw new Error(`Return #${id} is already cancelled`);
-      }
-      if (returnRefund.status === "processed") {
-        throw new Error(`Cannot cancel a processed return. Use state service to reverse.`);
-      }
-
-      const oldData = { ...returnRefund };
-      returnRefund.status = "cancelled";
-      returnRefund.updatedAt = new Date();
-
-      const saved = await updateDb(returnRepo, returnRefund, { queryRunner: qr });
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logCreate("ReturnRefund", id, oldData, user);
-      }
-
-      logger.debug(`ReturnRefund cancelled: #${id}`);
-      return saved;
-    } catch (error) {
-      console.error("Failed to cancel return:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Permanently delete a return (hard delete) – only for pending or cancelled
-   * @param {number} id
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async permanentlyDelete(id, user = "system", qr = null) {
-    const { removeDb } = require("../utils/dbUtils/dbActions");
-    const ReturnRefund = require("../entities/ReturnRefund");
-    const ReturnRefundItem = require("../entities/ReturnRefundItem");
-
-    const returnRepo = this._getRepo(qr, ReturnRefund);
-    const returnItemRepo = this._getRepo(qr, ReturnRefundItem);
-
-    const returnRefund = await returnRepo.findOne({
-      where: { id },
-      relations: ["items"],
-    });
-    if (!returnRefund) {
-      throw new Error(`ReturnRefund with ID ${id} not found`);
-    }
-
-    // Prevent deletion of processed returns
-    if (returnRefund.status === "processed") {
-      throw new Error(`Cannot delete a processed return. Use state service to reverse first.`);
-    }
-
-    // Remove items first
-    for (const item of returnRefund.items) {
-      await removeDb(returnItemRepo, item, { queryRunner: qr });
-    }
-
-    await removeDb(returnRepo, returnRefund, { queryRunner: qr });
-
-    // ✅ Check if audit logging is enabled before logging
-    const auditEnabled = await this._isAuditEnabled(qr);
-    if (auditEnabled) {
-      await auditLogger.logCreate("ReturnRefund", id, returnRefund, user);
-    }
-
-    logger.debug(`ReturnRefund #${id} permanently deleted`);
-  }
+  // ============================================================
+  // 🔍 READ-ONLY METHODS
+  // ============================================================
 
   /**
    * Find return by ID
@@ -769,7 +363,7 @@ class ReturnRefundService {
       .leftJoinAndSelect("return.items", "items")
       .leftJoinAndSelect("items.meat", "meat");
 
-    // ✅ Apply retention days filter automatically if not specified
+    // Apply retention days filter automatically if not specified
     if (!options.startDate && !options.endDate && !options.ignoreRetention) {
       const retentionDays = await this._getRetentionDays(qr);
       const cutoffDate = new Date();
@@ -779,12 +373,17 @@ class ReturnRefundService {
 
     // Filters
     if (options.status) {
-      const statuses = Array.isArray(options.status) ? options.status : [options.status];
-      // ✅ Validate statuses against allowed list
+      const statuses = Array.isArray(options.status)
+        ? options.status
+        : [options.status];
       const allowedStatuses = await this._getAllowedStatuses(qr);
-      const invalidStatuses = statuses.filter(s => !allowedStatuses.includes(s));
+      const invalidStatuses = statuses.filter(
+        (s) => !allowedStatuses.includes(s),
+      );
       if (invalidStatuses.length > 0) {
-        logger.warn(`[ReturnRefund] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`);
+        logger.warn(
+          `[ReturnRefund] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`,
+        );
       }
       qb.andWhere("return.status IN (:...statuses)", { statuses });
     }
@@ -792,13 +391,19 @@ class ReturnRefundService {
       qb.andWhere("return.saleId = :saleId", { saleId: options.saleId });
     }
     if (options.customerId) {
-      qb.andWhere("return.customerId = :customerId", { customerId: options.customerId });
+      qb.andWhere("return.customerId = :customerId", {
+        customerId: options.customerId,
+      });
     }
     if (options.refundMethod) {
-      qb.andWhere("return.refundMethod = :refundMethod", { refundMethod: options.refundMethod });
+      qb.andWhere("return.refundMethod = :refundMethod", {
+        refundMethod: options.refundMethod,
+      });
     }
     if (options.startDate) {
-      qb.andWhere("return.createdAt >= :startDate", { startDate: new Date(options.startDate) });
+      qb.andWhere("return.createdAt >= :startDate", {
+        startDate: new Date(options.startDate),
+      });
     }
     if (options.endDate) {
       const end = new Date(options.endDate);
@@ -808,14 +413,16 @@ class ReturnRefundService {
     if (options.search) {
       qb.andWhere(
         "(return.referenceNo LIKE :search OR return.reason LIKE :search OR customer.name LIKE :search)",
-        { search: `%${options.search}%` }
+        { search: `%${options.search}%` },
       );
     }
 
     // Sorting
     let sortBy = options.sortBy || "createdAt";
     if (!ALLOWED_SORT_COLUMNS.has(sortBy)) {
-      console.warn(`[ReturnRefund] Invalid sortBy: ${sortBy}, falling back to createdAt`);
+      console.warn(
+        `[ReturnRefund] Invalid sortBy: ${sortBy}, falling back to createdAt`,
+      );
       sortBy = "createdAt";
     }
     const sortOrder = options.sortOrder === "ASC" ? "ASC" : "DESC";
@@ -828,7 +435,7 @@ class ReturnRefundService {
     });
 
     await logger.debug("ReturnRefund", null, "system");
-    return result; // { data: [], pagination: {} }
+    return result;
   }
 
   /**
@@ -839,12 +446,10 @@ class ReturnRefundService {
     const ReturnRefund = require("../entities/ReturnRefund");
     const returnRepo = this._getRepo(qr, ReturnRefund);
 
-    // ✅ Apply retention days filter
     const retentionDays = await this._getRetentionDays(qr);
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
-    // By status
     const byStatus = await returnRepo
       .createQueryBuilder("return")
       .select("return.status", "status")
@@ -854,7 +459,6 @@ class ReturnRefundService {
       .groupBy("return.status")
       .getRawMany();
 
-    // Total processed refunds
     const processedResult = await returnRepo
       .createQueryBuilder("return")
       .select("SUM(return.totalAmount)", "total")
@@ -863,7 +467,6 @@ class ReturnRefundService {
       .getRawOne();
     const totalProcessed = parseFloat(processedResult.total) || 0;
 
-    // Average refund amount
     const avgResult = await returnRepo
       .createQueryBuilder("return")
       .select("AVG(return.totalAmount)", "avg")
@@ -872,14 +475,12 @@ class ReturnRefundService {
       .getRawOne();
     const averageRefund = parseFloat(avgResult.avg) || 0;
 
-    // Today's returns
     const today = new Date().toISOString().split("T")[0];
     const todayReturns = await returnRepo
       .createQueryBuilder("return")
       .where("DATE(return.createdAt) = :today", { today })
       .getCount();
 
-    // Top customers by refund amount
     const topCustomers = await returnRepo
       .createQueryBuilder("return")
       .leftJoin("return.customer", "customer")
@@ -894,7 +495,6 @@ class ReturnRefundService {
       .limit(5)
       .getRawMany();
 
-    // ✅ Get settings info
     const allowedStatuses = await this._getAllowedStatuses(qr);
     const refundWindowDays = await this._getRefundWindowDays(qr);
     const refundsEnabled = await this._isRefundsEnabled(qr);
@@ -920,10 +520,22 @@ class ReturnRefundService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
-  async exportReturns(format = "json", filters = {}, user = "system", qr = null) {
+  async exportReturns(
+    format = "json",
+    filters = {},
+    user = "system",
+    qr = null,
+  ) {
     try {
-      // Fetch all data without pagination for export
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
+      const result = await this.findAll(
+        {
+          ...filters,
+          limit: undefined,
+          page: undefined,
+          ignoreRetention: true,
+        },
+        qr,
+      );
       const returns = result.data;
 
       let exportData;
@@ -963,7 +575,6 @@ class ReturnRefundService {
         };
       }
 
-      // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
         await auditLogger.debugExport("ReturnRefund", format, filters, user);
@@ -976,6 +587,880 @@ class ReturnRefundService {
       throw error;
     }
   }
+
+  // ============================================================
+  // ✏️ WRITE OPERATIONS (CRUD)
+  // ============================================================
+
+  /**
+   * Create a new return/refund request (pending status)
+   * @param {Object} data - { saleId, customerId, reason?, refundMethod, items: [{ meatId, batchId, weightKg, unitPrice, reason? }] }
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async create(data, user = "system", qr = null) {
+    const { saveDb } = require("../utils/dbUtils/dbActions");
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const ReturnRefundItem = require("../entities/ReturnRefundItem");
+    const Sale = require("../entities/Sale");
+    const Customer = require("../entities/Customer");
+    const Meat = require("../entities/Meat");
+    const Batch = require("../entities/Batch");
+
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+    const returnItemRepo = this._getRepo(qr, ReturnRefundItem);
+    const saleRepo = this._getRepo(qr, Sale);
+    const customerRepo = this._getRepo(qr, Customer);
+    const meatRepo = this._getRepo(qr, Meat);
+    const batchRepo = this._getRepo(qr, Batch);
+
+    try {
+      const refundsEnabled = await this._isRefundsEnabled(qr);
+      if (!refundsEnabled) {
+        throw new Error("Refunds are disabled in system settings");
+      }
+
+      if (!data.saleId) throw new Error("saleId is required");
+      if (!data.customerId) throw new Error("customerId is required");
+      if (!data.refundMethod) throw new Error("refundMethod is required");
+      if (
+        !data.items ||
+        !Array.isArray(data.items) ||
+        data.items.length === 0
+      ) {
+        throw new Error("At least one return item is required");
+      }
+
+      if (data.reason) {
+        const maxReasonLength = await this._getMaxReasonLength(qr);
+        if (data.reason.length > maxReasonLength) {
+          throw new Error(`Reason cannot exceed ${maxReasonLength} characters`);
+        }
+      }
+
+      if (data.status) {
+        const allowedStatuses = await this._getAllowedStatuses(qr);
+        if (!allowedStatuses.includes(data.status)) {
+          throw new Error(
+            `Invalid return status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
+          );
+        }
+      }
+
+      const sale = await saleRepo.findOne({ where: { id: data.saleId } });
+      if (!sale) {
+        throw new Error(`Sale with ID ${data.saleId} not found`);
+      }
+      if (sale.status !== "paid") {
+        throw new Error(
+          `Cannot return from a sale with status "${sale.status}"`,
+        );
+      }
+
+      const windowDays = await this._getRefundWindowDays(qr);
+      const saleDate = new Date(sale.timestamp);
+      const now = new Date();
+      const daysDiff = (now - saleDate) / (1000 * 60 * 60 * 24);
+      if (daysDiff > windowDays) {
+        throw new Error(
+          `Refund window of ${windowDays} days has passed (sale was ${Math.floor(daysDiff)} days ago)`,
+        );
+      }
+
+      const receiptRequired = await this._isReceiptRequired(qr);
+      if (receiptRequired) {
+        logger.warn(
+          "[ReturnRefund] Receipt validation not implemented, but receipt is required by settings",
+        );
+      }
+
+      const customer = await customerRepo.findOne({
+        where: { id: data.customerId },
+      });
+      if (!customer) {
+        throw new Error(`Customer with ID ${data.customerId} not found`);
+      }
+
+      const maxWeight = await this._getMaxWeightKg(qr);
+      const maxUnitPrice = await this._getMaxUnitPrice(qr);
+      const maxTotalAmount = await this._getMaxTotalAmount(qr);
+
+      const returnItems = [];
+      let totalAmount = 0;
+
+      for (const itemData of data.items) {
+        if (!itemData.meatId)
+          throw new Error("meatId is required for each item");
+        if (!itemData.batchId)
+          throw new Error("batchId is required for each item");
+        if (!itemData.weightKg || itemData.weightKg <= 0) {
+          throw new Error("weightKg must be greater than 0");
+        }
+        if (itemData.weightKg > maxWeight) {
+          throw new Error(
+            `Weight ${itemData.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`,
+          );
+        }
+
+        const meat = await meatRepo.findOne({
+          where: { id: itemData.meatId, isActive: true },
+        });
+        if (!meat) {
+          throw new Error(
+            `Meat with ID ${itemData.meatId} not found or inactive`,
+          );
+        }
+
+        const batch = await batchRepo.findOne({
+          where: { id: itemData.batchId },
+        });
+        if (!batch) {
+          throw new Error(`Batch with ID ${itemData.batchId} not found`);
+        }
+        if (batch.meatId !== itemData.meatId) {
+          throw new Error(
+            `Batch #${itemData.batchId} does not belong to meat #${itemData.meatId}`,
+          );
+        }
+
+        const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
+        if (unitPrice > maxUnitPrice) {
+          throw new Error(
+            `Unit price ₱${unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
+          );
+        }
+
+        const subtotal = unitPrice * itemData.weightKg;
+        totalAmount += subtotal;
+
+        if (totalAmount > maxTotalAmount) {
+          throw new Error(
+            `Total amount ₱${totalAmount} exceeds maximum allowed of ₱${maxTotalAmount}`,
+          );
+        }
+
+        returnItems.push({
+          weightKg: itemData.weightKg,
+          unitPrice: unitPrice,
+          subtotal: subtotal,
+          reason: itemData.reason || null,
+          meat: meat,
+          batch: batch,
+        });
+      }
+
+      let referenceNo = data.referenceNo;
+      if (!referenceNo) {
+        const prefix = await this._getReferencePrefix(qr);
+        referenceNo = await this.generateReference(returnRepo, prefix);
+      } else {
+        const existing = await returnRepo.findOne({ where: { referenceNo } });
+        if (existing) {
+          throw new Error(`Reference "${referenceNo}" already exists`);
+        }
+      }
+
+      const returnRefund = returnRepo.create({
+        referenceNo,
+        reason: data.reason || null,
+        refundMethod: data.refundMethod,
+        totalAmount: Math.round(totalAmount * 100) / 100,
+        status: data.status || "pending",
+        sale: sale,
+        customer: customer,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const savedReturn = await saveDb(returnRepo, returnRefund, {
+        queryRunner: qr,
+      });
+
+      for (const itemData of returnItems) {
+        const returnItem = returnItemRepo.create({
+          ...itemData,
+          returnRefund: savedReturn,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await saveDb(returnItemRepo, returnItem, { queryRunner: qr });
+      }
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate(
+          "ReturnRefund",
+          savedReturn.id,
+          savedReturn,
+          user,
+        );
+      }
+
+      logger.debug(
+        `ReturnRefund created: #${savedReturn.id} - ${savedReturn.referenceNo}`,
+      );
+
+      const fullReturn = await returnRepo.findOne({
+        where: { id: savedReturn.id },
+        relations: ["sale", "customer", "items", "items.meat", "items.batch"],
+      });
+
+      return fullReturn;
+    } catch (error) {
+      console.error("Failed to create return:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing return (only allowed for pending status)
+   * @param {number} id
+   * @param {Object} data - { reason?, refundMethod?, items?, customerId?, saleId? }
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async update(id, data, user = "system", qr = null) {
+    const {
+      updateDb,
+      saveDb,
+      removeDb,
+    } = require("../utils/dbUtils/dbActions");
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const ReturnRefundItem = require("../entities/ReturnRefundItem");
+    const Sale = require("../entities/Sale");
+    const Customer = require("../entities/Customer");
+    const Meat = require("../entities/Meat");
+    const Batch = require("../entities/Batch");
+
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+    const returnItemRepo = this._getRepo(qr, ReturnRefundItem);
+    const saleRepo = this._getRepo(qr, Sale);
+    const customerRepo = this._getRepo(qr, Customer);
+    const meatRepo = this._getRepo(qr, Meat);
+    const batchRepo = this._getRepo(qr, Batch);
+
+    try {
+      const existing = await returnRepo.findOne({
+        where: { id },
+        relations: ["items", "items.meat", "items.batch", "sale", "customer"],
+      });
+      if (!existing) {
+        throw new Error(`ReturnRefund with ID ${id} not found`);
+      }
+
+      if (existing.status !== "pending") {
+        throw new Error(
+          `Cannot update a return with status "${existing.status}"`,
+        );
+      }
+
+      const oldData = { ...existing };
+
+      if (data.reason !== undefined) {
+        const maxReasonLength = await this._getMaxReasonLength(qr);
+        if (data.reason.length > maxReasonLength) {
+          throw new Error(`Reason cannot exceed ${maxReasonLength} characters`);
+        }
+      }
+
+      if (data.saleId && data.saleId !== existing.sale.id) {
+        const sale = await saleRepo.findOne({ where: { id: data.saleId } });
+        if (!sale) {
+          throw new Error(`Sale with ID ${data.saleId} not found`);
+        }
+        existing.sale = sale;
+        delete data.saleId;
+      }
+
+      if (data.customerId && data.customerId !== existing.customer.id) {
+        const customer = await customerRepo.findOne({
+          where: { id: data.customerId },
+        });
+        if (!customer) {
+          throw new Error(`Customer with ID ${data.customerId} not found`);
+        }
+        existing.customer = customer;
+        delete data.customerId;
+      }
+
+      if (data.items) {
+        if (!Array.isArray(data.items) || data.items.length === 0) {
+          throw new Error("At least one return item is required");
+        }
+
+        const maxWeight = await this._getMaxWeightKg(qr);
+        const maxUnitPrice = await this._getMaxUnitPrice(qr);
+        const maxTotalAmount = await this._getMaxTotalAmount(qr);
+
+        for (const oldItem of existing.items) {
+          await removeDb(returnItemRepo, oldItem, { queryRunner: qr });
+        }
+
+        const newItems = [];
+        let totalAmount = 0;
+
+        for (const itemData of data.items) {
+          if (!itemData.meatId)
+            throw new Error("meatId is required for each item");
+          if (!itemData.batchId)
+            throw new Error("batchId is required for each item");
+          if (!itemData.weightKg || itemData.weightKg <= 0) {
+            throw new Error("weightKg must be greater than 0");
+          }
+          if (itemData.weightKg > maxWeight) {
+            throw new Error(
+              `Weight ${itemData.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`,
+            );
+          }
+
+          const meat = await meatRepo.findOne({
+            where: { id: itemData.meatId, isActive: true },
+          });
+          if (!meat) {
+            throw new Error(
+              `Meat with ID ${itemData.meatId} not found or inactive`,
+            );
+          }
+
+          const batch = await batchRepo.findOne({
+            where: { id: itemData.batchId },
+          });
+          if (!batch) {
+            throw new Error(`Batch with ID ${itemData.batchId} not found`);
+          }
+          if (batch.meatId !== itemData.meatId) {
+            throw new Error(
+              `Batch #${itemData.batchId} does not belong to meat #${itemData.meatId}`,
+            );
+          }
+
+          const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
+          if (unitPrice > maxUnitPrice) {
+            throw new Error(
+              `Unit price ₱${unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
+            );
+          }
+
+          const subtotal = unitPrice * itemData.weightKg;
+          totalAmount += subtotal;
+
+          if (totalAmount > maxTotalAmount) {
+            throw new Error(
+              `Total amount ₱${totalAmount} exceeds maximum allowed of ₱${maxTotalAmount}`,
+            );
+          }
+
+          newItems.push({
+            weightKg: itemData.weightKg,
+            unitPrice: unitPrice,
+            subtotal: subtotal,
+            reason: itemData.reason || null,
+            meat: meat,
+            batch: batch,
+            returnRefund: existing,
+          });
+        }
+
+        existing.totalAmount = Math.round(totalAmount * 100) / 100;
+
+        for (const itemData of newItems) {
+          const returnItem = returnItemRepo.create({
+            ...itemData,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+          await saveDb(returnItemRepo, returnItem, { queryRunner: qr });
+        }
+
+        delete data.items;
+      }
+
+      if (data.reason !== undefined) existing.reason = data.reason;
+      if (data.refundMethod !== undefined)
+        existing.refundMethod = data.refundMethod;
+
+      existing.updatedAt = new Date();
+
+      const saved = await updateDb(returnRepo, existing, { queryRunner: qr });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("ReturnRefund", id, oldData, saved, user);
+      }
+
+      logger.debug(`ReturnRefund updated: #${id}`);
+
+      const fullReturn = await returnRepo.findOne({
+        where: { id: saved.id },
+        relations: ["sale", "customer", "items", "items.meat", "items.batch"],
+      });
+      return fullReturn;
+    } catch (error) {
+      console.error("Failed to update return:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Soft delete a return (set status to cancelled) – only for pending
+   * @param {number} id
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async delete(id, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+
+    try {
+      const returnRefund = await returnRepo.findOne({ where: { id } });
+      if (!returnRefund) {
+        throw new Error(`ReturnRefund with ID ${id} not found`);
+      }
+
+      if (returnRefund.status === "cancelled") {
+        throw new Error(`Return #${id} is already cancelled`);
+      }
+      if (returnRefund.status === "processed") {
+        throw new Error(
+          `Cannot cancel a processed return. Use processReturn or cancelReturn methods.`,
+        );
+      }
+
+      const oldData = { ...returnRefund };
+      returnRefund.status = "cancelled";
+      returnRefund.updatedAt = new Date();
+
+      const saved = await updateDb(returnRepo, returnRefund, {
+        queryRunner: qr,
+      });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("ReturnRefund", id, oldData, user);
+      }
+
+      logger.debug(`ReturnRefund cancelled: #${id}`);
+      return saved;
+    } catch (error) {
+      console.error("Failed to cancel return:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Permanently delete a return (hard delete) – only for pending or cancelled
+   * @param {number} id
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async permanentlyDelete(id, user = "system", qr = null) {
+    const { removeDb } = require("../utils/dbUtils/dbActions");
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const ReturnRefundItem = require("../entities/ReturnRefundItem");
+
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+    const returnItemRepo = this._getRepo(qr, ReturnRefundItem);
+
+    const returnRefund = await returnRepo.findOne({
+      where: { id },
+      relations: ["items"],
+    });
+    if (!returnRefund) {
+      throw new Error(`ReturnRefund with ID ${id} not found`);
+    }
+
+    if (returnRefund.status === "processed") {
+      throw new Error(
+        `Cannot delete a processed return. Use processReturn or cancelReturn methods first.`,
+      );
+    }
+
+    for (const item of returnRefund.items) {
+      await removeDb(returnItemRepo, item, { queryRunner: qr });
+    }
+
+    await removeDb(returnRepo, returnRefund, { queryRunner: qr });
+
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logCreate("ReturnRefund", id, returnRefund, user);
+    }
+
+    logger.debug(`ReturnRefund #${id} permanently deleted`);
+  }
+
+  // ============================================================
+  // 🔄 BUSINESS LOGIC METHODS (Status Transitions + Data Mutation)
+  // ============================================================
+
+  /**
+   * Process a return (pending → processed) – adds stock back to batches, reverses loyalty points
+   *
+   * ✅ Uses BatchService for stock operations
+   * ✅ Returns metadata for subscriber side effects
+   *
+   * @param {number} returnId
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<{ return: any, itemsRestocked: number, pointsReversed: number }>}
+   */
+  async processReturn(returnId, user = "system", qr = null) {
+    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const ReturnRefundItem = require("../entities/ReturnRefundItem");
+    const Customer = require("../entities/Customer");
+    const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
+
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+    const returnItemRepo = this._getRepo(qr, ReturnRefundItem);
+    const customerRepo = this._getRepo(qr, Customer);
+    const loyaltyRepo = this._getRepo(qr, LoyaltyTransaction);
+
+    const returnRefund = await returnRepo.findOne({
+      where: { id: returnId },
+      relations: [
+        "sale",
+        "sale.customer",
+        "items",
+        "items.meat",
+        "items.batch",
+        "customer",
+      ],
+    });
+    if (!returnRefund) {
+      throw new Error(`Return #${returnId} not found`);
+    }
+
+    if (returnRefund.status !== "pending") {
+      throw new Error(
+        `Cannot process a return with status "${returnRefund.status}"`,
+      );
+    }
+
+    logger.info(`[ReturnRefund] Processing return #${returnId}`);
+
+    let itemsRestocked = 0;
+    let pointsReversed = 0;
+
+    // ─── STEP 1: Add stock back to batches using BatchService ───
+    const restockEnabled = await this._isRestockEnabled(qr);
+    if (restockEnabled) {
+      for (const item of returnRefund.items) {
+        if (item.batch) {
+          // ✅ TAMA: Use BatchService (not BatchStateService)
+          await batchService.addToBatch(
+            item.batch.id,
+            item.weightKg,
+            "refund",
+            {
+              saleId: returnRefund.sale?.id,
+              notes: `Return #${returnRefund.id} - ${returnRefund.referenceNo}`,
+            },
+            user,
+            qr,
+          );
+          itemsRestocked++;
+        } else {
+          logger.warn(
+            `[ReturnRefund] Return item #${item.id} has no batch, skipping stock reversal`,
+          );
+        }
+      }
+    }
+
+    // ─── STEP 2: Reverse loyalty points from the original sale ───
+    if (
+      returnRefund.sale &&
+      returnRefund.sale.pointsEarn > 0 &&
+      returnRefund.sale.customer
+    ) {
+      const customer = await customerRepo.findOne({
+        where: { id: returnRefund.sale.customer.id },
+      });
+      if (customer) {
+        const pointsToDeduct = returnRefund.sale.pointsEarn;
+        const oldBalance = customer.loyaltyPointsBalance;
+        const oldLifetime = customer.lifetimePointsEarned || 0;
+
+        customer.loyaltyPointsBalance = Math.max(
+          0,
+          oldBalance - pointsToDeduct,
+        );
+        customer.lifetimePointsEarned = Math.max(
+          0,
+          oldLifetime - pointsToDeduct,
+        );
+        customer.updatedAt = new Date();
+
+        await updateDb(customerRepo, customer, { queryRunner: qr });
+
+        const tx = loyaltyRepo.create({
+          pointsChange: -pointsToDeduct,
+          transactionType: "refund",
+          notes: `Return #${returnRefund.id} - reversed points from sale #${returnRefund.sale.id}`,
+          customer: customer,
+          sale: returnRefund.sale,
+          timestamp: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+        await saveDb(loyaltyRepo, tx, { queryRunner: qr });
+
+        pointsReversed = pointsToDeduct;
+
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.logUpdate(
+            "Customer",
+            customer.id,
+            { loyaltyPointsBalance: oldBalance },
+            { loyaltyPointsBalance: customer.loyaltyPointsBalance },
+            user,
+          );
+          await auditLogger.logCreate("LoyaltyTransaction", tx.id, tx, user);
+        }
+
+        logger.info(
+          `[ReturnRefund] Reversed ${pointsToDeduct} loyalty points for customer #${customer.id}`,
+        );
+      }
+    }
+
+    // ─── STEP 3: Update return status to processed ───
+    const oldStatus = returnRefund.status;
+    returnRefund.status = "processed";
+    returnRefund.updatedAt = new Date();
+
+    const processedReturn = await updateDb(returnRepo, returnRefund, {
+      queryRunner: qr,
+    });
+
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logUpdate(
+        "ReturnRefund",
+        returnId,
+        { status: oldStatus },
+        { status: "processed" },
+        user,
+      );
+    }
+
+    logger.info(
+      `[ReturnRefund] Return #${returnId} processed successfully (${itemsRestocked} items restocked, ${pointsReversed} points reversed)`,
+    );
+
+    // ✅ Return metadata for subscriber side effects
+    return {
+      return: processedReturn,
+      itemsRestocked,
+      pointsReversed,
+    };
+  }
+
+  /**
+   * Cancel a return – if already processed, reverse the stock additions and loyalty reversal
+   *
+   * ✅ Uses BatchService for stock operations
+   * ✅ Returns metadata for subscriber side effects
+   *
+   * @param {number} returnId
+   * @param {string} reason
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<{ return: any, wasProcessed: boolean, itemsRestockedReversed: number, pointsRestored: number }>}
+   */
+  async cancelReturn(returnId, reason = "", user = "system", qr = null) {
+    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
+    const ReturnRefund = require("../entities/ReturnRefund");
+    const ReturnRefundItem = require("../entities/ReturnRefundItem");
+    const Customer = require("../entities/Customer");
+    const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
+
+    const returnRepo = this._getRepo(qr, ReturnRefund);
+    const returnItemRepo = this._getRepo(qr, ReturnRefundItem);
+    const customerRepo = this._getRepo(qr, Customer);
+    const loyaltyRepo = this._getRepo(qr, LoyaltyTransaction);
+
+    const returnRefund = await returnRepo.findOne({
+      where: { id: returnId },
+      relations: [
+        "sale",
+        "sale.customer",
+        "items",
+        "items.meat",
+        "items.batch",
+        "customer",
+      ],
+    });
+    if (!returnRefund) {
+      throw new Error(`Return #${returnId} not found`);
+    }
+
+    if (returnRefund.status === "cancelled") {
+      throw new Error(`Return #${returnId} is already cancelled`);
+    }
+
+    let wasProcessed = false;
+    let itemsRestockedReversed = 0;
+    let pointsRestored = 0;
+
+    if (returnRefund.status === "pending") {
+      // ─── Simple cancellation – just update status ───
+      returnRefund.status = "cancelled";
+      returnRefund.notes = returnRefund.notes
+        ? `${returnRefund.notes}\nCancelled: ${reason}`
+        : `Cancelled: ${reason}`;
+      returnRefund.updatedAt = new Date();
+
+      const cancelled = await updateDb(returnRepo, returnRefund, {
+        queryRunner: qr,
+      });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate(
+          "ReturnRefund",
+          returnId,
+          { status: "pending" },
+          { status: "cancelled" },
+          user,
+        );
+      }
+
+      logger.info(`[ReturnRefund] Return #${returnId} cancelled (was pending)`);
+      return {
+        return: cancelled,
+        wasProcessed: false,
+        itemsRestockedReversed: 0,
+        pointsRestored: 0,
+      };
+    }
+
+    if (returnRefund.status === "processed") {
+      wasProcessed = true;
+
+      // ─── Reverse the stock additions using BatchService ───
+      logger.info(
+        `[ReturnRefund] Cancelling processed return #${returnId} – reversing stock`,
+      );
+
+      for (const item of returnRefund.items) {
+        if (item.batch) {
+          // ✅ TAMA: Use BatchService (not BatchStateService)
+          await batchService.deductFromBatch(
+            item.batch.id,
+            item.weightKg,
+            "adjustment",
+            {
+              saleId: returnRefund.sale?.id,
+              notes: `Cancellation of return #${returnRefund.id} - ${returnRefund.referenceNo}`,
+            },
+            user,
+            qr,
+          );
+          itemsRestockedReversed++;
+        } else {
+          logger.warn(
+            `[ReturnRefund] Return item #${item.id} has no batch, skipping stock reversal`,
+          );
+        }
+      }
+
+      // ─── Reverse loyalty reversal (add back points) ───
+      if (
+        returnRefund.sale &&
+        returnRefund.sale.pointsEarn > 0 &&
+        returnRefund.sale.customer
+      ) {
+        const customer = await customerRepo.findOne({
+          where: { id: returnRefund.sale.customer.id },
+        });
+        if (customer) {
+          const pointsToAdd = returnRefund.sale.pointsEarn;
+          const oldBalance = customer.loyaltyPointsBalance;
+          const oldLifetime = customer.lifetimePointsEarned || 0;
+
+          customer.loyaltyPointsBalance += pointsToAdd;
+          customer.lifetimePointsEarned = oldLifetime + pointsToAdd;
+          customer.updatedAt = new Date();
+
+          await updateDb(customerRepo, customer, { queryRunner: qr });
+
+          const tx = loyaltyRepo.create({
+            pointsChange: pointsToAdd,
+            transactionType: "earn",
+            notes: `Reversal of return cancellation #${returnRefund.id} - restored points from sale #${returnRefund.sale.id}`,
+            customer: customer,
+            sale: returnRefund.sale,
+            timestamp: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+          await saveDb(loyaltyRepo, tx, { queryRunner: qr });
+
+          pointsRestored = pointsToAdd;
+
+          const auditEnabled = await this._isAuditEnabled(qr);
+          if (auditEnabled) {
+            await auditLogger.logUpdate(
+              "Customer",
+              customer.id,
+              { loyaltyPointsBalance: oldBalance },
+              { loyaltyPointsBalance: customer.loyaltyPointsBalance },
+              user,
+            );
+            await auditLogger.logCreate("LoyaltyTransaction", tx.id, tx, user);
+          }
+
+          logger.info(
+            `[ReturnRefund] Restored ${pointsToAdd} loyalty points for customer #${customer.id}`,
+          );
+        }
+      }
+
+      // ─── Update status to cancelled ───
+      returnRefund.status = "cancelled";
+      returnRefund.notes = returnRefund.notes
+        ? `${returnRefund.notes}\nCancelled: ${reason} (was processed)`
+        : `Cancelled: ${reason} (was processed)`;
+      returnRefund.updatedAt = new Date();
+
+      const cancelled = await updateDb(returnRepo, returnRefund, {
+        queryRunner: qr,
+      });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate(
+          "ReturnRefund",
+          returnId,
+          { status: "processed" },
+          { status: "cancelled" },
+          user,
+        );
+      }
+
+      logger.info(
+        `[ReturnRefund] Return #${returnId} cancelled (was processed, stock reversed)`,
+      );
+
+      // ✅ Return metadata for subscriber side effects
+      return {
+        return: cancelled,
+        wasProcessed: true,
+        itemsRestockedReversed,
+        pointsRestored,
+      };
+    }
+
+    throw new Error(`Unexpected return status: ${returnRefund.status}`);
+  }
+
+  // ============================================================
+  // 📤 BULK & IMPORT OPERATIONS
+  // ============================================================
 
   /**
    * Bulk create returns
@@ -1027,8 +1512,16 @@ class ReturnRefundService {
           items: items,
           referenceNo: record.referenceNo || null,
         };
-        if (!data.saleId || !data.customerId || !data.refundMethod || !data.items || data.items.length === 0) {
-          throw new Error("saleId, customerId, refundMethod, and at least one item are required");
+        if (
+          !data.saleId ||
+          !data.customerId ||
+          !data.refundMethod ||
+          !data.items ||
+          data.items.length === 0
+        ) {
+          throw new Error(
+            "saleId, customerId, refundMethod, and at least one item are required",
+          );
         }
         const saved = await this.create(data, user, qr);
         results.imported.push(saved);
@@ -1064,18 +1557,17 @@ class ReturnRefundService {
     return ref;
   }
 
+  // ============================================================
+  // 🧹 CLEANUP & HELPERS
+  // ============================================================
+
   /**
-   * ✅ NEW: Clean up old returns (soft delete via status change)
-   * @param {number} daysOld - Mark returns older than this as cancelled (overrides settings)
+   * Clean up old returns (archive - placeholder)
+   * @param {number} daysOld
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async cleanOldReturns(daysOld = null, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const ReturnRefund = require("../entities/ReturnRefund");
-    const returnRepo = this._getRepo(qr, ReturnRefund);
-
-    // ✅ Use settings if not provided
     if (daysOld === null) {
       daysOld = await this._getRetentionDays(qr);
     }
@@ -1083,49 +1575,20 @@ class ReturnRefundService {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-    // ✅ Only clean processed returns (don't touch pending or cancelled)
-    const oldReturns = await returnRepo
-      .createQueryBuilder("return")
-      .where("return.status = 'processed'")
-      .andWhere("return.createdAt < :cutoffDate", { cutoffDate })
-      .getMany();
-
-    if (oldReturns.length === 0) {
-      logger.info(`[ReturnRefund] No old returns to clean up (threshold: ${daysOld} days)`);
-      return { count: 0 };
-    }
-
-    let updatedCount = 0;
-    for (const returnRefund of oldReturns) {
-      try {
-        // Don't delete, just note for archiving
-        // Or you can soft delete by adding a flag
-        // For now, we'll just log and potentially archive
-        logger.debug(`[ReturnRefund] Return #${returnRefund.id} (${returnRefund.referenceNo}) is older than ${daysOld} days`);
-
-        // Optionally, you could mark as archived if you have an archived flag
-        // returnRefund.isArchived = true;
-        // await updateDb(returnRepo, returnRefund, { queryRunner: qr, skipSignal: true });
-
-        updatedCount++;
-      } catch (err) {
-        logger.error(`[ReturnRefund] Failed to process old return #${returnRefund.id}:`, err);
-      }
-    }
-
-    logger.info(`[ReturnRefund] Found ${updatedCount} old returns to archive (older than ${daysOld} days)`);
-    return { count: updatedCount };
+    logger.info(
+      `[ReturnRefund] cleanOldReturns called with ${daysOld} days (cutoff: ${cutoffDate.toISOString()})`,
+    );
+    return { count: 0 };
   }
 
   /**
-   * ✅ NEW: Get return health summary
+   * Get return health summary
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async getHealthSummary(qr = null) {
     const ReturnRefund = require("../entities/ReturnRefund");
     const returnRepo = this._getRepo(qr, ReturnRefund);
 
-    // Get counts by status
     const byStatus = await returnRepo
       .createQueryBuilder("return")
       .select("return.status", "status")
@@ -1143,7 +1606,6 @@ class ReturnRefundService {
     const processed = statusCounts.processed || 0;
     const cancelled = statusCounts.cancelled || 0;
 
-    // ✅ Get total refund amount (processed only)
     const totalRefundedResult = await returnRepo
       .createQueryBuilder("return")
       .select("SUM(return.totalAmount)", "total")
@@ -1151,7 +1613,6 @@ class ReturnRefundService {
       .getRawOne();
     const totalRefunded = parseFloat(totalRefundedResult.total) || 0;
 
-    // ✅ Get average refund amount
     const avgResult = await returnRepo
       .createQueryBuilder("return")
       .select("AVG(return.totalAmount)", "avg")
@@ -1159,10 +1620,9 @@ class ReturnRefundService {
       .getRawOne();
     const averageRefund = parseFloat(avgResult.avg) || 0;
 
-    // ✅ Get processing rate
-    const processingRate = total > 0 ? Math.round((processed / total) * 100) : 0;
+    const processingRate =
+      total > 0 ? Math.round((processed / total) * 100) : 0;
 
-    // ✅ Get settings info
     const refundsEnabled = await this._isRefundsEnabled(qr);
     const refundWindowDays = await this._getRefundWindowDays(qr);
     const allowedStatuses = await this._getAllowedStatuses(qr);
@@ -1183,7 +1643,7 @@ class ReturnRefundService {
   }
 
   /**
-   * ✅ NEW: Get refund retention info
+   * Get refund retention info
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async getRetentionInfo(qr = null) {
@@ -1220,7 +1680,7 @@ class ReturnRefundService {
   }
 
   /**
-   * ✅ NEW: Get refund summary by customer
+   * Get refund summary by customer
    * @param {number} customerId
    * @param {import("typeorm").QueryRunner | null} qr
    */
@@ -1242,12 +1702,13 @@ class ReturnRefundService {
       processed: 0,
       cancelled: 0,
       byStatus: {},
-      refunds: refunds.slice(0, 20), // Return last 20 refunds
+      refunds: refunds.slice(0, 20),
     };
 
     for (const refund of refunds) {
       summary.totalAmount += refund.totalAmount;
-      summary.byStatus[refund.status] = (summary.byStatus[refund.status] || 0) + 1;
+      summary.byStatus[refund.status] =
+        (summary.byStatus[refund.status] || 0) + 1;
 
       if (refund.status === "pending") summary.pending++;
       if (refund.status === "processed") summary.processed++;
@@ -1255,6 +1716,40 @@ class ReturnRefundService {
     }
 
     return summary;
+  }
+
+  // Sa src/services/ReturnRefund.js
+  /**
+   * Bulk update returns
+   * @param {Array<{ id: number, updates: Object }>} updatesArray
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async bulkUpdate(updatesArray, user = "system", qr = null) {
+    const results = { updated: [], errors: [] };
+    for (const { id, updates } of updatesArray) {
+      try {
+        // Handle status-specific updates
+        if (updates.status) {
+          switch (updates.status) {
+            case "processed":
+              await this.processReturn(id, user, qr);
+              break;
+            case "cancelled":
+              await this.cancelReturn(id, updates.reason || "", user, qr);
+              break;
+            default:
+              await this.update(id, updates, user, qr);
+          }
+        } else {
+          await this.update(id, updates, user, qr);
+        }
+        results.updated.push({ id, status: "success" });
+      } catch (err) {
+        results.errors.push({ id, error: err.message });
+      }
+    }
+    return results;
   }
 }
 

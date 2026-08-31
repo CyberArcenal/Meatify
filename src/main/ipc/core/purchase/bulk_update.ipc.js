@@ -13,11 +13,46 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const result = await purchaseService.bulkUpdate(updatesArray, user, queryRunner);
+    const results = { updated: [], errors: [] };
+    
+    for (const { id, updates } of updatesArray) {
+      try {
+        if (!id || typeof id !== "number") {
+          results.errors.push({ id, error: "Valid ID is required" });
+          continue;
+        }
+
+        // Handle status-specific updates
+        if (updates.status) {
+          switch (updates.status) {
+            case "approved":
+              await purchaseService.approve(id, user, queryRunner);
+              break;
+            case "completed":
+              await purchaseService.complete(id, user, queryRunner);
+              break;
+            case "cancelled":
+              await purchaseService.cancel(id, updates.reason || "", user, queryRunner);
+              break;
+            default:
+              // For other statuses, use generic update
+              await purchaseService.update(id, updates, user, queryRunner);
+          }
+        } else {
+          // Generic update
+          await purchaseService.update(id, updates, user, queryRunner);
+        }
+        
+        results.updated.push({ id, status: "success" });
+      } catch (err) {
+        results.errors.push({ id, error: err.message });
+      }
+    }
+
     return {
       status: true,
-      message: `Bulk update completed. ${result.updated.length} updated, ${result.errors.length} failed.`,
-      data: result,
+      message: `Bulk update completed. ${results.updated.length} updated, ${results.errors.length} failed.`,
+      data: results,
     };
   } catch (error) {
     console.error("Error in bulkUpdatePurchases:", error);

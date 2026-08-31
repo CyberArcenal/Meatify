@@ -1,6 +1,6 @@
 // src/main/ipc/core/returnRefund/process_return.ipc.js
-const { ReturnRefundStateService } = require("../../../../stateServices/ReturnRefund");
-const { AppDataSource } = require("../../../db/data-source");
+//@ts-check
+const returnRefundService = require("../../../../services/ReturnRefund");
 
 module.exports = async (params, queryRunner) => {
   const { returnId, user = "system" } = params;
@@ -10,8 +10,8 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new ReturnRefundStateService(AppDataSource);
-    const result = await stateService.processReturn(returnId, user, queryRunner);
+    // ✅ Tama: Use Service (not State Service)
+    const result = await returnRefundService.processReturn(returnId, user, queryRunner);
     return {
       status: true,
       message: `Return #${returnId} processed successfully`,

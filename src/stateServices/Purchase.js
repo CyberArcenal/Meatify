@@ -1,4 +1,4 @@
-// src/stateServices/PurchaseState.js
+// src/stateServices/Purchase.js
 //@ts-check
 const { logger } = require("../utils/logger");
 const auditLogger = require("../utils/auditLogger");
@@ -7,9 +7,12 @@ const PurchaseItem = require("../entities/PurchaseItem");
 const notificationService = require("../services/Notification");
 
 /**
- * PurchaseStateService handles state transitions for purchases.
- * It does NOT contain CRUD operations – those belong to PurchaseService.
- * All methods here modify the state (status) of purchases and trigger side effects.
+ * PurchaseStateService handles SIDE EFFECTS only for purchase state changes.
+ * It does NOT contain CRUD or business logic – those belong to PurchaseService.
+ * All methods here are event handlers (onApproved, onCompleted, onCancelled, etc.)
+ * and are called by the subscriber after a change is detected.
+ *
+ * ✅ Every method sends IPC events to the UI for real-time updates.
  */
 class PurchaseStateService {
   /**
@@ -35,205 +38,221 @@ class PurchaseStateService {
   }
 
   /**
-   * Approve a purchase (pending → approved) – notifies supplier
+   * Send event to all renderer windows (UI)
+   * @param {string} channel
+   * @param {any} data
+   */
+  _sendToRenderers(channel, data) {
+    try {
+      const { BrowserWindow } = require("electron");
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, data);
+        }
+      });
+    } catch (error) {
+      logger.warn(
+        "[PurchaseState] Failed to send IPC event (maybe not in Electron):",
+        error.message,
+      );
+    }
+  }
+
+  // ============================================================
+  // 🔄 SIDE EFFECTS (called by subscriber)
+  // ============================================================
+
+  /**
+   * Side effect after a purchase is created
+   * Called from PurchaseSubscriber.afterInsert
    * @param {number} purchaseId
+   * @param {Purchase} purchase
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async approve(purchaseId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
+  async onCreated(purchaseId, purchase, user = "system", queryRunner = null) {
+    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) created by ${user}`);
 
-    const purchaseRepo = this._getRepo(queryRunner, Purchase);
-
-    const purchase = await purchaseRepo.findOne({
-      where: { id: purchaseId },
-      relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
+    // Broadcast to UI
+    this._sendToRenderers("purchase:created", {
+      id: purchase.id,
+      referenceNo: purchase.referenceNo,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplier?.name,
+      status: purchase.status,
+      totalAmount: purchase.totalAmount,
+      orderDate: purchase.orderDate,
+      createdAt: purchase.createdAt,
     });
-    if (!purchase) {
-      throw new Error(`Purchase #${purchaseId} not found`);
-    }
 
-    if (purchase.status !== "pending") {
-      throw new Error(`Cannot approve a purchase with status "${purchase.status}"`);
-    }
+    // Audit log
+    await auditLogger.logCreate("Purchase", purchaseId, purchase, user);
+  }
 
-    logger.info(`[PurchaseState] Approving purchase #${purchaseId}`);
+  /**
+   * Side effect after a purchase is approved (pending → approved)
+   * Called from PurchaseSubscriber.afterUpdate
+   * @param {number} purchaseId
+   * @param {Purchase} purchase
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onApproved(purchaseId, purchase, user = "system", queryRunner = null) {
+    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) approved by ${user}`);
 
-    purchase.status = "approved";
-    purchase.updatedAt = new Date();
+    // Broadcast to UI
+    this._sendToRenderers("purchase:approved", {
+      id: purchase.id,
+      referenceNo: purchase.referenceNo,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplier?.name,
+      totalAmount: purchase.totalAmount,
+      approvedAt: new Date().toISOString(),
+    });
 
-    const approvedPurchase = await updateDb(purchaseRepo, purchase, { queryRunner });
-
+    // Audit log
     await auditLogger.logUpdate(
       "Purchase",
       purchaseId,
-      { status: "pending" },
+      { action: "approved" },
       { status: "approved" },
       user
     );
 
-    // Side effect: Notify supplier
-    try {
-      await this._notifySupplier(purchase, "approved", user, queryRunner);
-    } catch (err) {
-      logger.error(`[PurchaseState] Failed to notify supplier for purchase #${purchaseId}:`, err);
-    }
-
-    logger.info(`[PurchaseState] Purchase #${purchaseId} approved`);
-    return approvedPurchase;
+    // Send notification to supplier (in-app)
+    await this._notifySupplier(purchase, "approved", user, queryRunner);
   }
 
   /**
-   * Complete a purchase (approved/confirmed → completed) – creates batches and updates stock
+   * Side effect after a purchase is completed (approved/confirmed → completed)
+   * Called from PurchaseSubscriber.afterUpdate
    * @param {number} purchaseId
+   * @param {Purchase} purchase
+   * @param {Object} options
+   * @param {number} [options.batchCount] - Number of batches created
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async complete(purchaseId, user = "system", queryRunner = null) {
-    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
+  async onCompleted(purchaseId, purchase, options = {}, user = "system", queryRunner = null) {
+    const { batchCount = purchase.purchaseItems?.length || 0 } = options;
 
-    const purchaseRepo = this._getRepo(queryRunner, Purchase);
-    const purchaseItemRepo = this._getRepo(queryRunner, PurchaseItem);
-    const Batch = require("../entities/Batch");
-    const InventoryMovement = require("../entities/InventoryMovement");
+    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) completed by ${user}`);
 
-    const purchase = await purchaseRepo.findOne({
-      where: { id: purchaseId },
-      relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
+    // Broadcast to UI
+    this._sendToRenderers("purchase:completed", {
+      id: purchase.id,
+      referenceNo: purchase.referenceNo,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplier?.name,
+      totalAmount: purchase.totalAmount,
+      batchCount,
+      completedAt: new Date().toISOString(),
     });
-    if (!purchase) {
-      throw new Error(`Purchase #${purchaseId} not found`);
-    }
 
-    if (purchase.status !== "approved" && purchase.status !== "confirmed") {
-      throw new Error(`Cannot complete a purchase with status "${purchase.status}"`);
-    }
-
-    logger.info(`[PurchaseState] Completing purchase #${purchaseId}`);
-
-    const batchRepo = this._getRepo(queryRunner, Batch);
-    const movementRepo = this._getRepo(queryRunner, InventoryMovement);
-
-    // --- STEP 1: Create batches for each purchase item ---
-    for (const item of purchase.purchaseItems) {
-      const batch = batchRepo.create({
-        batchCode: await this._generateBatchCode(batchRepo),
-        initialQuantity: item.quantity,
-        remainingQuantity: item.quantity,
-        unitCost: item.unitPrice,
-        expiryDate: item.expiryDate,
-        receivedDate: new Date(),
-        status: "active",
-        note: `Purchase #${purchase.id} - ${purchase.referenceNo}`,
-        meat: item.meat,
-        supplier: purchase.supplier || null,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      const savedBatch = await saveDb(batchRepo, batch, { queryRunner });
-
-      // Create inventory movement for batch addition
-      const movement = movementRepo.create({
-        movementType: "purchase",
-        qtyChange: item.quantity,
-        notes: `Purchase #${purchase.id} - ${purchase.referenceNo}`,
-        meat: item.meat,
-        batch: savedBatch,
-        timestamp: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      await saveDb(movementRepo, movement, { queryRunner });
-
-      await auditLogger.logCreate("Batch", savedBatch.id, savedBatch, user);
-      await auditLogger.logCreate("InventoryMovement", movement.id, movement, user);
-    }
-
-    // --- STEP 2: Update purchase status ---
-    purchase.status = "completed";
-    purchase.updatedAt = new Date();
-
-    const completedPurchase = await updateDb(purchaseRepo, purchase, { queryRunner });
-
+    // Audit log
     await auditLogger.logUpdate(
       "Purchase",
       purchaseId,
-      { status: purchase.status === "approved" ? "approved" : "confirmed" },
+      { action: "completed" },
       { status: "completed" },
       user
     );
 
-    // --- STEP 3: Side effects - Notify supplier ---
-    try {
-      await this._notifySupplier(purchase, "completed", user, queryRunner);
-    } catch (err) {
-      logger.error(`[PurchaseState] Failed to notify supplier for purchase #${purchaseId}:`, err);
-    }
-
-    logger.info(`[PurchaseState] Purchase #${purchaseId} completed, ${purchase.purchaseItems.length} batch(es) created`);
-    return completedPurchase;
+    // Send notification to supplier (in-app)
+    await this._notifySupplier(purchase, "completed", user, queryRunner);
   }
 
   /**
-   * Cancel a purchase (pending/approved/confirmed → cancelled)
+   * Side effect after a purchase is cancelled (pending/approved/confirmed → cancelled)
+   * Called from PurchaseSubscriber.afterUpdate
    * @param {number} purchaseId
+   * @param {Purchase} purchase
    * @param {string} reason
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async cancel(purchaseId, reason = "", user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
+  async onCancelled(purchaseId, purchase, reason = "", user = "system", queryRunner = null) {
+    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) cancelled by ${user}`);
 
-    const purchaseRepo = this._getRepo(queryRunner, Purchase);
-
-    const purchase = await purchaseRepo.findOne({
-      where: { id: purchaseId },
-      relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
+    // Broadcast to UI
+    this._sendToRenderers("purchase:cancelled", {
+      id: purchase.id,
+      referenceNo: purchase.referenceNo,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplier?.name,
+      reason,
+      cancelledAt: new Date().toISOString(),
     });
-    if (!purchase) {
-      throw new Error(`Purchase #${purchaseId} not found`);
-    }
 
-    if (purchase.status === "completed") {
-      throw new Error("Cannot cancel a completed purchase");
-    }
-
-    if (purchase.status === "cancelled") {
-      logger.warn(`[PurchaseState] Purchase #${purchaseId} is already cancelled`);
-      return purchase;
-    }
-
-    const oldStatus = purchase.status;
-    logger.info(`[PurchaseState] Cancelling purchase #${purchaseId} (from ${oldStatus})`);
-
-    purchase.status = "cancelled";
-    purchase.notes = purchase.notes
-      ? `${purchase.notes}\nCancelled: ${reason}`
-      : `Cancelled: ${reason}`;
-    purchase.updatedAt = new Date();
-
-    const cancelledPurchase = await updateDb(purchaseRepo, purchase, { queryRunner });
-
+    // Audit log
     await auditLogger.logUpdate(
       "Purchase",
       purchaseId,
-      { status: oldStatus },
+      { action: "cancelled", reason },
       { status: "cancelled" },
       user
     );
 
-    // Side effect: Notify supplier
-    try {
-      await this._notifySupplier(purchase, "cancelled", user, queryRunner, reason);
-    } catch (err) {
-      logger.error(`[PurchaseState] Failed to notify supplier for purchase #${purchaseId}:`, err);
-    }
-
-    logger.info(`[PurchaseState] Purchase #${purchaseId} cancelled`);
-    return cancelledPurchase;
+    // Send notification to supplier (in-app)
+    await this._notifySupplier(purchase, "cancelled", user, queryRunner, reason);
   }
 
-  // --- Helper methods ---
+  /**
+   * Side effect after a purchase is updated (generic)
+   * Called from PurchaseSubscriber.afterUpdate for other changes
+   * @param {number} purchaseId
+   * @param {Purchase} purchase
+   * @param {Object} changes
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onUpdated(purchaseId, purchase, changes, user = "system", queryRunner = null) {
+    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) updated (fields: ${Object.keys(changes).join(", ")})`);
+
+    // Broadcast to UI
+    this._sendToRenderers("purchase:updated", {
+      id: purchase.id,
+      referenceNo: purchase.referenceNo,
+      changes,
+      updatedAt: purchase.updatedAt,
+    });
+
+    // Audit log
+    await auditLogger.logUpdate(
+      "Purchase",
+      purchaseId,
+      changes,
+      purchase,
+      user
+    );
+  }
+
+  /**
+   * Side effect after a purchase is soft-deleted
+   * Called from PurchaseSubscriber.afterRemove
+   * @param {number} purchaseId
+   * @param {Purchase} purchase
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onDeleted(purchaseId, purchase, user = "system", queryRunner = null) {
+    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase?.referenceNo}) soft-deleted by ${user}`);
+
+    // Broadcast to UI
+    this._sendToRenderers("purchase:deleted", {
+      id: purchaseId,
+      referenceNo: purchase?.referenceNo,
+      deletedAt: new Date().toISOString(),
+    });
+
+    // Audit log
+    await auditLogger.logCreate("Purchase", purchaseId, purchase, user);
+  }
+
+  // ============================================================
+  // 🔒 PRIVATE HELPERS
+  // ============================================================
 
   /**
    * Notify supplier about purchase status change
@@ -271,7 +290,7 @@ class PurchaseStateService {
     try {
       await notificationService.create(
         {
-          userId: 1, // admin
+          userId: 1,
           title,
           message: `${message}\nSupplier: ${supplier.name}`,
           type,
@@ -289,31 +308,6 @@ class PurchaseStateService {
     } catch (err) {
       logger.error(`[PurchaseState] Failed to send notification:`, err);
     }
-  }
-
-  /**
-   * Generate a unique batch code
-   * @param {import("typeorm").Repository<any>} repo
-   * @returns {Promise<string>}
-   */
-  async _generateBatchCode(repo) {
-    const prefix = "BATCH";
-    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const randomPart = Math.floor(1000 + Math.random() * 9000);
-    let code = `${prefix}-${datePart}-${randomPart}`;
-
-    let attempts = 0;
-    let existing = await repo.findOne({ where: { batchCode: code } });
-    while (existing && attempts < 5) {
-      const newRandom = Math.floor(1000 + Math.random() * 9000);
-      code = `${prefix}-${datePart}-${newRandom}`;
-      existing = await repo.findOne({ where: { batchCode: code } });
-      attempts++;
-    }
-    if (existing) {
-      code = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-    }
-    return code;
   }
 }
 

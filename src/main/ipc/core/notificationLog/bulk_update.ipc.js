@@ -14,22 +14,34 @@ module.exports = async (params, queryRunner) => {
 
   try {
     const results = { updated: [], errors: [] };
+    
     for (const { id, updates } of updatesArray) {
       try {
-        if (updates.status) {
-          const result = await notificationLogService.updateReminderStatus(
+        if (!id || typeof id !== "number") {
+          results.errors.push({ id, error: "Valid ID is required" });
+          continue;
+        }
+
+        // Use generic update for full flexibility, or updateReminderStatus if only status
+        let result;
+        if (updates.status && Object.keys(updates).length === 1) {
+          // If only status, use specific method
+          result = await notificationLogService.updateReminderStatus(
             { id, status: updates.status, errorMessage: updates.errorMessage || null },
             user,
             queryRunner
           );
-          results.updated.push(result);
         } else {
-          results.errors.push({ id, error: "Status is required for update" });
+          // For other fields (channel, etc.), use generic update
+          result = await notificationLogService.update(id, updates, user, queryRunner);
         }
+        
+        results.updated.push(result);
       } catch (err) {
         results.errors.push({ id, error: err.message });
       }
     }
+
     return {
       status: true,
       message: `Bulk update completed. ${results.updated.length} updated, ${results.errors.length} failed.`,

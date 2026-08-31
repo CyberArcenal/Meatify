@@ -1,6 +1,4 @@
-// src/main/ipc/core/loyaltyTransaction/adjust_points.ipc.js
-const { LoyaltyTransactionStateService } = require("../../../../stateServices/LoyaltyTransaction");
-const { AppDataSource } = require("../../../db/data-source");
+const loyaltyTransactionService = require("../../../../services/LoyaltyTransaction");
 
 module.exports = async (params, queryRunner) => {
   const { customerId, pointsChange, reason, user = "system" } = params;
@@ -16,19 +14,25 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new LoyaltyTransactionStateService(AppDataSource);
-    const result = await stateService.manualAdjustPoints(
+    const result = await loyaltyTransactionService.manualAdjustPoints(
       customerId,
       pointsChange,
       reason,
       user,
       queryRunner
     );
+    // Balanse ay maaaring hindi pa updated sa oras na ito, ngunit ang subscriber ay mag-a-update nito.
+    // Maaari kang maghintay ng ilang milliseconds o mag-fetch ng updated customer.
+    // Para sa instant na sagot, maaari mong i-fetch ang customer pagkatapos.
+    const { Customer } = require("../../../../entities/Customer");
+    const customerRepo = queryRunner?.manager?.getRepository(Customer) || AppDataSource.getRepository(Customer);
+    const updatedCustomer = await customerRepo.findOne({ where: { id: customerId } });
+
     return {
       status: true,
       message: `${Math.abs(pointsChange)} points adjusted for customer #${customerId}`,
       data: {
-        customer: result.customer,
+        customer: updatedCustomer,
         transaction: result.transaction,
         pointsChanged: result.pointsChanged,
       },

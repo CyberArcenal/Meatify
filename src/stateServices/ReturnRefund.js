@@ -1,25 +1,21 @@
-// src/stateServices/ReturnRefundStateService.js
+// src/stateServices/ReturnRefund.js
 //@ts-check
 const { logger } = require("../utils/logger");
 const auditLogger = require("../utils/auditLogger");
 const ReturnRefund = require("../entities/ReturnRefund");
 const ReturnRefundItem = require("../entities/ReturnRefundItem");
-const Customer = require("../entities/Customer");
-const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const notificationService = require("../services/Notification");
-const { BatchStateService } = require("./Batch");
-const system = require("../utils/system"); // ✅ ADDED - for flexible settings
-
-// ❌ REMOVED hardcoded functions:
-// const emailEnabled = async () => true;
-// const smsEnabled = async () => true;
-// const companyName = async () => "Meatify Shop";
+const system = require("../utils/system");
 
 /**
- * ReturnRefundStateService handles state transitions for returns/refunds.
- * It does NOT contain CRUD operations – those belong to ReturnRefundService.
- * All methods here modify the status of returns and trigger side effects
- * like stock adjustments, notifications, loyalty reversals.
+ * ReturnRefundStateService handles SIDE EFFECTS only for return/refund state changes.
+ * It does NOT contain CRUD or business logic – those belong to ReturnRefundService.
+ * All methods here are event handlers (onCreated, onProcessed, onCancelled, etc.)
+ * and are called by the subscriber after a change is detected.
+ *
+ * ✅ Every method sends IPC events to the UI for real-time updates.
+ * ❌ No business logic (no stock operations, no loyalty reversals)
+ * ❌ No calls to BatchStateService
  */
 class ReturnRefundStateService {
   /**
@@ -29,9 +25,6 @@ class ReturnRefundStateService {
     this.dataSource = dataSource;
     this.returnRepo = dataSource.getRepository(ReturnRefund);
     this.returnItemRepo = dataSource.getRepository(ReturnRefundItem);
-    this.customerRepo = dataSource.getRepository(Customer);
-    this.loyaltyRepo = dataSource.getRepository(LoyaltyTransaction);
-    this.batchStateService = new BatchStateService(dataSource);
   }
 
   /**
@@ -48,282 +41,281 @@ class ReturnRefundStateService {
   }
 
   /**
-   * Process a return – add stock back to batches, reverse loyalty points, send notifications
+   * Send event to all renderer windows (UI)
+   * @param {string} channel
+   * @param {any} data
+   */
+  _sendToRenderers(channel, data) {
+    try {
+      const { BrowserWindow } = require("electron");
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, data);
+        }
+      });
+    } catch (error) {
+      logger.warn(
+        "[ReturnRefundState] Failed to send IPC event (maybe not in Electron):",
+        error.message,
+      );
+    }
+  }
+
+  // ============================================================
+  // 🔄 SIDE EFFECTS (called by subscriber)
+  // ============================================================
+
+  /**
+   * Side effect after a return is created
+   * Called from ReturnRefundSubscriber.afterInsert
    * @param {number} returnId
+   * @param {ReturnRefund} returnRefund
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async processReturn(returnId, user = "system", queryRunner = null) {
-    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
+  async onCreated(returnId, returnRefund, user = "system", queryRunner = null) {
+    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) created by ${user}`);
 
-    // Load return with relations
-    const returnRepo = this._getRepo(queryRunner, ReturnRefund);
-    const returnItemRepo = this._getRepo(queryRunner, ReturnRefundItem);
-
-    const returnRefund = await returnRepo.findOne({
-      where: { id: returnId },
-      relations: ["sale", "sale.customer", "items", "items.meat", "items.batch", "customer"],
+    // Broadcast to UI
+    this._sendToRenderers("returnRefund:created", {
+      id: returnRefund.id,
+      referenceNo: returnRefund.referenceNo,
+      saleId: returnRefund.saleId,
+      customerId: returnRefund.customerId,
+      customerName: returnRefund.customer?.name,
+      status: returnRefund.status,
+      totalAmount: returnRefund.totalAmount,
+      refundMethod: returnRefund.refundMethod,
+      reason: returnRefund.reason,
+      createdAt: returnRefund.createdAt,
     });
-    if (!returnRefund) {
-      throw new Error(`Return #${returnId} not found`);
-    }
 
-    if (returnRefund.status !== "pending") {
-      throw new Error(`Cannot process a return with status "${returnRefund.status}"`);
-    }
+    // Audit log
+    await auditLogger.logCreate("ReturnRefund", returnId, returnRefund, user);
+  }
 
-    logger.info(`[ReturnRefundState] Processing return #${returnId}`);
+  /**
+   * Side effect after a return is processed (pending → processed)
+   * Called from ReturnRefundSubscriber.afterUpdate
+   * 
+   * ⚠️ This is SIDE EFFECTS ONLY – business logic (stock, loyalty) is in Service
+   * @param {number} returnId
+   * @param {ReturnRefund} returnRefund
+   * @param {Object} options
+   * @param {number} [options.itemsRestocked] - Number of items restocked (from service)
+   * @param {number} [options.pointsReversed] - Loyalty points reversed (from service)
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onProcessed(returnId, returnRefund, options = {}, user = "system", queryRunner = null) {
+    const { itemsRestocked = 0, pointsReversed = 0 } = options;
 
-    // --- STEP 1: Add stock back to batches ---
-    for (const item of returnRefund.items) {
-      if (item.batch) {
-        await this.batchStateService.addToBatch(
-          item.batch.id,
-          item.weightKg,
-          "refund",
-          {
-            saleId: returnRefund.sale?.id,
-            notes: `Return #${returnRefund.id} - ${returnRefund.referenceNo}`
-          },
-          user,
-          queryRunner
-        );
-      } else {
-        logger.warn(`[ReturnRefundState] Return item #${item.id} has no batch, skipping stock reversal`);
-      }
-    }
+    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) processed by ${user}`);
 
-    // --- STEP 2: Reverse loyalty points from the original sale (if any) ---
-    if (returnRefund.sale && returnRefund.sale.pointsEarn > 0 && returnRefund.sale.customer) {
-      const customerRepo = this._getRepo(queryRunner, Customer);
-      const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
+    // Broadcast to UI
+    this._sendToRenderers("returnRefund:processed", {
+      id: returnRefund.id,
+      referenceNo: returnRefund.referenceNo,
+      customerId: returnRefund.customerId,
+      customerName: returnRefund.customer?.name,
+      totalAmount: returnRefund.totalAmount,
+      refundMethod: returnRefund.refundMethod,
+      itemsRestocked,
+      pointsReversed,
+      processedAt: new Date().toISOString(),
+    });
 
-      const customer = await customerRepo.findOne({
-        where: { id: returnRefund.sale.customer.id }
-      });
-      if (customer) {
-        // We need to deduct the points earned from the sale
-        const pointsToDeduct = returnRefund.sale.pointsEarn;
-        const oldBalance = customer.loyaltyPointsBalance;
-        customer.loyaltyPointsBalance = Math.max(0, oldBalance - pointsToDeduct);
-        customer.lifetimePointsEarned = Math.max(0, (customer.lifetimePointsEarned || 0) - pointsToDeduct);
-        customer.updatedAt = new Date();
-        await updateDb(customerRepo, customer, { queryRunner });
-
-        // Create reversal transaction
-        const tx = loyaltyRepo.create({
-          pointsChange: -pointsToDeduct,
-          transactionType: "refund",
-          notes: `Return #${returnRefund.id} - reversed points from sale #${returnRefund.sale.id}`,
-          customer: customer,
-          sale: returnRefund.sale,
-          timestamp: new Date(),
-        });
-        await saveDb(loyaltyRepo, tx, { queryRunner });
-
-        await auditLogger.logUpdate(
-          "Customer",
-          customer.id,
-          { loyaltyPointsBalance: oldBalance },
-          { loyaltyPointsBalance: customer.loyaltyPointsBalance },
-          user
-        );
-
-        logger.info(`[ReturnRefundState] Reversed ${pointsToDeduct} loyalty points for customer #${customer.id}`);
-      }
-    }
-
-    // --- STEP 3: Update return status to processed ---
-    returnRefund.status = "processed";
-    returnRefund.updatedAt = new Date();
-    const processedReturn = await updateDb(returnRepo, returnRefund, { queryRunner });
-
-    // --- STEP 4: Audit log ---
+    // Audit log
     await auditLogger.logUpdate(
       "ReturnRefund",
       returnId,
-      { status: "pending" },
+      { action: "processed", itemsRestocked, pointsReversed },
       { status: "processed" },
       user
     );
 
-    // --- STEP 5: Side effects (non-critical) ---
-    try {
-      // Notify customer (if email/SMS enabled) - ✅ Uses system settings
-      await this._notifyCustomer(returnRefund, "processed", user, queryRunner);
+    // Send notification to customer (in-app + email/SMS)
+    await this._notifyCustomer(returnRefund, "processed", user, queryRunner);
 
-      // In-app notification for admin
+    // In-app notification for admin
+    try {
       await notificationService.create(
         {
           userId: 1,
           title: "Return Processed",
           message: `Return #${returnRefund.referenceNo} has been processed for ${returnRefund.customer?.name || "customer"}. Amount: ₱${returnRefund.totalAmount.toFixed(2)}`,
           type: "info",
-          metadata: { returnId: returnRefund.id, amount: returnRefund.totalAmount },
+          metadata: {
+            returnId: returnRefund.id,
+            referenceNo: returnRefund.referenceNo,
+            amount: returnRefund.totalAmount,
+          },
         },
         user,
         queryRunner
       );
     } catch (err) {
-      logger.error(`[ReturnRefundState] Non-critical side effects failed for return #${returnId}:`, err);
+      logger.error(`[ReturnRefundState] Failed to send admin notification:`, err);
     }
-
-    logger.info(`[ReturnRefundState] Return #${returnId} processed successfully`);
-    return processedReturn;
   }
 
   /**
-   * Cancel a return – if already processed, reverse the stock additions
+   * Side effect after a return is cancelled
+   * Called from ReturnRefundSubscriber.afterUpdate
+   * 
+   * ⚠️ This is SIDE EFFECTS ONLY – business logic (stock reversal, loyalty) is in Service
    * @param {number} returnId
+   * @param {ReturnRefund} returnRefund
    * @param {string} reason
+   * @param {Object} options
+   * @param {boolean} [options.wasProcessed] - Whether the return was processed before cancellation
+   * @param {number} [options.itemsRestockedReversed] - Number of items whose restock was reversed
+   * @param {number} [options.pointsRestored] - Loyalty points restored
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async cancelReturn(returnId, reason = "", user = "system", queryRunner = null) {
-    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
+  async onCancelled(returnId, returnRefund, reason = "", options = {}, user = "system", queryRunner = null) {
+    const { wasProcessed = false, itemsRestockedReversed = 0, pointsRestored = 0 } = options;
 
-    const returnRepo = this._getRepo(queryRunner, ReturnRefund);
-    const returnItemRepo = this._getRepo(queryRunner, ReturnRefundItem);
+    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) cancelled by ${user} (wasProcessed: ${wasProcessed})`);
 
-    const returnRefund = await returnRepo.findOne({
-      where: { id: returnId },
-      relations: ["sale", "sale.customer", "items", "items.meat", "items.batch", "customer"],
+    // Broadcast to UI
+    this._sendToRenderers("returnRefund:cancelled", {
+      id: returnRefund.id,
+      referenceNo: returnRefund.referenceNo,
+      customerId: returnRefund.customerId,
+      customerName: returnRefund.customer?.name,
+      reason,
+      wasProcessed,
+      itemsRestockedReversed,
+      pointsRestored,
+      cancelledAt: new Date().toISOString(),
     });
-    if (!returnRefund) {
-      throw new Error(`Return #${returnId} not found`);
-    }
 
-    if (returnRefund.status === "cancelled") {
-      throw new Error(`Return #${returnId} is already cancelled`);
-    }
-    if (returnRefund.status === "pending") {
-      // Simple cancellation – just update status, no stock changes
-      returnRefund.status = "cancelled";
-      returnRefund.notes = returnRefund.notes
-        ? `${returnRefund.notes}\nCancelled: ${reason}`
-        : `Cancelled: ${reason}`;
-      returnRefund.updatedAt = new Date();
-      const cancelled = await updateDb(returnRepo, returnRefund, { queryRunner });
+    // Audit log
+    await auditLogger.logUpdate(
+      "ReturnRefund",
+      returnId,
+      { action: "cancelled", reason, wasProcessed },
+      { status: "cancelled" },
+      user
+    );
 
-      await auditLogger.logUpdate(
-        "ReturnRefund",
-        returnId,
-        { status: "pending" },
-        { status: "cancelled" },
-        user
-      );
+    // Send notification to customer
+    await this._notifyCustomer(returnRefund, "cancelled", user, queryRunner, reason);
 
-      logger.info(`[ReturnRefundState] Return #${returnId} cancelled (was pending)`);
-      return cancelled;
-    }
-
-    if (returnRefund.status === "processed") {
-      // --- Reverse the stock additions (deduct from batches again) ---
-      logger.info(`[ReturnRefundState] Cancelling processed return #${returnId} – reversing stock`);
-
-      for (const item of returnRefund.items) {
-        if (item.batch) {
-          await this.batchStateService.deductFromBatch(
-            item.batch.id,
-            item.weightKg,
-            "adjustment",
-            {
-              saleId: returnRefund.sale?.id,
-              notes: `Cancellation of return #${returnRefund.id} - ${returnRefund.referenceNo}`
-            },
-            user,
-            queryRunner
-          );
-        } else {
-          logger.warn(`[ReturnRefundState] Return item #${item.id} has no batch, skipping stock reversal`);
-        }
-      }
-
-      // --- Reverse loyalty reversal (add back points) ---
-      if (returnRefund.sale && returnRefund.sale.pointsEarn > 0 && returnRefund.sale.customer) {
-        const customerRepo = this._getRepo(queryRunner, Customer);
-        const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
-
-        const customer = await customerRepo.findOne({
-          where: { id: returnRefund.sale.customer.id }
-        });
-        if (customer) {
-          const pointsToAdd = returnRefund.sale.pointsEarn;
-          const oldBalance = customer.loyaltyPointsBalance;
-          customer.loyaltyPointsBalance += pointsToAdd;
-          customer.lifetimePointsEarned = (customer.lifetimePointsEarned || 0) + pointsToAdd;
-          customer.updatedAt = new Date();
-          await updateDb(customerRepo, customer, { queryRunner });
-
-          // Create transaction to add back points
-          const tx = loyaltyRepo.create({
-            pointsChange: pointsToAdd,
-            transactionType: "earn",
-            notes: `Reversal of return cancellation #${returnRefund.id} - restored points from sale #${returnRefund.sale.id}`,
-            customer: customer,
-            sale: returnRefund.sale,
-            timestamp: new Date(),
-          });
-          await saveDb(loyaltyRepo, tx, { queryRunner });
-
-          await auditLogger.logUpdate(
-            "Customer",
-            customer.id,
-            { loyaltyPointsBalance: oldBalance },
-            { loyaltyPointsBalance: customer.loyaltyPointsBalance },
-            user
-          );
-
-          logger.info(`[ReturnRefundState] Restored ${pointsToAdd} loyalty points for customer #${customer.id}`);
-        }
-      }
-
-      // --- Update status to cancelled ---
-      returnRefund.status = "cancelled";
-      returnRefund.notes = returnRefund.notes
-        ? `${returnRefund.notes}\nCancelled: ${reason} (was processed)`
-        : `Cancelled: ${reason} (was processed)`;
-      returnRefund.updatedAt = new Date();
-      const cancelled = await updateDb(returnRepo, returnRefund, { queryRunner });
-
-      await auditLogger.logUpdate(
-        "ReturnRefund",
-        returnId,
-        { status: "processed" },
-        { status: "cancelled" },
-        user
-      );
-
-      // --- Notify admin about cancellation ---
+    // If it was processed before cancellation, notify admin
+    if (wasProcessed) {
       try {
         await notificationService.create(
           {
             userId: 1,
             title: "Return Cancelled (Processed)",
-            message: `Return #${returnRefund.referenceNo} was processed and then cancelled. Stock has been reversed.`,
+            message: `Return #${returnRefund.referenceNo} was processed and then cancelled. Stock and loyalty have been reversed.`,
             type: "warning",
-            metadata: { returnId: returnRefund.id },
+            metadata: {
+              returnId: returnRefund.id,
+              referenceNo: returnRefund.referenceNo,
+            },
           },
           user,
           queryRunner
         );
       } catch (err) {
-        logger.error(`[ReturnRefundState] Failed to send cancellation notification:`, err);
+        logger.error(`[ReturnRefundState] Failed to send admin notification:`, err);
       }
-
-      logger.info(`[ReturnRefundState] Return #${returnId} cancelled (was processed, stock reversed)`);
-      return cancelled;
     }
-
-    throw new Error(`Unexpected return status: ${returnRefund.status}`);
   }
+
+  /**
+   * Side effect after a return is updated (generic)
+   * Called from ReturnRefundSubscriber.afterUpdate for other changes
+   * @param {number} returnId
+   * @param {ReturnRefund} returnRefund
+   * @param {Object} changes
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onUpdated(returnId, returnRefund, changes, user = "system", queryRunner = null) {
+    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) updated (fields: ${Object.keys(changes).join(", ")})`);
+
+    // Broadcast to UI
+    this._sendToRenderers("returnRefund:updated", {
+      id: returnRefund.id,
+      referenceNo: returnRefund.referenceNo,
+      changes,
+      updatedAt: returnRefund.updatedAt,
+    });
+
+    // Audit log
+    await auditLogger.logUpdate(
+      "ReturnRefund",
+      returnId,
+      changes,
+      returnRefund,
+      user
+    );
+  }
+
+  /**
+   * Side effect after a return is soft-deleted
+   * Called from ReturnRefundSubscriber.afterRemove
+   * @param {number} returnId
+   * @param {ReturnRefund} returnRefund
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onDeleted(returnId, returnRefund, user = "system", queryRunner = null) {
+    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund?.referenceNo}) soft-deleted by ${user}`);
+
+    // Broadcast to UI
+    this._sendToRenderers("returnRefund:deleted", {
+      id: returnId,
+      referenceNo: returnRefund?.referenceNo,
+      deletedAt: new Date().toISOString(),
+    });
+
+    // Audit log
+    await auditLogger.logCreate("ReturnRefund", returnId, returnRefund, user);
+  }
+
+  /**
+   * Side effect after a return is restored
+   * @param {number} returnId
+   * @param {ReturnRefund} returnRefund
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onRestored(returnId, returnRefund, user = "system", queryRunner = null) {
+    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) restored by ${user}`);
+
+    // Broadcast to UI
+    this._sendToRenderers("returnRefund:restored", {
+      id: returnRefund.id,
+      referenceNo: returnRefund.referenceNo,
+      restoredAt: new Date().toISOString(),
+    });
+
+    // Audit log
+    await auditLogger.logUpdate(
+      "ReturnRefund",
+      returnId,
+      { action: "restored" },
+      { status: returnRefund.status },
+      user
+    );
+  }
+
+  // ============================================================
+  // 🔒 PRIVATE HELPERS (Side Effects Only)
+  // ============================================================
 
   /**
    * Send email/SMS notification to customer about return status
    * @private
    */
-  async _notifyCustomer(returnRefund, action, user, queryRunner) {
-    // ✅ Use system settings instead of hardcoded values
+  async _notifyCustomer(returnRefund, action, user, queryRunner, reason = "") {
     const canSendEmail = await system.emailEnabled();
     const canSendSms = await system.smsEnabled();
     const company = await system.companyName();
@@ -344,14 +336,13 @@ class ReturnRefundStateService {
 
     const textBody = action === "processed"
       ? `Dear ${customer.name},\n\nWe have processed your return (ref. #${returnRefund.referenceNo}).\n\nReturned items:\n${itemsList}\n\nTotal refund amount: ₱${returnRefund.totalAmount.toFixed(2)}\nRefund method: ${returnRefund.refundMethod}\n\nThe amount will be credited according to your selected refund method.\n\nThank you for shopping with us,\n${company}`
-      : `Dear ${customer.name},\n\nYour return request (ref. #${returnRefund.referenceNo}) has been cancelled.\n\nIf you have any questions, please contact our support.\n\nRegards,\n${company}`;
+      : `Dear ${customer.name},\n\nYour return request (ref. #${returnRefund.referenceNo}) has been cancelled.${reason ? ` Reason: ${reason}` : ""}\n\nIf you have any questions, please contact our support.\n\nRegards,\n${company}`;
 
     const htmlBody = textBody.replace(/\n/g, "<br>");
 
-    // Send email - ✅ Uses system setting
+    // Send email
     if (canSendEmail && customer.email) {
       try {
-        // Use your email sender (e.g., via NotificationLogService)
         logger.info(`[ReturnRefundState] Would send email to ${customer.email}: ${subject}`);
         // await emailSender.send(customer.email, subject, htmlBody, textBody);
       } catch (err) {
@@ -359,12 +350,12 @@ class ReturnRefundStateService {
       }
     }
 
-    // Send SMS - ✅ Uses system setting
+    // Send SMS
     if (canSendSms && customer.phone) {
       try {
         const smsMessage = action === "processed"
           ? `Return #${returnRefund.referenceNo} processed. Refund: ₱${returnRefund.totalAmount.toFixed(2)}. Check email for details.`
-          : `Return #${returnRefund.referenceNo} cancelled. Check email for details.`;
+          : `Return #${returnRefund.referenceNo} cancelled.${reason ? ` Reason: ${reason}` : ""}`;
         logger.info(`[ReturnRefundState] Would send SMS to ${customer.phone}: ${smsMessage}`);
         // await smsSender.send(customer.phone, smsMessage);
       } catch (err) {

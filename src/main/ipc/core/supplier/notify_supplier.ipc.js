@@ -1,4 +1,5 @@
 // src/main/ipc/core/supplier/notify_supplier.ipc.js
+// ✅ Ito ay side effect, kaya tama na gamitin ang SupplierStateService
 const { SupplierStateService } = require("../../../../stateServices/Supplier");
 const { AppDataSource } = require("../../../db/data-source");
 

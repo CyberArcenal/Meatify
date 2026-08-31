@@ -1,4 +1,5 @@
 // src/main/ipc/core/customer/adjust_points.ipc.js
+//@ts-check
 const { CustomerStateService } = require("../../../../stateServices/Customer");
 const { AppDataSource } = require("../../../db/data-source");
 
@@ -6,10 +7,18 @@ module.exports = async (params, queryRunner) => {
   const { customerId, pointsChange, reason, user = "system" } = params;
 
   if (!customerId || typeof customerId !== "number") {
-    return { status: false, message: "Valid customer ID is required", data: null };
+    return {
+      status: false,
+      message: "Valid customer ID is required",
+      data: null,
+    };
   }
   if (!pointsChange || pointsChange === 0) {
-    return { status: false, message: "pointsChange must be non-zero", data: null };
+    return {
+      status: false,
+      message: "pointsChange must be non-zero",
+      data: null,
+    };
   }
   if (!reason) {
     return { status: false, message: "reason is required", data: null };
@@ -22,7 +31,7 @@ module.exports = async (params, queryRunner) => {
       pointsChange,
       reason,
       user,
-      queryRunner
+      queryRunner,
     );
     return {
       status: true,

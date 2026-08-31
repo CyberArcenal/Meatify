@@ -5,12 +5,15 @@ const auditLogger = require("../utils/auditLogger");
 const Customer = require("../entities/Customer");
 const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const notificationService = require("../services/Notification");
-const system = require("../utils/system"); // ✅ ADDED - for flexible settings
+const system = require("../utils/system");
 
 /**
- * LoyaltyTransactionStateService handles state transitions and side effects for loyalty points.
+ * LoyaltyTransactionStateService handles SIDE EFFECTS and BALANCE UPDATES.
  * It does NOT contain CRUD operations – those belong to LoyaltyTransactionService.
- * All methods here manage earning, redeeming, and adjusting loyalty points with side effects.
+ * All methods here are event handlers and are called by the subscriber after a change is detected.
+ *
+ * ✅ Every method sends IPC events to the UI for real-time updates.
+ * ✅ onTransactionCreated updates customer balance (to ensure no points are missed).
  */
 class LoyaltyTransactionStateService {
   /**
@@ -36,552 +39,50 @@ class LoyaltyTransactionStateService {
   }
 
   /**
-   * Earn loyalty points for a customer
-   * @param {number} customerId
-   * @param {number} amountSpent - Total amount spent (net of redemptions)
-   * @param {number} saleId - Reference sale ID
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   * @returns {Promise<{ customer: any, transaction: any, pointsEarned: number }>}
+   * Send event to all renderer windows (UI)
+   * @param {string} channel
+   * @param {any} data
    */
-  async earnPoints(
-    customerId,
-    amountSpent,
-    saleId,
-    user = "system",
-    queryRunner = null
-  ) {
-    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
-
-    // ✅ Use system settings instead of hardcoded values
-    const loyaltyEnabled = await system.loyaltyPointsEnabled();
-    if (!loyaltyEnabled) {
-      logger.info(`[LoyaltyState] Loyalty points disabled, skipping earn for customer #${customerId}`);
-      return { customer: null, transaction: null, pointsEarned: 0 };
-    }
-
-    const customerRepo = this._getRepo(queryRunner, Customer);
-    const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
-
-    const customer = await customerRepo.findOne({ where: { id: customerId } });
-    if (!customer) {
-      throw new Error(`Customer #${customerId} not found`);
-    }
-
-    if (!customer.isActive) {
-      logger.warn(`[LoyaltyState] Customer #${customerId} is inactive, skipping points`);
-      return { customer, transaction: null, pointsEarned: 0 };
-    }
-
-    // ✅ Use system for point rate
-    const rate = await system.getLoyaltyPointRate();
-    const pointsEarned = Math.floor(amountSpent / rate);
-
-    if (pointsEarned <= 0) {
-      logger.info(`[LoyaltyState] No points earned for customer #${customerId} (amount: ${amountSpent})`);
-      return { customer, transaction: null, pointsEarned: 0 };
-    }
-
-    const oldBalance = customer.loyaltyPointsBalance;
-    const oldLifetime = customer.lifetimePointsEarned || 0;
-
-    customer.loyaltyPointsBalance += pointsEarned;
-    customer.lifetimePointsEarned = oldLifetime + pointsEarned;
-    customer.updatedAt = new Date();
-
-    // Check if customer should be promoted to VIP or Elite
-    const oldStatus = customer.status;
-    const newStatus = this._determineStatus(customer.lifetimePointsEarned);
-    if (newStatus !== oldStatus) {
-      customer.status = newStatus;
-    }
-
-    const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
-
-    // Create loyalty transaction
-    const tx = loyaltyRepo.create({
-      pointsChange: pointsEarned,
-      transactionType: "earn",
-      notes: `Sale #${saleId}`,
-      customer: updatedCustomer,
-      sale: { id: saleId },
-      timestamp: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    const savedTx = await saveDb(loyaltyRepo, tx, { queryRunner });
-
-    // Audit log
-    await auditLogger.logUpdate(
-      "Customer",
-      customerId,
-      { loyaltyPointsBalance: oldBalance },
-      { loyaltyPointsBalance: updatedCustomer.loyaltyPointsBalance },
-      user
-    );
-    await auditLogger.logCreate("LoyaltyTransaction", savedTx.id, savedTx, user);
-
-    logger.info(
-      `[LoyaltyState] Earned ${pointsEarned} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
-    );
-
-    // --- Side effects ---
+  _sendToRenderers(channel, data) {
     try {
-      // Notify if status changed
-      if (newStatus !== oldStatus && (newStatus === "vip" || newStatus === "elite")) {
-        await this._notifyStatusChange(customer, oldStatus, newStatus, user, queryRunner);
-      }
-
-      // Send notification for points earned
-      await notificationService.create(
-        {
-          userId: 1,
-          title: "Loyalty Points Earned",
-          message: `${customer.name} earned ${pointsEarned} points from sale #${saleId}. Total balance: ${updatedCustomer.loyaltyPointsBalance}`,
-          type: "success",
-          metadata: {
-            customerId: customer.id,
-            saleId,
-            pointsEarned,
-            newBalance: updatedCustomer.loyaltyPointsBalance,
-          },
-        },
-        user,
-        queryRunner
-      );
-    } catch (err) {
-      logger.error(`[LoyaltyState] Side effects failed for customer #${customerId}:`, err);
-    }
-
-    return { customer: updatedCustomer, transaction: savedTx, pointsEarned };
-  }
-
-  /**
-   * Redeem loyalty points
-   * @param {number} customerId
-   * @param {number} pointsToRedeem
-   * @param {number} saleId - Reference sale ID
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   * @returns {Promise<{ customer: any, transaction: any, pointsRedeemed: number }>}
-   */
-  async redeemPoints(
-    customerId,
-    pointsToRedeem,
-    saleId,
-    user = "system",
-    queryRunner = null
-  ) {
-    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
-
-    // ✅ Use system setting
-    const loyaltyEnabled = await system.loyaltyPointsEnabled();
-    if (!loyaltyEnabled) {
-      throw new Error("Loyalty points are disabled");
-    }
-
-    const customerRepo = this._getRepo(queryRunner, Customer);
-    const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
-
-    const customer = await customerRepo.findOne({ where: { id: customerId } });
-    if (!customer) {
-      throw new Error(`Customer #${customerId} not found`);
-    }
-
-    if (!customer.isActive) {
-      throw new Error(`Customer #${customerId} is inactive`);
-    }
-
-    if (pointsToRedeem <= 0) {
-      throw new Error("Points to redeem must be greater than 0");
-    }
-
-    if (customer.loyaltyPointsBalance < pointsToRedeem) {
-      throw new Error(
-        `Insufficient loyalty points. Available: ${customer.loyaltyPointsBalance}, Requested: ${pointsToRedeem}`
-      );
-    }
-
-    const oldBalance = customer.loyaltyPointsBalance;
-    customer.loyaltyPointsBalance -= pointsToRedeem;
-    customer.updatedAt = new Date();
-
-    const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
-
-    // Create loyalty transaction
-    const tx = loyaltyRepo.create({
-      pointsChange: -pointsToRedeem,
-      transactionType: "redeem",
-      notes: `Redeemed on Sale #${saleId}`,
-      customer: updatedCustomer,
-      sale: { id: saleId },
-      timestamp: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    const savedTx = await saveDb(loyaltyRepo, tx, { queryRunner });
-
-    // Audit log
-    await auditLogger.logUpdate(
-      "Customer",
-      customerId,
-      { loyaltyPointsBalance: oldBalance },
-      { loyaltyPointsBalance: updatedCustomer.loyaltyPointsBalance },
-      user
-    );
-    await auditLogger.logCreate("LoyaltyTransaction", savedTx.id, savedTx, user);
-
-    logger.info(
-      `[LoyaltyState] Redeemed ${pointsToRedeem} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
-    );
-
-    // --- Side effects ---
-    try {
-      await notificationService.create(
-        {
-          userId: 1,
-          title: "Loyalty Points Redeemed",
-          message: `${customer.name} redeemed ${pointsToRedeem} points on sale #${saleId}. New balance: ${updatedCustomer.loyaltyPointsBalance}`,
-          type: "info",
-          metadata: {
-            customerId: customer.id,
-            saleId,
-            pointsRedeemed: pointsToRedeem,
-            newBalance: updatedCustomer.loyaltyPointsBalance,
-          },
-        },
-        user,
-        queryRunner
-      );
-    } catch (err) {
-      logger.error(`[LoyaltyState] Side effects failed for customer #${customerId}:`, err);
-    }
-
-    return { customer: updatedCustomer, transaction: savedTx, pointsRedeemed: pointsToRedeem };
-  }
-
-  /**
-   * Manually adjust loyalty points (admin adjustment)
-   * @param {number} customerId
-   * @param {number} pointsChange - Positive (add) or negative (deduct)
-   * @param {string} reason
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   * @returns {Promise<{ customer: any, transaction: any, pointsChanged: number }>}
-   */
-  async manualAdjustPoints(
-    customerId,
-    pointsChange,
-    reason,
-    user = "system",
-    queryRunner = null
-  ) {
-    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
-
-    // ✅ Use system setting
-    const loyaltyEnabled = await system.loyaltyPointsEnabled();
-    if (!loyaltyEnabled) {
-      throw new Error("Loyalty points are disabled");
-    }
-
-    const customerRepo = this._getRepo(queryRunner, Customer);
-    const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
-
-    const customer = await customerRepo.findOne({ where: { id: customerId } });
-    if (!customer) {
-      throw new Error(`Customer #${customerId} not found`);
-    }
-
-    if (pointsChange === 0) {
-      throw new Error("Points change cannot be zero");
-    }
-
-    if (pointsChange < 0 && customer.loyaltyPointsBalance + pointsChange < 0) {
-      throw new Error(
-        `Insufficient loyalty points. Available: ${customer.loyaltyPointsBalance}, Requested deduction: ${-pointsChange}`
-      );
-    }
-
-    const oldBalance = customer.loyaltyPointsBalance;
-    customer.loyaltyPointsBalance += pointsChange;
-    if (pointsChange > 0) {
-      customer.lifetimePointsEarned = (customer.lifetimePointsEarned || 0) + pointsChange;
-    }
-    customer.updatedAt = new Date();
-
-    // Check status change if adding points
-    let statusChanged = false;
-    let oldStatus = customer.status;
-    if (pointsChange > 0) {
-      const newStatus = this._determineStatus(customer.lifetimePointsEarned);
-      if (newStatus !== oldStatus) {
-        customer.status = newStatus;
-        statusChanged = true;
-      }
-    }
-
-    const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
-
-    // Create loyalty transaction
-    const tx = loyaltyRepo.create({
-      pointsChange: pointsChange,
-      transactionType: "adjustment",
-      notes: `Manual adjustment: ${reason}`,
-      customer: updatedCustomer,
-      sale: null,
-      timestamp: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    const savedTx = await saveDb(loyaltyRepo, tx, { queryRunner });
-
-    // Audit log
-    await auditLogger.logUpdate(
-      "Customer",
-      customerId,
-      { loyaltyPointsBalance: oldBalance },
-      { loyaltyPointsBalance: updatedCustomer.loyaltyPointsBalance },
-      user
-    );
-    await auditLogger.logCreate("LoyaltyTransaction", savedTx.id, savedTx, user);
-
-    logger.info(
-      `[LoyaltyState] Manual adjustment: ${pointsChange > 0 ? "+" : ""}${pointsChange} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
-    );
-
-    // --- Side effects ---
-    try {
-      if (statusChanged) {
-        await this._notifyStatusChange(customer, oldStatus, customer.status, user, queryRunner);
-      }
-
-      await notificationService.create(
-        {
-          userId: 1,
-          title: "Loyalty Points Adjusted",
-          message: `${customer.name} - ${pointsChange > 0 ? "added" : "deducted"} ${Math.abs(pointsChange)} points. Reason: ${reason}`,
-          type: "info",
-          metadata: {
-            customerId: customer.id,
-            pointsChange,
-            newBalance: updatedCustomer.loyaltyPointsBalance,
-          },
-        },
-        user,
-        queryRunner
-      );
-    } catch (err) {
-      logger.error(`[LoyaltyState] Side effects failed for customer #${customerId}:`, err);
-    }
-
-    return { customer: updatedCustomer, transaction: savedTx, pointsChanged: pointsChange };
-  }
-
-  /**
-   * Reverse a loyalty transaction (used for refunds, cancellations)
-   * @param {number} transactionId
-   * @param {string} reason
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   * @returns {Promise<{ customer: any, transaction: any, reversalTransaction: any }>}
-   */
-  async reverseTransaction(
-    transactionId,
-    reason,
-    user = "system",
-    queryRunner = null
-  ) {
-    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
-
-    const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
-    const customerRepo = this._getRepo(queryRunner, Customer);
-
-    const originalTx = await loyaltyRepo.findOne({
-      where: { id: transactionId },
-      relations: ["customer"],
-    });
-    if (!originalTx) {
-      throw new Error(`LoyaltyTransaction #${transactionId} not found`);
-    }
-
-    if (originalTx.transactionType === "adjustment") {
-      // For adjustments, we just create a reverse transaction with opposite sign
-      const pointsToReverse = -originalTx.pointsChange;
-      return this.manualAdjustPoints(
-        originalTx.customer.id,
-        pointsToReverse,
-        `Reverse of adjustment: ${reason}`,
-        user,
-        queryRunner
-      );
-    }
-
-    if (originalTx.transactionType === "earn") {
-      // Reverse earned points
-      const pointsToReverse = -originalTx.pointsChange;
-      const customer = await customerRepo.findOne({
-        where: { id: originalTx.customer.id },
+      const { BrowserWindow } = require("electron");
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, data);
+        }
       });
-      if (!customer) {
-        throw new Error(`Customer #${originalTx.customer.id} not found`);
-      }
-
-      if (customer.loyaltyPointsBalance + pointsToReverse < 0) {
-        throw new Error(
-          `Cannot reverse: insufficient balance. Available: ${customer.loyaltyPointsBalance}, Need: ${-pointsToReverse}`
-        );
-      }
-
-      const oldBalance = customer.loyaltyPointsBalance;
-      customer.loyaltyPointsBalance += pointsToReverse;
-      // Don't reduce lifetime points on reversal
-      customer.updatedAt = new Date();
-
-      const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
-
-      // Create reversal transaction
-      const reverseTx = loyaltyRepo.create({
-        pointsChange: pointsToReverse,
-        transactionType: "refund",
-        notes: `Reverse of transaction #${transactionId}: ${reason}`,
-        customer: updatedCustomer,
-        sale: originalTx.sale || null,
-        timestamp: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      const savedReverse = await saveDb(loyaltyRepo, reverseTx, { queryRunner });
-
-      // Audit logs
-      await auditLogger.logUpdate(
-        "Customer",
-        customer.id,
-        { loyaltyPointsBalance: oldBalance },
-        { loyaltyPointsBalance: updatedCustomer.loyaltyPointsBalance },
-        user
+    } catch (error) {
+      logger.warn(
+        "[LoyaltyState] Failed to send IPC event (maybe not in Electron):",
+        error.message,
       );
-      await auditLogger.logCreate("LoyaltyTransaction", savedReverse.id, savedReverse, user);
-
-      logger.info(
-        `[LoyaltyState] Reversed earned transaction #${transactionId}. Customer #${customer.id} balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
-      );
-
-      // Side effects
-      try {
-        await notificationService.create(
-          {
-            userId: 1,
-            title: "Loyalty Points Reversed",
-            message: `${customer.name} - ${Math.abs(pointsToReverse)} points reversed. Reason: ${reason}`,
-            type: "info",
-            metadata: {
-              customerId: customer.id,
-              transactionId,
-              pointsReversed: Math.abs(pointsToReverse),
-              newBalance: updatedCustomer.loyaltyPointsBalance,
-            },
-          },
-          user,
-          queryRunner
-        );
-      } catch (err) {
-        logger.error(`[LoyaltyState] Side effects failed:`, err);
-      }
-
-      return { customer: updatedCustomer, transaction: originalTx, reversalTransaction: savedReverse };
     }
-
-    if (originalTx.transactionType === "redeem") {
-      // Reverse redeemed points (add them back)
-      const pointsToReverse = -originalTx.pointsChange; // This will be positive
-      const customer = await customerRepo.findOne({
-        where: { id: originalTx.customer.id },
-      });
-      if (!customer) {
-        throw new Error(`Customer #${originalTx.customer.id} not found`);
-      }
-
-      const oldBalance = customer.loyaltyPointsBalance;
-      customer.loyaltyPointsBalance += pointsToReverse;
-      customer.updatedAt = new Date();
-
-      const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
-
-      // Create reversal transaction
-      const reverseTx = loyaltyRepo.create({
-        pointsChange: pointsToReverse,
-        transactionType: "refund",
-        notes: `Reverse of redemption #${transactionId}: ${reason}`,
-        customer: updatedCustomer,
-        sale: originalTx.sale || null,
-        timestamp: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-      const savedReverse = await saveDb(loyaltyRepo, reverseTx, { queryRunner });
-
-      // Audit logs
-      await auditLogger.logUpdate(
-        "Customer",
-        customer.id,
-        { loyaltyPointsBalance: oldBalance },
-        { loyaltyPointsBalance: updatedCustomer.loyaltyPointsBalance },
-        user
-      );
-      await auditLogger.logCreate("LoyaltyTransaction", savedReverse.id, savedReverse, user);
-
-      logger.info(
-        `[LoyaltyState] Reversed redemption #${transactionId}. Customer #${customer.id} balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
-      );
-
-      // Side effects
-      try {
-        await notificationService.create(
-          {
-            userId: 1,
-            title: "Loyalty Redemption Reversed",
-            message: `${customer.name} - ${pointsToReverse} points restored from reversed redemption.`,
-            type: "info",
-            metadata: {
-              customerId: customer.id,
-              transactionId,
-              pointsRestored: pointsToReverse,
-              newBalance: updatedCustomer.loyaltyPointsBalance,
-            },
-          },
-          user,
-          queryRunner
-        );
-      } catch (err) {
-        logger.error(`[LoyaltyState] Side effects failed:`, err);
-      }
-
-      return { customer: updatedCustomer, transaction: originalTx, reversalTransaction: savedReverse };
-    }
-
-    throw new Error(`Unsupported transaction type: ${originalTx.transactionType}`);
   }
 
   /**
    * Determine customer status based on lifetime points
-   * @private
+   * @param {number} lifetimePoints
+   * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<string>}
    */
-  _determineStatus(lifetimePoints) {
-    // ✅ Can be made configurable via system settings
-    // For now, use hardcoded thresholds or fetch from system:
-    // const vipThreshold = await system.loyaltyVipThreshold();
-    // const eliteThreshold = await system.loyaltyEliteThreshold();
-    if (lifetimePoints >= 5000) return "elite";
-    if (lifetimePoints >= 1000) return "vip";
+  async _determineStatus(lifetimePoints, qr = null) {
+    const vipThreshold = await system.loyaltyVipThreshold();
+    const eliteThreshold = await system.loyaltyEliteThreshold();
+    if (lifetimePoints >= eliteThreshold) return "elite";
+    if (lifetimePoints >= vipThreshold) return "vip";
     return "regular";
   }
 
   /**
    * Send notification when customer status changes
-   * @private
+   * @param {Customer} customer
+   * @param {string} oldStatus
+   * @param {string} newStatus
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
    */
   async _notifyStatusChange(customer, oldStatus, newStatus, user, queryRunner) {
-    // ✅ Use system settings
     const company = await system.companyName();
     const canSendEmail = await system.emailEnabled();
     const canSendSms = await system.smsEnabled();
@@ -602,23 +103,29 @@ class LoyaltyTransactionStateService {
           },
         },
         user,
-        queryRunner
+        queryRunner,
       );
     } catch (err) {
-      logger.error(`[LoyaltyState] Failed to send milestone notification:`, err);
+      logger.error(
+        `[LoyaltyState] Failed to send milestone notification:`,
+        err,
+      );
     }
 
     // Email to customer
     if (canSendEmail && customer.email) {
       const subject = `Congratulations! You've reached ${newStatus} status!`;
       const textBody = `Dear ${customer.name},\n\nCongratulations! You have reached ${newStatus} status at ${company}.\n\nWe appreciate your continued patronage and look forward to serving you with exclusive benefits.\n\nThank you for being a valued customer!\n\nBest regards,\n${company}`;
-      const htmlBody = textBody.replace(/\n/g, "<br>");
-
       try {
-        logger.info(`[LoyaltyState] Would send status upgrade email to ${customer.email}`);
+        logger.info(
+          `[LoyaltyState] Would send status upgrade email to ${customer.email}`,
+        );
         // await emailSender.send(customer.email, subject, htmlBody, textBody);
       } catch (err) {
-        logger.error(`[LoyaltyState] Failed to send email to ${customer.email}:`, err);
+        logger.error(
+          `[LoyaltyState] Failed to send email to ${customer.email}:`,
+          err,
+        );
       }
     }
 
@@ -626,62 +133,317 @@ class LoyaltyTransactionStateService {
     if (canSendSms && customer.phone) {
       try {
         const smsMessage = `Congratulations! You've reached ${newStatus} status at ${company}. Thank you for your loyalty!`;
-        logger.info(`[LoyaltyState] Would send SMS to ${customer.phone}: ${smsMessage}`);
+        logger.info(
+          `[LoyaltyState] Would send SMS to ${customer.phone}: ${smsMessage}`,
+        );
         // await smsSender.send(customer.phone, smsMessage);
       } catch (err) {
-        logger.error(`[LoyaltyState] Failed to send SMS to ${customer.phone}:`, err);
+        logger.error(
+          `[LoyaltyState] Failed to send SMS to ${customer.phone}:`,
+          err,
+        );
       }
     }
   }
 
+  // ============================================================
+  // 🔄 SIDE EFFECTS + BALANCE UPDATE (called by subscriber)
+  // ============================================================
+
   /**
-   * Get customer loyalty summary
-   * @param {number} customerId
+   * Side effect after a loyalty transaction is created
+   * Called from LoyaltyTransactionSubscriber.afterInsert
+   *
+   * ✅ Updates customer loyalty points balance based on pointsChange
+   * ✅ Broadcasts UI events
+   * ✅ Creates audit logs
+   * ✅ Sends notification (if significant)
+   *
+   * @param {number} transactionId
+   * @param {LoyaltyTransaction} transaction
+   * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async getCustomerLoyaltySummary(customerId, queryRunner = null) {
-    const loyaltyRepo = this._getRepo(queryRunner, LoyaltyTransaction);
+  async onTransactionCreated(
+    transactionId,
+    transaction,
+    user = "system",
+    queryRunner = null,
+  ) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
     const customerRepo = this._getRepo(queryRunner, Customer);
 
-    const customer = await customerRepo.findOne({ where: { id: customerId } });
-    if (!customer) {
-      throw new Error(`Customer #${customerId} not found`);
+    // ─── LOG: Transaction details ──────────────────────────────
+    logger.info(
+      `[LoyaltyState] ✅ Transaction #${transactionId} created (${transaction.transactionType}, ${transaction.pointsChange > 0 ? "+" : ""}${transaction.pointsChange})`,
+    );
+    logger.debug(`[LoyaltyState] Full transaction object:`, {
+      id: transaction.id,
+      customerId: transaction.customerId,
+      customer: transaction.customer,
+      pointsChange: transaction.pointsChange,
+      transactionType: transaction.transactionType,
+      notes: transaction.notes,
+      timestamp: transaction.timestamp,
+    });
+
+    // ─── Detect customerId ──────────────────────────────────────
+    const customerId = transaction.customerId || transaction.customer?.id;
+    logger.debug(`[LoyaltyState] Detected customerId: ${customerId}`);
+
+    if (!customerId) {
+      logger.warn(
+        `[LoyaltyState] Transaction #${transaction.id} has no customerId, skipping balance update`,
+      );
+      // Broadcast event pa rin (walang customer)
+      this._sendToRenderers("loyalty:transactionCreated", {
+        id: transaction.id,
+        customerId: null,
+        type: transaction.transactionType,
+        pointsChange: transaction.pointsChange,
+        notes: transaction.notes,
+        timestamp: transaction.timestamp,
+        newBalance: null,
+      });
+      return;
     }
 
-    const transactions = await loyaltyRepo
-      .createQueryBuilder("tx")
-      .where("tx.customerId = :customerId", { customerId })
-      .andWhere("tx.deletedAt IS NULL")
-      .orderBy("tx.timestamp", "DESC")
-      .getMany();
+    // ─── 1. Update Customer Balance ────────────────────────────
+    let updatedCustomer = null;
+    let statusChanged = false;
+    let oldStatus = null;
+    let newStatus = null;
 
-    const summary = {
-      customerId: customer.id,
-      name: customer.name,
-      currentBalance: customer.loyaltyPointsBalance,
-      lifetimeEarned: customer.lifetimePointsEarned || 0,
-      status: customer.status,
-      totalEarned: 0,
-      totalRedeemed: 0,
-      totalAdjusted: 0,
-      transactionCount: transactions.length,
-    };
+    // ✅ Gamitin ang detected customerId, hindi transaction.customerId
+    if (customerId && transaction.pointsChange !== 0) {
+      logger.debug(`[LoyaltyState] Fetching customer #${customerId}...`);
+      const customer = await customerRepo.findOne({
+        where: { id: customerId },
+      });
 
-    for (const tx of transactions) {
-      if (tx.transactionType === "earn") {
-        summary.totalEarned += tx.pointsChange;
-      } else if (tx.transactionType === "redeem") {
-        summary.totalRedeemed += Math.abs(tx.pointsChange);
-      } else if (tx.transactionType === "adjustment") {
-        summary.totalAdjusted += tx.pointsChange;
+      if (!customer) {
+        logger.warn(
+          `[LoyaltyState] Customer #${customerId} not found, skipping balance update`,
+        );
+      } else {
+        const oldBalance = customer.loyaltyPointsBalance;
+        const oldLifetime = customer.lifetimePointsEarned || 0;
+        oldStatus = customer.status;
+
+        logger.debug(`[LoyaltyState] Customer before update:`, {
+          id: customer.id,
+          name: customer.name,
+          balance: oldBalance,
+          lifetime: oldLifetime,
+          status: oldStatus,
+        });
+
+        // Update balance
+        const newBalance = oldBalance + transaction.pointsChange;
+        customer.loyaltyPointsBalance = newBalance;
+
+        if (transaction.pointsChange > 0) {
+          customer.lifetimePointsEarned =
+            oldLifetime + transaction.pointsChange;
+        }
+
+        // Check for status change (only when points increase)
+        if (transaction.pointsChange > 0) {
+          const lifetime = customer.lifetimePointsEarned || 0;
+          const determinedStatus = await this._determineStatus(
+            lifetime,
+            queryRunner,
+          );
+          if (determinedStatus !== oldStatus) {
+            newStatus = determinedStatus;
+            customer.status = newStatus;
+            statusChanged = true;
+            logger.debug(
+              `[LoyaltyState] Status will change: ${oldStatus} → ${newStatus}`,
+            );
+          }
+        }
+
+        customer.updatedAt = new Date();
+
+        // ─── Save customer ──────────────────────────────────────
+        logger.debug(`[LoyaltyState] Saving customer #${customer.id}...`);
+        try {
+          updatedCustomer = await updateDb(customerRepo, customer, {
+            queryRunner,
+            skipSignal: true,
+          });
+          logger.debug(`[LoyaltyState] Customer saved successfully.`);
+        } catch (saveError) {
+          logger.error(
+            `[LoyaltyState] Failed to save customer #${customer.id}:`,
+            saveError,
+          );
+          throw saveError; // rethrow para mag-rollback ang transaction
+        }
+
+        // ─── Audit log for customer update ─────────────────────
+        await auditLogger.logUpdate(
+          "Customer",
+          customer.id,
+          {
+            loyaltyPointsBalance: oldBalance,
+            status: oldStatus,
+          },
+          {
+            loyaltyPointsBalance: updatedCustomer.loyaltyPointsBalance,
+            status: updatedCustomer.status,
+          },
+          user,
+        );
+
+        logger.info(
+          `[LoyaltyState] Customer #${customer.id} balance updated: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance} (${transaction.pointsChange > 0 ? "+" : ""}${transaction.pointsChange})`,
+        );
+        logger.debug(`[LoyaltyState] Customer after update:`, {
+          id: updatedCustomer.id,
+          balance: updatedCustomer.loyaltyPointsBalance,
+          lifetime: updatedCustomer.lifetimePointsEarned,
+          status: updatedCustomer.status,
+        });
+      }
+    } else {
+      logger.warn(
+        `[LoyaltyState] Skipping balance update: customerId=${customerId}, pointsChange=${transaction.pointsChange}`,
+      );
+    }
+
+    // ─── 2. If status changed, trigger side effects ──────────
+    if (statusChanged && updatedCustomer && oldStatus && newStatus) {
+      logger.info(
+        `[LoyaltyState] Customer #${updatedCustomer.id} status changed: ${oldStatus} → ${newStatus}. Notifying...`,
+      );
+      await this._notifyStatusChange(
+        updatedCustomer,
+        oldStatus,
+        newStatus,
+        user,
+        queryRunner,
+      );
+    }
+
+    // ─── 3. Broadcast to UI ────────────────────────────────────
+    this._sendToRenderers("loyalty:transactionCreated", {
+      id: transaction.id,
+      customerId: customerId,
+      type: transaction.transactionType,
+      pointsChange: transaction.pointsChange,
+      notes: transaction.notes,
+      timestamp: transaction.timestamp,
+      newBalance: updatedCustomer?.loyaltyPointsBalance || null,
+    });
+
+    // ─── 4. Audit log for transaction ─────────────────────────
+    await auditLogger.logCreate(
+      "LoyaltyTransaction",
+      transactionId,
+      transaction,
+      user,
+    );
+
+    // ─── 5. Optional: Notification for significant transactions ──
+    if (Math.abs(transaction.pointsChange) > 100) {
+      try {
+        const customer =
+          updatedCustomer ||
+          (await customerRepo.findOne({ where: { id: customerId } }));
+        const action = transaction.pointsChange > 0 ? "earned" : "redeemed";
+        await notificationService.create(
+          {
+            userId: 1,
+            title: `Loyalty Points ${action === "earned" ? "Earned" : "Redeemed"}`,
+            message: `${customer?.name || "Customer"} ${action} ${Math.abs(transaction.pointsChange)} points. Type: ${transaction.transactionType}`,
+            type: transaction.pointsChange > 0 ? "success" : "info",
+            metadata: {
+              transactionId: transaction.id,
+              customerId: customerId,
+              pointsChange: transaction.pointsChange,
+            },
+          },
+          user,
+          queryRunner,
+        );
+      } catch (err) {
+        logger.error(
+          `[LoyaltyState] Failed to send transaction notification:`,
+          err,
+        );
       }
     }
 
-    return {
-      customer,
-      summary,
-      transactions: transactions.slice(0, 50), // Return last 50 transactions
-    };
+    logger.debug(
+      `[LoyaltyState] onTransactionCreated completed for #${transactionId}`,
+    );
+  }
+
+  /**
+   * Side effect after a loyalty transaction is updated
+   * @param {number} transactionId
+   * @param {LoyaltyTransaction} transaction
+   * @param {Object} changes
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onTransactionUpdated(
+    transactionId,
+    transaction,
+    changes,
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[LoyaltyState] ✅ Transaction #${transactionId} updated (fields: ${Object.keys(changes).join(", ")})`,
+    );
+
+    this._sendToRenderers("loyalty:transactionUpdated", {
+      id: transaction.id,
+      changes,
+      updatedAt: transaction.updatedAt,
+    });
+
+    await auditLogger.logUpdate(
+      "LoyaltyTransaction",
+      transactionId,
+      changes,
+      transaction,
+      user,
+    );
+  }
+
+  /**
+   * Optional: Side effect after a loyalty transaction is soft-deleted
+   * @param {number} transactionId
+   * @param {LoyaltyTransaction} transaction
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onTransactionDeleted(
+    transactionId,
+    transaction,
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[LoyaltyState] ✅ Transaction #${transactionId} soft-deleted by ${user}`,
+    );
+
+    this._sendToRenderers("loyalty:transactionDeleted", {
+      id: transactionId,
+      customerId: transaction?.customerId,
+      deletedAt: new Date().toISOString(),
+    });
+
+    await auditLogger.logCreate(
+      "LoyaltyTransaction",
+      transactionId,
+      transaction,
+      user,
+    );
   }
 }
 

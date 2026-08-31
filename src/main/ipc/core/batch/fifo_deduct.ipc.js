@@ -1,8 +1,6 @@
 // src/main/ipc/core/batch/fifo_deduct.ipc.js
-const { BatchStateService } = require("../../../../stateServices/Batch");
+const batchService = require("../../../../services/Batch");  // ✅ CHANGED
 const { logger } = require("../../../../utils/logger");
-const { AppDataSource } = require("../../../db/data-source");
-const { withErrorHandling } = require("../../../../middlewares/errorHandler");
 
 module.exports = async (params, queryRunner) => {
   const { meatId, totalWeight, reason = "sale", metadata = {}, user = "system" } = params;
@@ -15,8 +13,8 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new BatchStateService(AppDataSource);
-    const result = await stateService.fifoDeduct(
+    // ✅ Calls BatchService (not StateService)
+    const result = await batchService.fifoDeduct(
       meatId,
       totalWeight,
       reason,

@@ -11,8 +11,6 @@ module.exports = async (params, queryRunner) => {
 
   try {
     await fs.access(filePath);
-    // Note: importFromCSV might need to be added to the service
-    // For now, we'll assume it exists or implement it.
     const result = await notificationLogService.importFromCSV(filePath, user, queryRunner);
     return {
       status: true,

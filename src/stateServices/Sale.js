@@ -7,10 +7,10 @@ const SaleItem = require("../entities/SaleItem");
 const Customer = require("../entities/Customer");
 const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const notificationService = require("../services/Notification");
-const { BatchStateService } = require("./Batch");
 const system = require("../utils/system");
 const CashDrawerService = require("../services/CashDrawer");
 const PrinterService = require("../services/Printer");
+const batchService = require("../services/Batch");
 
 /**
  * SaleStateService handles side effects for sale state transitions.
@@ -28,7 +28,7 @@ class SaleStateService {
     this.saleItemRepo = dataSource.getRepository(SaleItem);
     this.customerRepo = dataSource.getRepository(Customer);
     this.loyaltyRepo = dataSource.getRepository(LoyaltyTransaction);
-    this.batchStateService = new BatchStateService(dataSource);
+    this.batchService = batchService;
   }
 
   /**
@@ -85,7 +85,7 @@ class SaleStateService {
     for (const item of sale.saleItems) {
       if (item.batchId) {
         // User selected a specific batch – deduct from that batch directly
-        const result = await this.batchStateService.deductFromBatch(
+        const result = await this.batchService.deductFromBatch(
           item.batchId,
           item.weightKg,
           "sale",
@@ -99,7 +99,7 @@ class SaleStateService {
         deductions.push({ saleItem: item, deductions: [result] });
       } else {
         // No batch selected – use FIFO
-        const result = await this.batchStateService.fifoDeduct(
+        const result = await this.batchService.fifoDeduct(
           item.meat.id,
           item.weightKg,
           "sale",
@@ -308,7 +308,7 @@ class SaleStateService {
     // --- STEP 1: Reverse stock for each sale item (add back to batch) ---
     for (const item of sale.saleItems) {
       if (item.batch) {
-        await this.batchStateService.addToBatch(
+        await this.batchService.addToBatch(
           item.batch.id,
           item.weightKg,
           "refund",

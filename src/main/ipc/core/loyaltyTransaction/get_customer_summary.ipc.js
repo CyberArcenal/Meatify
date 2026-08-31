@@ -1,6 +1,5 @@
 // src/main/ipc/core/loyaltyTransaction/get_customer_summary.ipc.js
-const { LoyaltyTransactionStateService } = require("../../../../stateServices/LoyaltyTransaction");
-const { AppDataSource } = require("../../../db/data-source");
+const loyaltyTransactionService = require("../../../../services/LoyaltyTransaction");
 
 module.exports = async (params) => {
   const { customerId } = params;
@@ -10,8 +9,7 @@ module.exports = async (params) => {
   }
 
   try {
-    const stateService = new LoyaltyTransactionStateService(AppDataSource);
-    const result = await stateService.getCustomerLoyaltySummary(customerId);
+    const result = await loyaltyTransactionService.getCustomerLoyaltySummary(customerId);
     return {
       status: true,
       message: "Loyalty summary retrieved successfully",

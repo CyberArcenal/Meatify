@@ -1,6 +1,5 @@
 // src/main/ipc/core/supplier/merge_suppliers.ipc.js
-const { SupplierStateService } = require("../../../../stateServices/Supplier");
-const { AppDataSource } = require("../../../db/data-source");
+const supplierService = require("../../../../services/Supplier");
 
 module.exports = async (params, queryRunner) => {
   const { sourceSupplierId, targetSupplierId, user = "system" } = params;
@@ -13,8 +12,8 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new SupplierStateService(AppDataSource);
-    const result = await stateService.mergeSuppliers(
+    // ✅ Tama: Use SupplierService (not State Service)
+    const result = await supplierService.mergeSuppliers(
       sourceSupplierId,
       targetSupplierId,
       user,

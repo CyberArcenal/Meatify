@@ -1,15 +1,17 @@
-// src/stateServices/Category.js
+// src/stateServices/CategoryStateService.js
 //@ts-check
 const { logger } = require("../utils/logger");
 const auditLogger = require("../utils/auditLogger");
 const Category = require("../entities/Category");
-const Meat = require("../entities/Meat");
-const notificationService = require("../services/Notification");
+const system = require("../utils/system");
 
 /**
- * CategoryStateService handles state transitions and side effects for categories.
- * It does NOT contain CRUD operations – those belong to CategoryService.
- * All methods here manage activation/deactivation and related side effects.
+ * CategoryStateService handles side effects for category state changes.
+ * It does NOT perform CRUD updates – those belong to CategoryService.
+ * All methods here are event handlers (onActivated, onDeactivated, onMerged, etc.)
+ * and are called by the subscriber after a change is detected.
+ *
+ * ✅ Every method sends IPC events to the UI for real-time updates.
  */
 class CategoryStateService {
   /**
@@ -18,14 +20,10 @@ class CategoryStateService {
   constructor(dataSource) {
     this.dataSource = dataSource;
     this.categoryRepo = dataSource.getRepository(Category);
-    this.meatRepo = dataSource.getRepository(Meat);
   }
 
   /**
    * Helper: get repository (transactional if queryRunner provided)
-   * @param {import("typeorm").QueryRunner | null} qr
-   * @param {Function} entityClass
-   * @returns {import("typeorm").Repository<any>}
    */
   _getRepo(qr, entityClass) {
     if (qr) {
@@ -35,257 +33,218 @@ class CategoryStateService {
   }
 
   /**
-   * Activate a category (set isActive = true)
+   * Send event to all renderer windows (UI)
+   * @param {string} channel
+   * @param {any} data
+   */
+  _sendToRenderers(channel, data) {
+    try {
+      const { BrowserWindow } = require("electron");
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, data);
+        }
+      });
+    } catch (error) {
+      logger.warn(
+        "[CategoryState] Failed to send IPC event (maybe not in Electron):",
+        error.message,
+      );
+    }
+  }
+
+  // ============================================================
+  // 🔄 STATE TRANSITION SIDE EFFECTS (on...)
+  // ============================================================
+
+  /**
+   * Side effect after a category is created
+   * Called from CategorySubscriber.afterInsert
    * @param {number} categoryId
+   * @param {Category} category
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async activate(categoryId, user = "system", queryRunner = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const repo = this._getRepo(queryRunner, Category);
+  async onCreate(categoryId, category, user = "system", queryRunner = null) {
+    logger.info(`[CategoryState] ✅ Category #${categoryId} (${category.name}) created by ${user}`);
 
-    const category = await repo.findOne({ where: { id: categoryId } });
-    if (!category) {
-      throw new Error(`Category with ID ${categoryId} not found`);
-    }
+    // Broadcast to UI
+    this._sendToRenderers("category:created", {
+      id: category.id,
+      name: category.name,
+      description: category.description,
+      isActive: category.isActive,
+      createdAt: category.createdAt,
+    });
 
-    if (category.isActive) {
-      logger.warn(`[CategoryState] Category #${categoryId} is already active`);
-      return category;
-    }
+    // Audit log (already logged in service, but we can add extra context)
+    await auditLogger.logCreate("Category", categoryId, category, user);
+  }
 
-    const oldStatus = category.isActive;
-    category.isActive = true;
-    category.updatedAt = new Date();
+  /**
+   * Side effect after a category is activated
+   * Called from CategorySubscriber.afterUpdate
+   * @param {number} categoryId
+   * @param {Category} category
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onActivated(categoryId, category, user = "system", queryRunner = null) {
+    logger.info(`[CategoryState] ✅ Category #${categoryId} (${category.name}) activated by ${user}`);
 
-    const updated = await updateDb(repo, category, { queryRunner, skipSignal: false });
+    // Broadcast to UI
+    this._sendToRenderers("category:activated", {
+      id: category.id,
+      name: category.name,
+      activatedAt: new Date().toISOString(),
+    });
 
+    // Audit log
     await auditLogger.logUpdate(
       "Category",
       categoryId,
-      { isActive: oldStatus },
+      { action: "activated" },
       { isActive: true },
       user
     );
 
-    // Side effect: send notification
+    // Send notification (in-app)
     try {
+      const notificationService = require("../services/Notification");
       await notificationService.create(
         {
           userId: 1,
           title: "Category Activated",
           message: `Category "${category.name}" has been activated.`,
           type: "info",
-          metadata: { categoryId: category.id },
-        },
-        user,
-        queryRunner
-      );
-    } catch (err) {
-      logger.error(`[CategoryState] Failed to send activation notification for category #${categoryId}:`, err);
-    }
-
-    logger.info(`[CategoryState] Category #${categoryId} activated`);
-    return updated;
-  }
-
-  /**
-   * Deactivate a category (set isActive = false) - with optional reassignment
-   * @param {number} categoryId
-   * @param {Object} options
-   * @param {number} [options.reassignToCategoryId] - Optional category to reassign meats to
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} queryRunner
-   */
-  async deactivate(
-    categoryId,
-    options = {},
-    user = "system",
-    queryRunner = null
-  ) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const categoryRepo = this._getRepo(queryRunner, Category);
-    const meatRepo = this._getRepo(queryRunner, Meat);
-
-    const category = await categoryRepo.findOne({ where: { id: categoryId } });
-    if (!category) {
-      throw new Error(`Category with ID ${categoryId} not found`);
-    }
-
-    if (!category.isActive) {
-      logger.warn(`[CategoryState] Category #${categoryId} is already inactive`);
-      return category;
-    }
-
-    // Check for meats in this category
-    const meats = await meatRepo.find({
-      where: { category: { id: categoryId }, isActive: true },
-      relations: ["category"],
-    });
-
-    // Handle reassignment if there are meats
-    if (meats.length > 0) {
-      if (options.reassignToCategoryId) {
-        const targetCategory = await categoryRepo.findOne({
-          where: { id: options.reassignToCategoryId, isActive: true },
-        });
-        if (!targetCategory) {
-          throw new Error(
-            `Target category with ID ${options.reassignToCategoryId} not found or inactive`
-          );
-        }
-
-        // Reassign all meats to target category
-        for (const meat of meats) {
-          const oldCategoryName = meat.category?.name;
-          meat.category = targetCategory;
-          meat.updatedAt = new Date();
-          await updateDb(meatRepo, meat, { queryRunner, skipSignal: false });
-
-          await auditLogger.logUpdate(
-            "Meat",
-            meat.id,
-            { categoryId: categoryId },
-            { categoryId: options.reassignToCategoryId },
-            user
-          );
-
-          logger.info(
-            `[CategoryState] Reassigned meat #${meat.id} from category #${categoryId} to #${options.reassignToCategoryId}`
-          );
-        }
-
-        // Log the reassignment
-        await logger.debug(
-          `Reassigned ${meats.length} meat(s) from category "${category.name}" to "${targetCategory.name}"`
-        );
-      } else {
-        // If no reassignment target, prevent deactivation
-        throw new Error(
-          `Cannot deactivate category #${categoryId} because it has ${meats.length} active meat(s). Provide a reassignToCategoryId or deactivate the meats first.`
-        );
-      }
-    }
-
-    // Deactivate the category
-    const oldStatus = category.isActive;
-    category.isActive = false;
-    category.updatedAt = new Date();
-
-    const updated = await updateDb(categoryRepo, category, { queryRunner, skipSignal: false });
-
-    await auditLogger.logUpdate(
-      "Category",
-      categoryId,
-      { isActive: oldStatus },
-      { isActive: false },
-      user
-    );
-
-    // Side effect: send notification
-    try {
-      await notificationService.create(
-        {
-          userId: 1,
-          title: "Category Deactivated",
-          message: `Category "${category.name}" has been deactivated.${meats.length > 0 ? ` ${meats.length} meat(s) were reassigned.` : ""}`,
-          type: "warning",
           metadata: {
             categoryId: category.id,
-            meatsReassigned: meats.length,
-            reassignToCategoryId: options.reassignToCategoryId || null,
+            categoryName: category.name,
           },
         },
         user,
         queryRunner
       );
     } catch (err) {
-      logger.error(`[CategoryState] Failed to send deactivation notification for category #${categoryId}:`, err);
+      logger.error(`[CategoryState] Failed to send activation notification:`, err);
     }
-
-    logger.info(`[CategoryState] Category #${categoryId} deactivated`);
-    return updated;
   }
 
   /**
-   * Merge a source category into a target category
-   * @param {number} sourceCategoryId - Category to merge from (will be deactivated)
-   * @param {number} targetCategoryId - Category to merge into (must be active)
+   * Side effect after a category is deactivated
+   * Called from CategorySubscriber.afterUpdate
+   * @param {number} categoryId
+   * @param {Category} category
+   * @param {Object} options
+   * @param {number} [options.reassignedCount] - Number of meats reassigned
+   * @param {number} [options.reassignedToCategoryId] - Target category ID
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async mergeCategories(
-    sourceCategoryId,
-    targetCategoryId,
-    user = "system",
-    queryRunner = null
-  ) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const categoryRepo = this._getRepo(queryRunner, Category);
-    const meatRepo = this._getRepo(queryRunner, Meat);
+  async onDeactivated(categoryId, category, options = {}, user = "system", queryRunner = null) {
+    const { reassignedCount = 0, reassignedToCategoryId = null } = options;
 
-    if (sourceCategoryId === targetCategoryId) {
-      throw new Error("Cannot merge a category into itself");
-    }
+    logger.info(`[CategoryState] ✅ Category #${categoryId} (${category.name}) deactivated by ${user}`);
 
-    const sourceCategory = await categoryRepo.findOne({
-      where: { id: sourceCategoryId },
-    });
-    if (!sourceCategory) {
-      throw new Error(`Source category with ID ${sourceCategoryId} not found`);
-    }
-
-    const targetCategory = await categoryRepo.findOne({
-      where: { id: targetCategoryId, isActive: true },
-    });
-    if (!targetCategory) {
-      throw new Error(`Target category with ID ${targetCategoryId} not found or inactive`);
-    }
-
-    // Get all meats from source category
-    const meats = await meatRepo.find({
-      where: { category: { id: sourceCategoryId } },
+    // Broadcast to UI
+    this._sendToRenderers("category:deactivated", {
+      id: category.id,
+      name: category.name,
+      reassignedCount,
+      reassignedToCategoryId,
+      deactivatedAt: new Date().toISOString(),
     });
 
-    // Reassign meats to target category
-    for (const meat of meats) {
-      const oldCategoryName = meat.category?.name;
-      meat.category = targetCategory;
-      meat.updatedAt = new Date();
-      await updateDb(meatRepo, meat, { queryRunner, skipSignal: false });
-
-      await auditLogger.logUpdate(
-        "Meat",
-        meat.id,
-        { categoryId: sourceCategoryId },
-        { categoryId: targetCategoryId },
-        user
-      );
-    }
-
-    // Deactivate source category
-    sourceCategory.isActive = false;
-    sourceCategory.updatedAt = new Date();
-    await updateDb(categoryRepo, sourceCategory, { queryRunner, skipSignal: false });
-
-    // Audit logs
-    await logger.debug(
-      `Merged category "${sourceCategory.name}" into "${targetCategory.name}". ${meats.length} meat(s) reassigned.`,
+    // Audit log
+    await auditLogger.logUpdate(
+      "Category",
+      categoryId,
+      { action: "deactivated", reassignedCount },
+      { isActive: false },
       user
     );
 
-    // Side effect: send notification
+    // Send notification (in-app)
     try {
+      const notificationService = require("../services/Notification");
+      const message = `Category "${category.name}" has been deactivated.` +
+        (reassignedCount > 0 ? ` ${reassignedCount} meat(s) were reassigned.` : "");
+
+      await notificationService.create(
+        {
+          userId: 1,
+          title: "Category Deactivated",
+          message,
+          type: "warning",
+          metadata: {
+            categoryId: category.id,
+            categoryName: category.name,
+            reassignedCount,
+            reassignedToCategoryId,
+          },
+        },
+        user,
+        queryRunner
+      );
+    } catch (err) {
+      logger.error(`[CategoryState] Failed to send deactivation notification:`, err);
+    }
+  }
+
+  /**
+   * Side effect after categories are merged
+   * Called from CategorySubscriber.afterUpdate or directly from CategoryService
+   * @param {Object} data
+   * @param {number} data.sourceCategoryId
+   * @param {Category} data.sourceCategory
+   * @param {number} data.targetCategoryId
+   * @param {Category} data.targetCategory
+   * @param {number} data.meatsReassigned
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onMerged(data, user = "system", queryRunner = null) {
+    const { sourceCategoryId, sourceCategory, targetCategoryId, targetCategory, meatsReassigned } = data;
+
+    logger.info(
+      `[CategoryState] ✅ Categories merged: #${sourceCategoryId} (${sourceCategory.name}) → #${targetCategoryId} (${targetCategory.name}) by ${user}`
+    );
+
+    // Broadcast to UI
+    this._sendToRenderers("category:merged", {
+      sourceCategoryId,
+      sourceCategoryName: sourceCategory.name,
+      targetCategoryId,
+      targetCategoryName: targetCategory.name,
+      meatsReassigned,
+      mergedAt: new Date().toISOString(),
+    });
+
+    // Audit log
+    await auditLogger.logUpdate(
+      "Category",
+      sourceCategoryId,
+      { action: "merged", targetCategoryId, meatsReassigned },
+      { isActive: false },
+      user
+    );
+
+    // Send notification (in-app)
+    try {
+      const notificationService = require("../services/Notification");
       await notificationService.create(
         {
           userId: 1,
           title: "Categories Merged",
-          message: `Category "${sourceCategory.name}" has been merged into "${targetCategory.name}". ${meats.length} meat(s) were reassigned.`,
+          message: `Category "${sourceCategory.name}" has been merged into "${targetCategory.name}". ${meatsReassigned} meat(s) were reassigned.`,
           type: "info",
           metadata: {
             sourceCategoryId,
+            sourceCategoryName: sourceCategory.name,
             targetCategoryId,
-            meatsReassigned: meats.length,
+            targetCategoryName: targetCategory.name,
+            meatsReassigned,
           },
         },
         user,
@@ -294,44 +253,85 @@ class CategoryStateService {
     } catch (err) {
       logger.error(`[CategoryState] Failed to send merge notification:`, err);
     }
-
-    logger.info(
-      `[CategoryState] Merged category #${sourceCategoryId} into #${targetCategoryId}. ${meats.length} meat(s) reassigned.`
-    );
-
-    return {
-      sourceCategory,
-      targetCategory,
-      meatsReassigned: meats.length,
-    };
   }
 
   /**
-   * Bulk deactivate categories with optional reassignment
-   * @param {Array<number>} categoryIds
-   * @param {Object} options
-   * @param {number} [options.reassignToCategoryId]
+   * Side effect after a category is updated (generic)
+   * Called from CategorySubscriber.afterUpdate for other changes
+   * @param {number} categoryId
+   * @param {Category} category
+   * @param {Object} changes
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async bulkDeactivateCategories(
-    categoryIds,
-    options = {},
-    user = "system",
-    queryRunner = null
-  ) {
-    const results = { deactivated: [], errors: [] };
+  async onUpdate(categoryId, category, changes, user = "system", queryRunner = null) {
+    logger.info(`[CategoryState] ✅ Category #${categoryId} (${category.name}) updated (fields: ${Object.keys(changes).join(", ")})`);
 
-    for (const categoryId of categoryIds) {
-      try {
-        const result = await this.deactivate(categoryId, options, user, queryRunner);
-        results.deactivated.push(result);
-      } catch (err) {
-        results.errors.push({ categoryId, error: err.message });
-      }
-    }
+    // Broadcast to UI
+    this._sendToRenderers("category:updated", {
+      id: category.id,
+      name: category.name,
+      changes,
+      updatedAt: category.updatedAt,
+    });
 
-    return results;
+    // Audit log
+    await auditLogger.logUpdate(
+      "Category",
+      categoryId,
+      changes,
+      category,
+      user
+    );
+  }
+
+  /**
+   * Side effect after a category is soft-deleted
+   * Called from CategorySubscriber.afterRemove
+   * @param {number} categoryId
+   * @param {Category} category
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onDelete(categoryId, category, user = "system", queryRunner = null) {
+    logger.info(`[CategoryState] ✅ Category #${categoryId} (${category?.name}) soft-deleted by ${user}`);
+
+    // Broadcast to UI
+    this._sendToRenderers("category:deleted", {
+      id: categoryId,
+      name: category?.name,
+      deletedAt: new Date().toISOString(),
+    });
+
+    // Audit log
+    await auditLogger.logCreate("Category", categoryId, category, user);
+  }
+
+  /**
+   * Side effect after a category is restored
+   * @param {number} categoryId
+   * @param {Category} category
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onRestore(categoryId, category, user = "system", queryRunner = null) {
+    logger.info(`[CategoryState] ✅ Category #${categoryId} (${category.name}) restored by ${user}`);
+
+    // Broadcast to UI
+    this._sendToRenderers("category:restored", {
+      id: category.id,
+      name: category.name,
+      restoredAt: new Date().toISOString(),
+    });
+
+    // Audit log
+    await auditLogger.logUpdate(
+      "Category",
+      categoryId,
+      { action: "restored" },
+      { isActive: true },
+      user
+    );
   }
 }
 

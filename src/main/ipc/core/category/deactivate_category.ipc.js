@@ -1,6 +1,5 @@
 // src/main/ipc/core/category/deactivate_category.ipc.js
-const { CategoryStateService } = require("../../../../stateServices/Category");
-const { AppDataSource } = require("../../../db/data-source");
+const categoryService = require("../../../../services/Category");  // ✅ CHANGED
 
 module.exports = async (params, queryRunner) => {
   const { categoryId, reassignToCategoryId, user = "system" } = params;
@@ -10,13 +9,21 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new CategoryStateService(AppDataSource);
-    const result = await stateService.deactivate(
-      categoryId,
-      { reassignToCategoryId },
-      user,
-      queryRunner
-    );
+    let result;
+
+    // ✅ If reassignToCategoryId is provided, use mergeCategories
+    if (reassignToCategoryId) {
+      result = await categoryService.mergeCategories(
+        categoryId,
+        reassignToCategoryId,
+        user,
+        queryRunner
+      );
+    } else {
+      // ✅ Otherwise just deactivate (will throw if it has active meats)
+      result = await categoryService.updateIsActive(categoryId, false, user, queryRunner);
+    }
+
     return {
       status: true,
       message: `Category #${categoryId} deactivated successfully`,

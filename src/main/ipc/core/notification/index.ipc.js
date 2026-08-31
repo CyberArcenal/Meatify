@@ -35,7 +35,6 @@ class NotificationHandler {
 
     // 🔄 BATCH OPERATIONS
     this.bulkCreateNotifications = this.importHandler("./bulk_create.ipc");
-    this.bulkUpdateNotifications = this.importHandler("./bulk_update.ipc");
     this.importNotificationsCSV = this.importHandler("./import_csv.ipc");
     this.exportNotifications = this.importHandler("./export.ipc");
   }
@@ -105,8 +104,6 @@ class NotificationHandler {
         // 🔄 BATCH OPERATIONS (with transaction)
         case "bulkCreateNotifications":
           return await this.handleWithTransaction(this.bulkCreateNotifications, params);
-        case "bulkUpdateNotifications":
-          return await this.handleWithTransaction(this.bulkUpdateNotifications, params);
         case "importNotificationsCSV":
           return await this.handleWithTransaction(this.importNotificationsCSV, params);
 

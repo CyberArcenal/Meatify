@@ -1,23 +1,11 @@
 // src/subscribers/PurchaseSubscriber.js
 const Purchase = require("../entities/Purchase");
 const { logger } = require("../utils/logger");
-const { PurchaseStateService } = require("../stateServices/Purchase");
 const { AppDataSource } = require("../main/db/data-source");
 
 logger.debug("[Subscriber] Loading PurchaseSubscriber");
 
 class PurchaseSubscriber {
-  constructor() {
-    this.stateService = null;
-  }
-
-  async getStateService(dataSource) {
-    if (!this.stateService) {
-      this.stateService = new PurchaseStateService(dataSource);
-    }
-    return this.stateService;
-  }
-
   listenTo() {
     return Purchase;
   }
@@ -47,22 +35,31 @@ class PurchaseSubscriber {
       totalAmount: entity.totalAmount,
     });
 
-    // If purchase is created with 'approved' or 'completed' status, trigger state service
+    const { PurchaseStateService } = require("../stateServices/Purchase");
+    const stateService = new PurchaseStateService(AppDataSource);
+
+    // ✅ Route to state service for creation side effects
+    try {
+      await stateService.onCreated(entity.id, entity, "system", queryRunner);
+    } catch (err) {
+      logger.error(`[PurchaseSubscriber] Failed to handle onCreated for purchase #${entity.id}:`, err);
+    }
+
+    // ✅ If purchase is created with 'approved' or 'completed' status, trigger status side effects
     if (entity.status === "approved") {
       try {
-        const service = await this.getStateService(manager.connection);
-        await service.approve(entity.id, "system", queryRunner);
+        await stateService.onApproved(entity.id, entity, "system", queryRunner);
       } catch (err) {
-        logger.error("[PurchaseSubscriber] Failed to approve purchase on insert:", err);
+        logger.error(`[PurchaseSubscriber] Failed to handle onApproved for purchase #${entity.id}:`, err);
       }
     }
 
     if (entity.status === "completed") {
       try {
-        const service = await this.getStateService(manager.connection);
-        await service.complete(entity.id, "system", queryRunner);
+        const batchCount = entity.purchaseItems?.length || 0;
+        await stateService.onCompleted(entity.id, entity, { batchCount }, "system", queryRunner);
       } catch (err) {
-        logger.error("[PurchaseSubscriber] Failed to complete purchase on insert:", err);
+        logger.error(`[PurchaseSubscriber] Failed to handle onCompleted for purchase #${entity.id}:`, err);
       }
     }
   }
@@ -90,30 +87,73 @@ class PurchaseSubscriber {
       newStatus: entity.status,
     });
 
-    // Skip if status hasn't changed
-    if (databaseEntity && databaseEntity.status === entity.status) {
-      return;
+    // Skip if no changes
+    if (!databaseEntity) return;
+
+    const { PurchaseStateService } = require("../stateServices/Purchase");
+    const stateService = new PurchaseStateService(AppDataSource);
+
+    // ────────────────────────────────────────────────────────────────
+    // ✅ 1. Handle Status Changes
+    // ────────────────────────────────────────────────────────────────
+    if (databaseEntity.status !== entity.status) {
+      try {
+        switch (entity.status) {
+          case "approved":
+            await stateService.onApproved(entity.id, entity, "system", queryRunner);
+            break;
+          case "completed":
+            const batchCount = entity.purchaseItems?.length || 0;
+            await stateService.onCompleted(entity.id, entity, { batchCount }, "system", queryRunner);
+            break;
+          case "cancelled":
+            await stateService.onCancelled(entity.id, entity, "", "system", queryRunner);
+            break;
+          default:
+            break;
+        }
+      } catch (err) {
+        logger.error(`[PurchaseSubscriber] Failed to handle status change to ${entity.status} for purchase #${entity.id}:`, err);
+      }
     }
 
-    // Trigger state service based on new status
-    try {
-      const service = await this.getStateService(manager.connection);
+    // ────────────────────────────────────────────────────────────────
+    // ✅ 2. Detect Other Field Changes
+    // ────────────────────────────────────────────────────────────────
+    const changedFields = {};
+    const skipKeys = ['id', 'status', 'updatedAt', 'createdAt', 'deletedAt'];
 
-      switch (entity.status) {
-        case "approved":
-          await service.approve(entity.id, "system", queryRunner);
-          break;
-        case "completed":
-          await service.complete(entity.id, "system", queryRunner);
-          break;
-        case "cancelled":
-          await service.cancel(entity.id, "", "system", queryRunner);
-          break;
-        default:
-          break;
+    for (const key of Object.keys(entity)) {
+      if (!skipKeys.includes(key)) {
+        if (databaseEntity[key] !== entity[key]) {
+          changedFields[key] = { old: databaseEntity[key], new: entity[key] };
+        }
       }
-    } catch (err) {
-      logger.error(`[PurchaseSubscriber] Failed to handle status change to ${entity.status}:`, err);
+    }
+
+    if (Object.keys(changedFields).length > 0) {
+      logger.info(
+        `[PurchaseSubscriber] Purchase #${entity.id} updated (fields: ${Object.keys(changedFields).join(', ')}) → routing to state service`
+      );
+
+      try {
+        await stateService.onUpdated(entity.id, entity, changedFields, "system", queryRunner);
+      } catch (err) {
+        logger.error(`[PurchaseSubscriber] Failed to handle onUpdated for purchase #${entity.id}:`, err);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // ✅ 3. Detect Restoration (deletedAt becomes null)
+    // ────────────────────────────────────────────────────────────────
+    if (databaseEntity.deletedAt !== undefined && entity.deletedAt === null) {
+      logger.info(`[PurchaseSubscriber] Purchase #${entity.id} restored → routing to state service`);
+
+      try {
+        await stateService.onRestored(entity.id, entity, "system", queryRunner);
+      } catch (err) {
+        logger.error(`[PurchaseSubscriber] Failed to handle onRestored for purchase #${entity.id}:`, err);
+      }
     }
   }
 
@@ -130,10 +170,20 @@ class PurchaseSubscriber {
   /**
    * @param {{ databaseEntity?: any; entityId: any }} event
    */
-  afterRemove(event) {
+  async afterRemove(event, { manager, queryRunner }) {
+    const { entityId, databaseEntity } = event;
     logger.info("[PurchaseSubscriber] afterRemove:", {
-      id: event.entityId,
+      id: entityId,
     });
+
+    // ✅ Route to state service for side effects
+    try {
+      const { PurchaseStateService } = require("../stateServices/Purchase");
+      const stateService = new PurchaseStateService(AppDataSource);
+      await stateService.onDeleted(entityId, databaseEntity, "system", queryRunner);
+    } catch (err) {
+      logger.error(`[PurchaseSubscriber] Failed to handle onDeleted for purchase #${entityId}:`, err);
+    }
   }
 }
 

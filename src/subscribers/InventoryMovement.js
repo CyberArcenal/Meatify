@@ -1,22 +1,14 @@
 // src/subscribers/InventoryMovementSubscriber.js
+//@ts-check
 const InventoryMovement = require("../entities/InventoryMovement");
+const Meat = require("../entities/Meat");
+const Batch = require("../entities/Batch");
 const { logger } = require("../utils/logger");
-const { InventoryMovementStateService } = require("../stateServices/InventoryMovement");
+const { AppDataSource } = require("../main/db/data-source");
 
 logger.debug("[Subscriber] Loading InventoryMovementSubscriber");
 
 class InventoryMovementSubscriber {
-  constructor() {
-    this.stateService = null;
-  }
-
-  async getStateService(dataSource) {
-    if (!this.stateService) {
-      this.stateService = new InventoryMovementStateService(dataSource);
-    }
-    return this.stateService;
-  }
-
   listenTo() {
     return InventoryMovement;
   }
@@ -31,6 +23,8 @@ class InventoryMovementSubscriber {
       qtyChange: entity?.qtyChange,
       meatId: entity?.meatId,
       batchId: entity?.batchId,
+      saleId: entity?.saleId,
+      notes: entity?.notes?.substring(0, 50),
     });
   }
 
@@ -38,22 +32,59 @@ class InventoryMovementSubscriber {
    * @param {import("../entities/InventoryMovement")} entity
    */
   async afterInsert(entity, { manager, queryRunner }) {
+    // Load relations for better logging context
+    let meatName = null;
+    let batchCode = null;
+
+    try {
+      if (entity.meatId) {
+        // ✅ Use imported Meat entity, not string
+        const meat = await manager.getRepository(Meat).findOne({
+          where: { id: entity.meatId },
+          select: ["name"], // only fetch what we need
+        });
+        meatName = meat?.name || null;
+      }
+      if (entity.batchId) {
+        // ✅ Use imported Batch entity, not string
+        const batch = await manager.getRepository(Batch).findOne({
+          where: { id: entity.batchId },
+          select: ["batchCode"], // only fetch what we need
+        });
+        batchCode = batch?.batchCode || null;
+      }
+    } catch (err) {
+      // Non-critical – log warning but don't break transaction
+      logger.warn(
+        `[InventoryMovementSubscriber] Failed to load relations for movement #${entity.id}:`,
+        err.message,
+      );
+    }
+
     logger.info("[InventoryMovementSubscriber] afterInsert:", {
       id: entity.id,
       movementType: entity.movementType,
       qtyChange: entity.qtyChange,
       meatId: entity.meatId,
+      meatName: meatName,
       batchId: entity.batchId,
+      batchCode: batchCode,
+      saleId: entity.saleId,
+      notes: entity.notes?.substring(0, 50),
+      timestamp: entity.timestamp,
     });
 
-    // Trigger batch update if batchId exists
+    // ✅ Route to state service for side effects (UI broadcast, audit log, batch update broadcast)
     if (entity.batchId) {
       try {
-        const service = await this.getStateService(manager.connection);
-        await service.onMovementCreated(entity, "system", queryRunner);
+        const { InventoryMovementStateService } = require("../stateServices/InventoryMovement");
+        const stateService = new InventoryMovementStateService(AppDataSource);
+        await stateService.onMovementCreated(entity, "system", queryRunner);
       } catch (err) {
-        logger.error("[InventoryMovementSubscriber] Failed to update batch:", err);
-        // Don't throw – we don't want to break the transaction
+        logger.error(
+          `[InventoryMovementSubscriber] Failed to handle movement #${entity.id}:`,
+          err,
+        );
       }
     }
   }
@@ -65,19 +96,94 @@ class InventoryMovementSubscriber {
     logger.debug("[InventoryMovementSubscriber] beforeUpdate:", {
       id: entity?.id,
       movementType: entity?.movementType,
+      qtyChange: entity?.qtyChange,
+      notes: entity?.notes?.substring(0, 50),
     });
   }
 
   /**
    * @param {{ databaseEntity: any; entity: any }} event
    */
-  afterUpdate(event, { manager, queryRunner }) {
+  async afterUpdate(event, { manager, queryRunner }) {
     const { entity, databaseEntity } = event;
+    if (!entity) return;
+
+    // Load relations for better logging context
+    let meatName = null;
+    let batchCode = null;
+
+    try {
+      if (entity.meatId) {
+        const meat = await manager.getRepository(Meat).findOne({
+          where: { id: entity.meatId },
+          select: ["name"],
+        });
+        meatName = meat?.name || null;
+      }
+      if (entity.batchId) {
+        const batch = await manager.getRepository(Batch).findOne({
+          where: { id: entity.batchId },
+          select: ["batchCode"],
+        });
+        batchCode = batch?.batchCode || null;
+      }
+    } catch (err) {
+      logger.warn(
+        `[InventoryMovementSubscriber] Failed to load relations for movement #${entity.id} on update:`,
+        err.message,
+      );
+    }
+
     logger.info("[InventoryMovementSubscriber] afterUpdate:", {
-      id: entity?.id,
-      oldNotes: databaseEntity?.notes,
-      newNotes: entity?.notes,
+      id: entity.id,
+      movementType: entity.movementType,
+      qtyChange: entity.qtyChange,
+      meatId: entity.meatId,
+      meatName: meatName,
+      batchId: entity.batchId,
+      batchCode: batchCode,
+      saleId: entity.saleId,
+      oldMovementType: databaseEntity?.movementType,
+      newMovementType: entity.movementType,
+      oldNotes: databaseEntity?.notes?.substring(0, 50),
+      newNotes: entity.notes?.substring(0, 50),
+      oldQtyChange: databaseEntity?.qtyChange,
+      newQtyChange: entity.qtyChange,
+      updatedAt: entity.updatedAt,
     });
+
+    // Skip if no changes
+    if (!databaseEntity) return;
+
+    const { InventoryMovementStateService } = require("../stateServices/InventoryMovement");
+    const stateService = new InventoryMovementStateService(AppDataSource);
+
+    // Detect other field changes (notes, movementType, timestamp)
+    const changedFields = {};
+    const skipKeys = ['id', 'updatedAt', 'createdAt', 'meatId', 'batchId', 'saleId', 'qtyChange'];
+
+    for (const key of Object.keys(entity)) {
+      if (!skipKeys.includes(key)) {
+        if (databaseEntity[key] !== entity[key]) {
+          changedFields[key] = { old: databaseEntity[key], new: entity[key] };
+        }
+      }
+    }
+
+    if (Object.keys(changedFields).length > 0) {
+      logger.info(
+        `[InventoryMovementSubscriber] Movement #${entity.id} updated (fields: ${Object.keys(changedFields).join(', ')}) → routing to state service`,
+      );
+
+      try {
+        await stateService.onMovementUpdated(entity.id, entity, changedFields, "system", queryRunner);
+      } catch (err) {
+        logger.error(
+          `[InventoryMovementSubscriber] Failed to handle onMovementUpdated for movement #${entity.id}:`,
+          err,
+        );
+      }
+    }
   }
 
   /**
@@ -87,16 +193,89 @@ class InventoryMovementSubscriber {
     logger.debug("[InventoryMovementSubscriber] beforeRemove:", {
       id: entity?.id,
       movementType: entity?.movementType,
+      qtyChange: entity?.qtyChange,
+      meatId: entity?.meatId,
+      batchId: entity?.batchId,
     });
   }
 
   /**
    * @param {{ databaseEntity?: any; entityId: any }} event
    */
-  afterRemove(event) {
+  async afterRemove(event, { manager, queryRunner }) {
+    const { entityId, databaseEntity } = event;
+
+    let movementType = databaseEntity?.movementType;
+    let qtyChange = databaseEntity?.qtyChange;
+    let batchId = databaseEntity?.batchId;
+    let meatId = databaseEntity?.meatId;
+    let batchCode = null;
+    let meatName = null;
+
+    // If databaseEntity not fully loaded, try to fetch it
+    if (!databaseEntity) {
+      try {
+        const repo = manager.getRepository(InventoryMovement);
+        const movement = await repo.findOne({
+          where: { id: entityId },
+          withDeleted: true,
+        });
+        movementType = movement?.movementType;
+        qtyChange = movement?.qtyChange;
+        batchId = movement?.batchId;
+        meatId = movement?.meatId;
+      } catch (err) {
+        // Silently fail – non-critical
+      }
+    }
+
+    // Try to get batchCode and meatName even on delete
+    try {
+      if (batchId) {
+        const batch = await manager.getRepository(Batch).findOne({
+          where: { id: batchId },
+          select: ["batchCode"],
+          withDeleted: true,
+        });
+        batchCode = batch?.batchCode || null;
+      }
+      if (meatId) {
+        const meat = await manager.getRepository(Meat).findOne({
+          where: { id: meatId },
+          select: ["name"],
+          withDeleted: true,
+        });
+        meatName = meat?.name || null;
+      }
+    } catch (err) {
+      logger.warn(
+        `[InventoryMovementSubscriber] Failed to load relations for deleted movement #${entityId}:`,
+        err.message,
+      );
+    }
+
     logger.info("[InventoryMovementSubscriber] afterRemove:", {
-      id: event.entityId,
+      id: entityId,
+      movementType: movementType,
+      qtyChange: qtyChange,
+      meatId: meatId,
+      meatName: meatName,
+      batchId: batchId,
+      batchCode: batchCode,
+      deletedAt: new Date().toISOString(),
     });
+
+    // ✅ Route to state service for side effects
+    try {
+      const { InventoryMovementStateService } = require("../stateServices/InventoryMovement");
+      const stateService = new InventoryMovementStateService(AppDataSource);
+      await stateService.onMovementDeleted(entityId, databaseEntity, "system", queryRunner);
+    } catch (err) {
+      logger.error(
+        `[InventoryMovementSubscriber] Failed to handle onMovementDeleted for movement #${entityId}:`,
+        err,
+      );
+    }
   }
 }
 

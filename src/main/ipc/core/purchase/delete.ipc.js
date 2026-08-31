@@ -9,7 +9,8 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const result = await purchaseService.delete(id, user, queryRunner);
+    // Use cancel instead of delete (soft delete via status change)
+    const result = await purchaseService.cancel(id, "Deleted by user", user, queryRunner);
     return {
       status: true,
       message: "Purchase cancelled successfully",

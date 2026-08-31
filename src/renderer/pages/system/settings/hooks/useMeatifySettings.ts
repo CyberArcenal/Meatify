@@ -163,7 +163,6 @@ export const useMeatifySettings = () => {
       }
     } catch (err: any) {
       setError(err.message || "Failed to load settings");
-      dialogs.error(err.message || "Failed to load settings");
     } finally {
       setLoading(false);
     }
@@ -236,7 +235,6 @@ export const useMeatifySettings = () => {
       }
     } catch (err: any) {
       setError(err.message || "Failed to save settings");
-      dialogs.error(err.message || "Failed to save settings");
     } finally {
       setSaving(false);
     }
@@ -258,7 +256,6 @@ export const useMeatifySettings = () => {
       await refreshSettings();
     } catch (err: any) {
       setError(err.message || "Failed to reset settings");
-      dialogs.error(err.message || "Failed to reset settings");
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,5 @@
 // src/main/ipc/core/supplier/deactivate_supplier.ipc.js
-const { SupplierStateService } = require("../../../../stateServices/Supplier");
-const { AppDataSource } = require("../../../db/data-source");
+const supplierService = require("../../../../services/Supplier");
 
 module.exports = async (params, queryRunner) => {
   const { 
@@ -15,8 +14,8 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new SupplierStateService(AppDataSource);
-    const result = await stateService.deactivate(
+    // ✅ Tama: Use SupplierService (not State Service)
+    const result = await supplierService.deactivate(
       supplierId,
       { reassignToSupplierId, allowWithPendingPurchases },
       user,

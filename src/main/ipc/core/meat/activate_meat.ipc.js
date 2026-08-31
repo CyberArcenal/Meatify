@@ -1,6 +1,5 @@
 // src/main/ipc/core/meat/activate_meat.ipc.js
-const { MeatStateService } = require("../../../../stateServices/Meat");
-const { AppDataSource } = require("../../../db/data-source");
+const meatService = require("../../../../services/Meat");
 
 module.exports = async (params, queryRunner) => {
   const { meatId, user = "system" } = params;
@@ -10,8 +9,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new MeatStateService(AppDataSource);
-    const result = await stateService.activate(meatId, user, queryRunner);
+    const result = await meatService.activate(meatId, user, queryRunner);
     return {
       status: true,
       message: `Meat #${meatId} activated successfully`,

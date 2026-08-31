@@ -3,8 +3,8 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
-const system = require("../utils/system"); // ✅ ADDED - for flexible settings
-const { SettingType } = require("../entities/systemSettings"); // ✅ ADDED - for setting types
+const system = require("../utils/system");
+const { SettingType } = require("../entities/systemSettings");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -80,7 +80,7 @@ class PurchaseService {
   }
 
   /**
-   * ✅ NEW: Check if audit logging is enabled
+   * Check if audit logging is enabled
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<boolean>}
    */
@@ -88,486 +88,141 @@ class PurchaseService {
     try {
       return await system.auditLogEnabled();
     } catch (error) {
-      logger.warn(`[Purchase] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[Purchase] Failed to check audit enabled status: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
 
   /**
-   * ✅ NEW: Get allowed purchase statuses from settings
+   * Get allowed purchase statuses from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<string[]>}
    */
   async _getAllowedStatuses(qr = null) {
     try {
-      return await system.getArray("allowed_purchase_statuses", SettingType.INVENTORY, [
-        "pending", "approved", "completed", "cancelled"
-      ]);
+      return await system.getArray(
+        "allowed_purchase_statuses",
+        SettingType.INVENTORY,
+        ["pending", "approved", "completed", "cancelled"],
+      );
     } catch (error) {
-      logger.warn(`[Purchase] Failed to get allowed statuses: ${error.message}, using defaults`);
+      logger.warn(
+        `[Purchase] Failed to get allowed statuses: ${error.message}, using defaults`,
+      );
       return ["pending", "approved", "completed", "cancelled"];
     }
   }
 
   /**
-   * ✅ NEW: Get company prefix for reference number
+   * Get company prefix for reference number
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<string>}
    */
   async _getReferencePrefix(qr = null) {
     try {
-      const prefix = await system.getValue("purchase_reference_prefix", SettingType.INVENTORY, null);
+      const prefix = await system.getValue(
+        "purchase_reference_prefix",
+        SettingType.INVENTORY,
+        null,
+      );
       if (prefix && prefix.trim()) {
         return prefix.trim().toUpperCase();
       }
       const company = await system.companyName();
       return company.substring(0, 2).toUpperCase() || "PO";
     } catch (error) {
-      logger.warn(`[Purchase] Failed to get reference prefix: ${error.message}, defaulting to "PO"`);
+      logger.warn(
+        `[Purchase] Failed to get reference prefix: ${error.message}, defaulting to "PO"`,
+      );
       return "PO";
     }
   }
 
   /**
-   * ✅ NEW: Get max notes length from settings
+   * Get max notes length from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
   async _getMaxNotesLength(qr = null) {
     try {
-      return await system.getInt("max_purchase_notes_length", SettingType.INVENTORY, 500);
+      return await system.getInt(
+        "max_purchase_notes_length",
+        SettingType.INVENTORY,
+        500,
+      );
     } catch (error) {
-      logger.warn(`[Purchase] Failed to get max notes length: ${error.message}, defaulting to 500`);
+      logger.warn(
+        `[Purchase] Failed to get max notes length: ${error.message}, defaulting to 500`,
+      );
       return 500;
     }
   }
 
   /**
-   * ✅ NEW: Get purchase retention days from settings
+   * Get purchase retention days from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
   async _getRetentionDays(qr = null) {
     try {
-      return await system.getInt("purchase_retention_days", SettingType.INVENTORY, 730);
+      return await system.getInt(
+        "purchase_retention_days",
+        SettingType.INVENTORY,
+        730,
+      );
     } catch (error) {
-      logger.warn(`[Purchase] Failed to get retention days: ${error.message}, defaulting to 730`);
+      logger.warn(
+        `[Purchase] Failed to get retention days: ${error.message}, defaulting to 730`,
+      );
       return 730;
     }
   }
 
   /**
-   * ✅ NEW: Get max quantity from settings
+   * Get max quantity from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
   async _getMaxQuantity(qr = null) {
     try {
-      return await system.getDecimal("max_purchase_quantity", SettingType.INVENTORY, 9999.999);
+      return await system.getDecimal(
+        "max_purchase_quantity",
+        SettingType.INVENTORY,
+        9999.999,
+      );
     } catch (error) {
-      logger.warn(`[Purchase] Failed to get max quantity: ${error.message}, defaulting to 9999.999`);
+      logger.warn(
+        `[Purchase] Failed to get max quantity: ${error.message}, defaulting to 9999.999`,
+      );
       return 9999.999;
     }
   }
 
   /**
-   * ✅ NEW: Get max unit price from settings
+   * Get max unit price from settings
    * @param {import("typeorm").QueryRunner | null} qr
    * @returns {Promise<number>}
    */
   async _getMaxUnitPrice(qr = null) {
     try {
-      return await system.getDecimal("max_purchase_unit_price", SettingType.INVENTORY, 9999.99);
+      return await system.getDecimal(
+        "max_purchase_unit_price",
+        SettingType.INVENTORY,
+        9999.99,
+      );
     } catch (error) {
-      logger.warn(`[Purchase] Failed to get max unit price: ${error.message}, defaulting to 9999.99`);
+      logger.warn(
+        `[Purchase] Failed to get max unit price: ${error.message}, defaulting to 9999.99`,
+      );
       return 9999.99;
     }
   }
 
-  /**
-   * Create a new purchase (pending status)
-   * @param {Object} data - { supplierId, items, referenceNo?, orderDate?, status?, notes? }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async create(data, user = "system", qr = null) {
-    const { saveDb } = require("../utils/dbUtils/dbActions");
-    const Purchase = require("../entities/Purchase");
-    const PurchaseItem = require("../entities/PurchaseItem");
-    const Meat = require("../entities/Meat");
-    const Supplier = require("../entities/Supplier");
-
-    const purchaseRepo = this._getRepo(qr, Purchase);
-    const purchaseItemRepo = this._getRepo(qr, PurchaseItem);
-    const meatRepo = this._getRepo(qr, Meat);
-    const supplierRepo = this._getRepo(qr, Supplier);
-
-    try {
-      // Validate required fields
-      if (!data.supplierId) throw new Error("supplierId is required");
-      if (!data.items || !Array.isArray(data.items) || data.items.length === 0) {
-        throw new Error("At least one item is required");
-      }
-
-      // ✅ Validate notes length
-      if (data.notes) {
-        const maxNotesLength = await this._getMaxNotesLength(qr);
-        if (data.notes.length > maxNotesLength) {
-          throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
-        }
-      }
-
-      // ✅ Validate status if provided
-      if (data.status) {
-        const allowedStatuses = await this._getAllowedStatuses(qr);
-        if (!allowedStatuses.includes(data.status)) {
-          throw new Error(
-            `Invalid purchase status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`
-          );
-        }
-      }
-
-      // Validate supplier
-      const supplier = await supplierRepo.findOne({
-        where: { id: data.supplierId, isActive: true },
-      });
-      if (!supplier) {
-        throw new Error(`Supplier with ID ${data.supplierId} not found or inactive`);
-      }
-
-      // ✅ Get max quantity and unit price for validation
-      const maxQuantity = await this._getMaxQuantity(qr);
-      const maxUnitPrice = await this._getMaxUnitPrice(qr);
-
-      // Validate items and prepare purchase items
-      const purchaseItems = [];
-      let totalAmount = 0;
-
-      for (const itemData of data.items) {
-        if (!itemData.meatId) throw new Error("meatId is required for each item");
-        if (!itemData.quantity || itemData.quantity <= 0) {
-          throw new Error("quantity must be greater than 0");
-        }
-        // ✅ Validate max quantity
-        if (itemData.quantity > maxQuantity) {
-          throw new Error(`Quantity ${itemData.quantity} exceeds maximum allowed of ${maxQuantity}`);
-        }
-        if (itemData.unitPrice === undefined || itemData.unitPrice < 0) {
-          throw new Error("unitPrice must be non-negative");
-        }
-        // ✅ Validate max unit price
-        if (itemData.unitPrice > maxUnitPrice) {
-          throw new Error(`Unit price ₱${itemData.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
-        }
-        if (!itemData.expiryDate) throw new Error("expiryDate is required for each item");
-
-        const meat = await meatRepo.findOne({ where: { id: itemData.meatId, isActive: true } });
-        if (!meat) {
-          throw new Error(`Meat with ID ${itemData.meatId} not found or inactive`);
-        }
-
-        const expiryDate = new Date(itemData.expiryDate);
-        if (isNaN(expiryDate.getTime())) {
-          throw new Error("Invalid expiryDate format");
-        }
-
-        const subtotal = itemData.quantity * itemData.unitPrice;
-        totalAmount += subtotal;
-
-        purchaseItems.push({
-          quantity: itemData.quantity,
-          unitPrice: itemData.unitPrice,
-          subtotal: subtotal,
-          expiryDate: expiryDate,
-          meat: meat,
-        });
-      }
-
-      // Generate reference if not provided
-      let referenceNo = data.referenceNo;
-      if (!referenceNo) {
-        const prefix = await this._getReferencePrefix(qr);
-        referenceNo = await this.generateReferenceNo(purchaseRepo, prefix);
-      } else {
-        const existing = await purchaseRepo.findOne({ where: { referenceNo } });
-        if (existing) {
-          throw new Error(`Reference "${referenceNo}" already exists`);
-        }
-      }
-
-      // Create purchase
-      const purchase = purchaseRepo.create({
-        referenceNo,
-        orderDate: data.orderDate ? new Date(data.orderDate) : new Date(),
-        status: data.status || "pending",
-        totalAmount: Math.round(totalAmount * 100) / 100,
-        notes: data.notes || null,
-        supplier: supplier,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-
-      const savedPurchase = await saveDb(purchaseRepo, purchase, { queryRunner: qr });
-
-      // Create purchase items
-      for (const itemData of purchaseItems) {
-        const purchaseItem = purchaseItemRepo.create({
-          ...itemData,
-          purchase: savedPurchase,
-          createdAt: new Date(),
-        });
-        await saveDb(purchaseItemRepo, purchaseItem, { queryRunner: qr });
-      }
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logCreate("Purchase", savedPurchase.id, savedPurchase, user);
-      }
-
-      logger.debug(`Purchase created: #${savedPurchase.id} - ${savedPurchase.referenceNo}`);
-
-      // Reload with relations
-      const fullPurchase = await purchaseRepo.findOne({
-        where: { id: savedPurchase.id },
-        relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
-      });
-
-      return fullPurchase;
-    } catch (error) {
-      console.error("Failed to create purchase:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Update an existing purchase (only allowed for pending status)
-   * @param {number} id
-   * @param {Object} data - { supplierId?, items?, referenceNo?, orderDate?, notes? }
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async update(id, data, user = "system", qr = null) {
-    const { updateDb, saveDb, removeDb } = require("../utils/dbUtils/dbActions");
-    const Purchase = require("../entities/Purchase");
-    const PurchaseItem = require("../entities/PurchaseItem");
-    const Meat = require("../entities/Meat");
-    const Supplier = require("../entities/Supplier");
-
-    const purchaseRepo = this._getRepo(qr, Purchase);
-    const purchaseItemRepo = this._getRepo(qr, PurchaseItem);
-    const meatRepo = this._getRepo(qr, Meat);
-    const supplierRepo = this._getRepo(qr, Supplier);
-
-    try {
-      const existing = await purchaseRepo.findOne({
-        where: { id },
-        relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
-      });
-      if (!existing) {
-        throw new Error(`Purchase with ID ${id} not found`);
-      }
-
-      // Only allow updates for pending or approved status (not completed/cancelled)
-      if (existing.status === "completed" || existing.status === "cancelled") {
-        throw new Error(`Cannot update a purchase with status "${existing.status}"`);
-      }
-
-      const oldData = { ...existing };
-
-      // ✅ Validate notes length if provided
-      if (data.notes !== undefined) {
-        const maxNotesLength = await this._getMaxNotesLength(qr);
-        if (data.notes.length > maxNotesLength) {
-          throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
-        }
-      }
-
-      // Handle supplier change
-      if (data.supplierId !== undefined) {
-        const supplier = await supplierRepo.findOne({
-          where: { id: data.supplierId, isActive: true },
-        });
-        if (!supplier) {
-          throw new Error(`Supplier with ID ${data.supplierId} not found or inactive`);
-        }
-        existing.supplier = supplier;
-        delete data.supplierId;
-      }
-
-      // Handle reference change
-      if (data.referenceNo && data.referenceNo !== existing.referenceNo) {
-        const duplicate = await purchaseRepo.findOne({
-          where: { referenceNo: data.referenceNo },
-        });
-        if (duplicate) {
-          throw new Error(`Reference "${data.referenceNo}" already exists`);
-        }
-        existing.referenceNo = data.referenceNo;
-        delete data.referenceNo;
-      }
-
-      // Handle items update (only if pending)
-      if (data.items) {
-        if (existing.status !== "pending") {
-          throw new Error("Can only update items for pending purchases");
-        }
-
-        if (!Array.isArray(data.items) || data.items.length === 0) {
-          throw new Error("At least one item is required");
-        }
-
-        // ✅ Get max quantity and unit price for validation
-        const maxQuantity = await this._getMaxQuantity(qr);
-        const maxUnitPrice = await this._getMaxUnitPrice(qr);
-
-        // Remove old items
-        for (const oldItem of existing.purchaseItems) {
-          await removeDb(purchaseItemRepo, oldItem, { queryRunner: qr });
-        }
-
-        // Create new items
-        const newItems = [];
-        let totalAmount = 0;
-
-        for (const itemData of data.items) {
-          if (!itemData.meatId) throw new Error("meatId is required for each item");
-          if (!itemData.quantity || itemData.quantity <= 0) {
-            throw new Error("quantity must be greater than 0");
-          }
-          // ✅ Validate max quantity
-          if (itemData.quantity > maxQuantity) {
-            throw new Error(`Quantity ${itemData.quantity} exceeds maximum allowed of ${maxQuantity}`);
-          }
-          if (itemData.unitPrice === undefined || itemData.unitPrice < 0) {
-            throw new Error("unitPrice must be non-negative");
-          }
-          // ✅ Validate max unit price
-          if (itemData.unitPrice > maxUnitPrice) {
-            throw new Error(`Unit price ₱${itemData.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
-          }
-          if (!itemData.expiryDate) throw new Error("expiryDate is required for each item");
-
-          const meat = await meatRepo.findOne({
-            where: { id: itemData.meatId, isActive: true },
-          });
-          if (!meat) {
-            throw new Error(`Meat with ID ${itemData.meatId} not found or inactive`);
-          }
-
-          const expiryDate = new Date(itemData.expiryDate);
-          if (isNaN(expiryDate.getTime())) {
-            throw new Error("Invalid expiryDate format");
-          }
-
-          const subtotal = itemData.quantity * itemData.unitPrice;
-          totalAmount += subtotal;
-
-          newItems.push({
-            quantity: itemData.quantity,
-            unitPrice: itemData.unitPrice,
-            subtotal: subtotal,
-            expiryDate: expiryDate,
-            meat: meat,
-            purchase: existing,
-          });
-        }
-
-        existing.totalAmount = Math.round(totalAmount * 100) / 100;
-
-        for (const itemData of newItems) {
-          const purchaseItem = purchaseItemRepo.create({
-            ...itemData,
-            createdAt: new Date(),
-          });
-          await saveDb(purchaseItemRepo, purchaseItem, { queryRunner: qr });
-        }
-
-        delete data.items;
-      }
-
-      // Update other fields
-      if (data.orderDate !== undefined) {
-        existing.orderDate = new Date(data.orderDate);
-      }
-      if (data.notes !== undefined) {
-        existing.notes = data.notes;
-      }
-
-      existing.updatedAt = new Date();
-
-      const saved = await updateDb(purchaseRepo, existing, { queryRunner: qr });
-
-      // ✅ Check if audit logging is enabled before logging
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logUpdate("Purchase", id, oldData, saved, user);
-      }
-
-      logger.debug(`Purchase updated: #${id}`);
-
-      // Reload with relations
-      const fullPurchase = await purchaseRepo.findOne({
-        where: { id: saved.id },
-        relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
-      });
-      return fullPurchase;
-    } catch (error) {
-      console.error("Failed to update purchase:", error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Soft delete a purchase (set status to cancelled) – use state service for status change
-   * We'll just provide a method to cancel via state service.
-   * For consistency, we'll use the state service for status changes.
-   * So this method will just be a placeholder or we can allow hard delete for pending.
-   */
-  // We'll skip soft delete for purchase – use state service to cancel.
-
-  /**
-   * Permanently delete a purchase (hard delete) – only allowed for pending status
-   * @param {number} id
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async permanentlyDelete(id, user = "system", qr = null) {
-    const { removeDb } = require("../utils/dbUtils/dbActions");
-    const Purchase = require("../entities/Purchase");
-    const PurchaseItem = require("../entities/PurchaseItem");
-
-    const purchaseRepo = this._getRepo(qr, Purchase);
-    const purchaseItemRepo = this._getRepo(qr, PurchaseItem);
-
-    const purchase = await purchaseRepo.findOne({
-      where: { id },
-      relations: ["purchaseItems"],
-    });
-    if (!purchase) {
-      throw new Error(`Purchase with ID ${id} not found`);
-    }
-
-    // Only allow deletion for pending or cancelled purchases
-    if (purchase.status === "completed") {
-      throw new Error("Cannot delete a completed purchase");
-    }
-
-    // Remove purchase items first
-    for (const item of purchase.purchaseItems) {
-      await removeDb(purchaseItemRepo, item, { queryRunner: qr });
-    }
-
-    await removeDb(purchaseRepo, purchase, { queryRunner: qr });
-
-    // ✅ Check if audit logging is enabled before logging
-    const auditEnabled = await this._isAuditEnabled(qr);
-    if (auditEnabled) {
-      await auditLogger.logCreate("Purchase", id, purchase, user);
-    }
-
-    logger.debug(`Purchase #${id} permanently deleted`);
-  }
+  // ============================================================
+  // 🔍 READ-ONLY METHODS
+  // ============================================================
 
   /**
    * Find purchase by ID
@@ -608,7 +263,7 @@ class PurchaseService {
       .leftJoinAndSelect("purchase.purchaseItems", "purchaseItems")
       .leftJoinAndSelect("purchaseItems.meat", "meat");
 
-    // ✅ Apply retention days filter automatically if not specified
+    // Apply retention days filter automatically if not specified
     if (!options.startDate && !options.endDate && !options.ignoreRetention) {
       const retentionDays = await this._getRetentionDays(qr);
       const cutoffDate = new Date();
@@ -618,17 +273,24 @@ class PurchaseService {
 
     // Filters
     if (options.status) {
-      const statuses = Array.isArray(options.status) ? options.status : [options.status];
-      // ✅ Validate statuses against allowed list
+      const statuses = Array.isArray(options.status)
+        ? options.status
+        : [options.status];
       const allowedStatuses = await this._getAllowedStatuses(qr);
-      const invalidStatuses = statuses.filter(s => !allowedStatuses.includes(s));
+      const invalidStatuses = statuses.filter(
+        (s) => !allowedStatuses.includes(s),
+      );
       if (invalidStatuses.length > 0) {
-        logger.warn(`[Purchase] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`);
+        logger.warn(
+          `[Purchase] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`,
+        );
       }
       qb.andWhere("purchase.status IN (:...statuses)", { statuses });
     }
     if (options.supplierId) {
-      qb.andWhere("purchase.supplierId = :supplierId", { supplierId: options.supplierId });
+      qb.andWhere("purchase.supplierId = :supplierId", {
+        supplierId: options.supplierId,
+      });
     }
     if (options.referenceNo) {
       qb.andWhere("purchase.referenceNo LIKE :referenceNo", {
@@ -636,7 +298,9 @@ class PurchaseService {
       });
     }
     if (options.startDate) {
-      qb.andWhere("purchase.orderDate >= :startDate", { startDate: new Date(options.startDate) });
+      qb.andWhere("purchase.orderDate >= :startDate", {
+        startDate: new Date(options.startDate),
+      });
     }
     if (options.endDate) {
       const end = new Date(options.endDate);
@@ -644,22 +308,28 @@ class PurchaseService {
       qb.andWhere("purchase.orderDate <= :endDate", { endDate: end });
     }
     if (options.minAmount !== undefined) {
-      qb.andWhere("purchase.totalAmount >= :minAmount", { minAmount: options.minAmount });
+      qb.andWhere("purchase.totalAmount >= :minAmount", {
+        minAmount: options.minAmount,
+      });
     }
     if (options.maxAmount !== undefined) {
-      qb.andWhere("purchase.totalAmount <= :maxAmount", { maxAmount: options.maxAmount });
+      qb.andWhere("purchase.totalAmount <= :maxAmount", {
+        maxAmount: options.maxAmount,
+      });
     }
     if (options.search) {
       qb.andWhere(
         "(purchase.referenceNo LIKE :search OR purchase.notes LIKE :search OR supplier.name LIKE :search)",
-        { search: `%${options.search}%` }
+        { search: `%${options.search}%` },
       );
     }
 
     // Sorting
     let sortBy = options.sortBy || "orderDate";
     if (!ALLOWED_SORT_COLUMNS.has(sortBy)) {
-      console.warn(`[Purchase] Invalid sortBy: ${sortBy}, falling back to orderDate`);
+      console.warn(
+        `[Purchase] Invalid sortBy: ${sortBy}, falling back to orderDate`,
+      );
       sortBy = "orderDate";
     }
     const sortOrder = options.sortOrder === "ASC" ? "ASC" : "DESC";
@@ -672,7 +342,7 @@ class PurchaseService {
     });
 
     await logger.debug("Purchase", null, "system");
-    return result; // { data: [], pagination: {} }
+    return result;
   }
 
   /**
@@ -683,7 +353,6 @@ class PurchaseService {
     const Purchase = require("../entities/Purchase");
     const purchaseRepo = this._getRepo(qr, Purchase);
 
-    // ✅ Apply retention days filter
     const retentionDays = await this._getRetentionDays(qr);
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
@@ -733,7 +402,6 @@ class PurchaseService {
       .getRawOne();
     const totalItems = parseFloat(itemsResult.total) || 0;
 
-    // ✅ Get allowed statuses
     const allowedStatuses = await this._getAllowedStatuses(qr);
 
     return {
@@ -755,10 +423,22 @@ class PurchaseService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
-  async exportPurchases(format = "json", filters = {}, user = "system", qr = null) {
+  async exportPurchases(
+    format = "json",
+    filters = {},
+    user = "system",
+    qr = null,
+  ) {
     try {
-      // Fetch all data without pagination for export
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
+      const result = await this.findAll(
+        {
+          ...filters,
+          limit: undefined,
+          page: undefined,
+          ignoreRetention: true,
+        },
+        qr,
+      );
       const purchases = result.data;
 
       let exportData;
@@ -798,19 +478,640 @@ class PurchaseService {
         };
       }
 
-      // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
         await auditLogger.debugExport("Purchase", format, filters, user);
       }
 
-      logger.debug(`Exported ${purchases.length} purchases in ${format} format`);
+      logger.debug(
+        `Exported ${purchases.length} purchases in ${format} format`,
+      );
       return exportData;
     } catch (error) {
       console.error("Failed to export purchases:", error);
       throw error;
     }
   }
+
+  // ============================================================
+  // ✏️ WRITE OPERATIONS (CRUD)
+  // ============================================================
+
+  /**
+   * Create a new purchase (pending status)
+   * @param {Object} data - { supplierId, items, referenceNo?, orderDate?, status?, notes? }
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async create(data, user = "system", qr = null) {
+    const { saveDb } = require("../utils/dbUtils/dbActions");
+    const Purchase = require("../entities/Purchase");
+    const PurchaseItem = require("../entities/PurchaseItem");
+    const Meat = require("../entities/Meat");
+    const Supplier = require("../entities/Supplier");
+
+    const purchaseRepo = this._getRepo(qr, Purchase);
+    const purchaseItemRepo = this._getRepo(qr, PurchaseItem);
+    const meatRepo = this._getRepo(qr, Meat);
+    const supplierRepo = this._getRepo(qr, Supplier);
+
+    try {
+      if (!data.supplierId) throw new Error("supplierId is required");
+      if (
+        !data.items ||
+        !Array.isArray(data.items) ||
+        data.items.length === 0
+      ) {
+        throw new Error("At least one item is required");
+      }
+
+      if (data.notes) {
+        const maxNotesLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxNotesLength) {
+          throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
+        }
+      }
+
+      if (data.status) {
+        const allowedStatuses = await this._getAllowedStatuses(qr);
+        if (!allowedStatuses.includes(data.status)) {
+          throw new Error(
+            `Invalid purchase status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
+          );
+        }
+      }
+
+      const supplier = await supplierRepo.findOne({
+        where: { id: data.supplierId, isActive: true },
+      });
+      if (!supplier) {
+        throw new Error(
+          `Supplier with ID ${data.supplierId} not found or inactive`,
+        );
+      }
+
+      const maxQuantity = await this._getMaxQuantity(qr);
+      const maxUnitPrice = await this._getMaxUnitPrice(qr);
+
+      const purchaseItems = [];
+      let totalAmount = 0;
+
+      for (const itemData of data.items) {
+        if (!itemData.meatId)
+          throw new Error("meatId is required for each item");
+        if (!itemData.quantity || itemData.quantity <= 0) {
+          throw new Error("quantity must be greater than 0");
+        }
+        if (itemData.quantity > maxQuantity) {
+          throw new Error(
+            `Quantity ${itemData.quantity} exceeds maximum allowed of ${maxQuantity}`,
+          );
+        }
+        if (itemData.unitPrice === undefined || itemData.unitPrice < 0) {
+          throw new Error("unitPrice must be non-negative");
+        }
+        if (itemData.unitPrice > maxUnitPrice) {
+          throw new Error(
+            `Unit price ₱${itemData.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
+          );
+        }
+        if (!itemData.expiryDate)
+          throw new Error("expiryDate is required for each item");
+
+        const meat = await meatRepo.findOne({
+          where: { id: itemData.meatId, isActive: true },
+        });
+        if (!meat) {
+          throw new Error(
+            `Meat with ID ${itemData.meatId} not found or inactive`,
+          );
+        }
+
+        const expiryDate = new Date(itemData.expiryDate);
+        if (isNaN(expiryDate.getTime())) {
+          throw new Error("Invalid expiryDate format");
+        }
+
+        const subtotal = itemData.quantity * itemData.unitPrice;
+        totalAmount += subtotal;
+
+        purchaseItems.push({
+          quantity: itemData.quantity,
+          unitPrice: itemData.unitPrice,
+          subtotal: subtotal,
+          expiryDate: expiryDate,
+          meat: meat,
+        });
+      }
+
+      let referenceNo = data.referenceNo;
+      if (!referenceNo) {
+        const prefix = await this._getReferencePrefix(qr);
+        referenceNo = await this.generateReferenceNo(purchaseRepo, prefix);
+      } else {
+        const existing = await purchaseRepo.findOne({ where: { referenceNo } });
+        if (existing) {
+          throw new Error(`Reference "${referenceNo}" already exists`);
+        }
+      }
+
+      const purchase = purchaseRepo.create({
+        referenceNo,
+        orderDate: data.orderDate ? new Date(data.orderDate) : new Date(),
+        status: data.status || "pending",
+        totalAmount: Math.round(totalAmount * 100) / 100,
+        notes: data.notes || null,
+        supplier: supplier,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const savedPurchase = await saveDb(purchaseRepo, purchase, {
+        queryRunner: qr,
+      });
+
+      for (const itemData of purchaseItems) {
+        const purchaseItem = purchaseItemRepo.create({
+          ...itemData,
+          purchase: savedPurchase,
+          createdAt: new Date(),
+        });
+        await saveDb(purchaseItemRepo, purchaseItem, { queryRunner: qr });
+      }
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate(
+          "Purchase",
+          savedPurchase.id,
+          savedPurchase,
+          user,
+        );
+      }
+
+      logger.debug(
+        `Purchase created: #${savedPurchase.id} - ${savedPurchase.referenceNo}`,
+      );
+
+      const fullPurchase = await purchaseRepo.findOne({
+        where: { id: savedPurchase.id },
+        relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
+      });
+
+      return fullPurchase;
+    } catch (error) {
+      console.error("Failed to create purchase:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing purchase (only allowed for pending status)
+   * @param {number} id
+   * @param {Object} data - { supplierId?, items?, referenceNo?, orderDate?, notes? }
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async update(id, data, user = "system", qr = null) {
+    const {
+      updateDb,
+      saveDb,
+      removeDb,
+    } = require("../utils/dbUtils/dbActions");
+    const Purchase = require("../entities/Purchase");
+    const PurchaseItem = require("../entities/PurchaseItem");
+    const Meat = require("../entities/Meat");
+    const Supplier = require("../entities/Supplier");
+
+    const purchaseRepo = this._getRepo(qr, Purchase);
+    const purchaseItemRepo = this._getRepo(qr, PurchaseItem);
+    const meatRepo = this._getRepo(qr, Meat);
+    const supplierRepo = this._getRepo(qr, Supplier);
+
+    try {
+      const existing = await purchaseRepo.findOne({
+        where: { id },
+        relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
+      });
+      if (!existing) {
+        throw new Error(`Purchase with ID ${id} not found`);
+      }
+
+      if (existing.status === "completed" || existing.status === "cancelled") {
+        throw new Error(
+          `Cannot update a purchase with status "${existing.status}"`,
+        );
+      }
+
+      const oldData = { ...existing };
+
+      if (data.notes !== undefined) {
+        const maxNotesLength = await this._getMaxNotesLength(qr);
+        if (data.notes.length > maxNotesLength) {
+          throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
+        }
+      }
+
+      if (data.supplierId !== undefined) {
+        const supplier = await supplierRepo.findOne({
+          where: { id: data.supplierId, isActive: true },
+        });
+        if (!supplier) {
+          throw new Error(
+            `Supplier with ID ${data.supplierId} not found or inactive`,
+          );
+        }
+        existing.supplier = supplier;
+        delete data.supplierId;
+      }
+
+      if (data.referenceNo && data.referenceNo !== existing.referenceNo) {
+        const duplicate = await purchaseRepo.findOne({
+          where: { referenceNo: data.referenceNo },
+        });
+        if (duplicate) {
+          throw new Error(`Reference "${data.referenceNo}" already exists`);
+        }
+        existing.referenceNo = data.referenceNo;
+        delete data.referenceNo;
+      }
+
+      if (data.items) {
+        if (existing.status !== "pending") {
+          throw new Error("Can only update items for pending purchases");
+        }
+
+        if (!Array.isArray(data.items) || data.items.length === 0) {
+          throw new Error("At least one item is required");
+        }
+
+        const maxQuantity = await this._getMaxQuantity(qr);
+        const maxUnitPrice = await this._getMaxUnitPrice(qr);
+
+        for (const oldItem of existing.purchaseItems) {
+          await removeDb(purchaseItemRepo, oldItem, { queryRunner: qr });
+        }
+
+        const newItems = [];
+        let totalAmount = 0;
+
+        for (const itemData of data.items) {
+          if (!itemData.meatId)
+            throw new Error("meatId is required for each item");
+          if (!itemData.quantity || itemData.quantity <= 0) {
+            throw new Error("quantity must be greater than 0");
+          }
+          if (itemData.quantity > maxQuantity) {
+            throw new Error(
+              `Quantity ${itemData.quantity} exceeds maximum allowed of ${maxQuantity}`,
+            );
+          }
+          if (itemData.unitPrice === undefined || itemData.unitPrice < 0) {
+            throw new Error("unitPrice must be non-negative");
+          }
+          if (itemData.unitPrice > maxUnitPrice) {
+            throw new Error(
+              `Unit price ₱${itemData.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
+            );
+          }
+          if (!itemData.expiryDate)
+            throw new Error("expiryDate is required for each item");
+
+          const meat = await meatRepo.findOne({
+            where: { id: itemData.meatId, isActive: true },
+          });
+          if (!meat) {
+            throw new Error(
+              `Meat with ID ${itemData.meatId} not found or inactive`,
+            );
+          }
+
+          const expiryDate = new Date(itemData.expiryDate);
+          if (isNaN(expiryDate.getTime())) {
+            throw new Error("Invalid expiryDate format");
+          }
+
+          const subtotal = itemData.quantity * itemData.unitPrice;
+          totalAmount += subtotal;
+
+          newItems.push({
+            quantity: itemData.quantity,
+            unitPrice: itemData.unitPrice,
+            subtotal: subtotal,
+            expiryDate: expiryDate,
+            meat: meat,
+            purchase: existing,
+          });
+        }
+
+        existing.totalAmount = Math.round(totalAmount * 100) / 100;
+
+        for (const itemData of newItems) {
+          const purchaseItem = purchaseItemRepo.create({
+            ...itemData,
+            createdAt: new Date(),
+          });
+          await saveDb(purchaseItemRepo, purchaseItem, { queryRunner: qr });
+        }
+
+        delete data.items;
+      }
+
+      if (data.orderDate !== undefined) {
+        existing.orderDate = new Date(data.orderDate);
+      }
+      if (data.notes !== undefined) {
+        existing.notes = data.notes;
+      }
+
+      existing.updatedAt = new Date();
+
+      const saved = await updateDb(purchaseRepo, existing, { queryRunner: qr });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Purchase", id, oldData, saved, user);
+      }
+
+      logger.debug(`Purchase updated: #${id}`);
+
+      const fullPurchase = await purchaseRepo.findOne({
+        where: { id: saved.id },
+        relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
+      });
+      return fullPurchase;
+    } catch (error) {
+      console.error("Failed to update purchase:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Permanently delete a purchase (hard delete) – only allowed for pending status
+   * @param {number} id
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async permanentlyDelete(id, user = "system", qr = null) {
+    const { removeDb } = require("../utils/dbUtils/dbActions");
+    const Purchase = require("../entities/Purchase");
+    const PurchaseItem = require("../entities/PurchaseItem");
+
+    const purchaseRepo = this._getRepo(qr, Purchase);
+    const purchaseItemRepo = this._getRepo(qr, PurchaseItem);
+
+    const purchase = await purchaseRepo.findOne({
+      where: { id },
+      relations: ["purchaseItems"],
+    });
+    if (!purchase) {
+      throw new Error(`Purchase with ID ${id} not found`);
+    }
+
+    if (purchase.status === "completed") {
+      throw new Error("Cannot delete a completed purchase");
+    }
+
+    for (const item of purchase.purchaseItems) {
+      await removeDb(purchaseItemRepo, item, { queryRunner: qr });
+    }
+
+    await removeDb(purchaseRepo, purchase, { queryRunner: qr });
+
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logCreate("Purchase", id, purchase, user);
+    }
+
+    logger.debug(`Purchase #${id} permanently deleted`);
+  }
+
+  // ============================================================
+  // 🔄 BUSINESS LOGIC METHODS (Status Transitions + Data Mutation)
+  // ============================================================
+
+  /**
+   * Approve a purchase (pending → approved)
+   * @param {number} purchaseId
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async approve(purchaseId, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Purchase = require("../entities/Purchase");
+    const purchaseRepo = this._getRepo(qr, Purchase);
+
+    const purchase = await purchaseRepo.findOne({
+      where: { id: purchaseId },
+      relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
+    });
+    if (!purchase) {
+      throw new Error(`Purchase #${purchaseId} not found`);
+    }
+
+    if (purchase.status !== "pending") {
+      throw new Error(
+        `Cannot approve a purchase with status "${purchase.status}"`,
+      );
+    }
+
+    logger.info(`[Purchase] Approving purchase #${purchaseId}`);
+
+    const oldData = { status: purchase.status };
+    purchase.status = "approved";
+    purchase.updatedAt = new Date();
+
+    const approvedPurchase = await updateDb(purchaseRepo, purchase, {
+      queryRunner: qr,
+    });
+
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logUpdate(
+        "Purchase",
+        purchaseId,
+        oldData,
+        approvedPurchase,
+        user,
+      );
+    }
+
+    logger.info(
+      `[Purchase] Purchase #${purchaseId} approved (subscriber will handle side effects)`,
+    );
+    return approvedPurchase;
+  }
+
+  /**
+   * Complete a purchase (approved/confirmed → completed) – creates batches and inventory movements
+   * @param {number} purchaseId
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async complete(purchaseId, user = "system", qr = null) {
+    const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
+    const Purchase = require("../entities/Purchase");
+    const PurchaseItem = require("../entities/PurchaseItem");
+    const Batch = require("../entities/Batch");
+    const InventoryMovement = require("../entities/InventoryMovement");
+
+    const purchaseRepo = this._getRepo(qr, Purchase);
+    const purchaseItemRepo = this._getRepo(qr, PurchaseItem);
+    const batchRepo = this._getRepo(qr, Batch);
+    const movementRepo = this._getRepo(qr, InventoryMovement);
+
+    const purchase = await purchaseRepo.findOne({
+      where: { id: purchaseId },
+      relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
+    });
+    if (!purchase) {
+      throw new Error(`Purchase #${purchaseId} not found`);
+    }
+
+    if (purchase.status !== "approved" && purchase.status !== "confirmed") {
+      throw new Error(
+        `Cannot complete a purchase with status "${purchase.status}"`,
+      );
+    }
+
+    logger.info(`[Purchase] Completing purchase #${purchaseId}`);
+
+    // ─── STEP 1: Create batches for each purchase item ───
+    const createdBatches = [];
+    for (const item of purchase.purchaseItems) {
+      const batch = batchRepo.create({
+        batchCode: await this._generateBatchCode(batchRepo),
+        initialQuantity: item.quantity,
+        remainingQuantity: item.quantity,
+        unitCost: item.unitPrice,
+        expiryDate: item.expiryDate,
+        receivedDate: new Date(),
+        status: "active",
+        note: `Purchase #${purchase.id} - ${purchase.referenceNo}`,
+        meat: item.meat,
+        supplier: purchase.supplier || null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const savedBatch = await saveDb(batchRepo, batch, { queryRunner: qr });
+      createdBatches.push(savedBatch);
+
+      // Create inventory movement for batch addition
+      const movement = movementRepo.create({
+        movementType: "purchase",
+        qtyChange: item.quantity,
+        notes: `Purchase #${purchase.id} - ${purchase.referenceNo}`,
+        meat: item.meat,
+        batch: savedBatch,
+        timestamp: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      await saveDb(movementRepo, movement, { queryRunner: qr });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Batch", savedBatch.id, savedBatch, user);
+        await auditLogger.logCreate(
+          "InventoryMovement",
+          movement.id,
+          movement,
+          user,
+        );
+      }
+    }
+
+    // ─── STEP 2: Update purchase status ───
+    const oldData = { status: purchase.status };
+    purchase.status = "completed";
+    purchase.updatedAt = new Date();
+
+    const completedPurchase = await updateDb(purchaseRepo, purchase, {
+      queryRunner: qr,
+    });
+
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logUpdate(
+        "Purchase",
+        purchaseId,
+        oldData,
+        completedPurchase,
+        user,
+      );
+    }
+
+    logger.info(
+      `[Purchase] Purchase #${purchaseId} completed, ${createdBatches.length} batch(es) created (subscriber will handle side effects)`,
+    );
+
+    return completedPurchase;
+  }
+
+  /**
+   * Cancel a purchase (pending/approved/confirmed → cancelled)
+   * @param {number} purchaseId
+   * @param {string} reason
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async cancel(purchaseId, reason = "", user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Purchase = require("../entities/Purchase");
+    const purchaseRepo = this._getRepo(qr, Purchase);
+
+    const purchase = await purchaseRepo.findOne({
+      where: { id: purchaseId },
+      relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
+    });
+    if (!purchase) {
+      throw new Error(`Purchase #${purchaseId} not found`);
+    }
+
+    if (purchase.status === "completed") {
+      throw new Error("Cannot cancel a completed purchase");
+    }
+
+    if (purchase.status === "cancelled") {
+      logger.warn(`[Purchase] Purchase #${purchaseId} is already cancelled`);
+      return purchase;
+    }
+
+    const oldData = { status: purchase.status };
+    logger.info(
+      `[Purchase] Cancelling purchase #${purchaseId} (from ${oldData.status})`,
+    );
+
+    purchase.status = "cancelled";
+    purchase.notes = purchase.notes
+      ? `${purchase.notes}\nCancelled: ${reason}`
+      : `Cancelled: ${reason}`;
+    purchase.updatedAt = new Date();
+
+    const cancelledPurchase = await updateDb(purchaseRepo, purchase, {
+      queryRunner: qr,
+    });
+
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logUpdate(
+        "Purchase",
+        purchaseId,
+        oldData,
+        cancelledPurchase,
+        user,
+      );
+    }
+
+    logger.info(
+      `[Purchase] Purchase #${purchaseId} cancelled (subscriber will handle side effects)`,
+    );
+    return cancelledPurchase;
+  }
+
+  // ============================================================
+  // 📤 BULK & IMPORT OPERATIONS
+  // ============================================================
 
   /**
    * Bulk create purchases
@@ -900,17 +1201,41 @@ class PurchaseService {
   }
 
   /**
-   * ✅ NEW: Clean up old purchases (soft delete via status change)
-   * @param {number} daysOld - Mark purchases older than this as cancelled (overrides settings)
+   * Generate a unique batch code
+   * @param {import("typeorm").Repository<any>} repo
+   * @returns {Promise<string>}
+   */
+  async _generateBatchCode(repo) {
+    const prefix = "BATCH";
+    const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const randomPart = Math.floor(1000 + Math.random() * 9000);
+    let code = `${prefix}-${datePart}-${randomPart}`;
+
+    let attempts = 0;
+    let existing = await repo.findOne({ where: { batchCode: code } });
+    while (existing && attempts < 5) {
+      const newRandom = Math.floor(1000 + Math.random() * 9000);
+      code = `${prefix}-${datePart}-${newRandom}`;
+      existing = await repo.findOne({ where: { batchCode: code } });
+      attempts++;
+    }
+    if (existing) {
+      code = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    }
+    return code;
+  }
+
+  // ============================================================
+  // 🧹 CLEANUP & HELPERS
+  // ============================================================
+
+  /**
+   * Clean up old purchases (archive - placeholder)
+   * @param {number} daysOld
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async cleanOldPurchases(daysOld = null, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const Purchase = require("../entities/Purchase");
-    const purchaseRepo = this._getRepo(qr, Purchase);
-
-    // ✅ Use settings if not provided
     if (daysOld === null) {
       daysOld = await this._getRetentionDays(qr);
     }
@@ -918,49 +1243,21 @@ class PurchaseService {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-    // ✅ Only clean completed purchases (don't touch pending or active)
-    const oldPurchases = await purchaseRepo
-      .createQueryBuilder("purchase")
-      .where("purchase.status = 'completed'")
-      .andWhere("purchase.createdAt < :cutoffDate", { cutoffDate })
-      .getMany();
-
-    if (oldPurchases.length === 0) {
-      logger.info(`[Purchase] No old purchases to clean up (threshold: ${daysOld} days)`);
-      return { count: 0 };
-    }
-
-    let updatedCount = 0;
-    for (const purchase of oldPurchases) {
-      try {
-        // Don't delete, just note for archiving
-        // Or you can soft delete by adding a flag
-        // For now, we'll just log and potentially archive
-        logger.debug(`[Purchase] Purchase #${purchase.id} (${purchase.referenceNo}) is older than ${daysOld} days`);
-
-        // Optionally, you could mark as archived if you have an archived flag
-        // purchase.isArchived = true;
-        // await updateDb(purchaseRepo, purchase, { queryRunner: qr, skipSignal: true });
-
-        updatedCount++;
-      } catch (err) {
-        logger.error(`[Purchase] Failed to process old purchase #${purchase.id}:`, err);
-      }
-    }
-
-    logger.info(`[Purchase] Found ${updatedCount} old purchases to archive (older than ${daysOld} days)`);
-    return { count: updatedCount };
+    // This is a placeholder – actual archiving logic can be added
+    logger.info(
+      `[Purchase] cleanOldPurchases called with ${daysOld} days (cutoff: ${cutoffDate.toISOString()})`,
+    );
+    return { count: 0 };
   }
 
   /**
-   * ✅ NEW: Get purchase health summary
+   * Get purchase health summary
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async getHealthSummary(qr = null) {
     const Purchase = require("../entities/Purchase");
     const purchaseRepo = this._getRepo(qr, Purchase);
 
-    // Get counts by status
     const byStatus = await purchaseRepo
       .createQueryBuilder("purchase")
       .select("purchase.status", "status")
@@ -979,10 +1276,6 @@ class PurchaseService {
     const approved = statusCounts.approved || 0;
     const cancelled = statusCounts.cancelled || 0;
 
-    // ✅ Get allowed statuses
-    const allowedStatuses = await this._getAllowedStatuses(qr);
-
-    // ✅ Get total amount spent (completed only)
     const totalSpentResult = await purchaseRepo
       .createQueryBuilder("purchase")
       .select("SUM(purchase.totalAmount)", "total")
@@ -990,7 +1283,6 @@ class PurchaseService {
       .getRawOne();
     const totalSpent = parseFloat(totalSpentResult.total) || 0;
 
-    // ✅ Get average purchase amount
     const avgResult = await purchaseRepo
       .createQueryBuilder("purchase")
       .select("AVG(purchase.totalAmount)", "avg")
@@ -998,8 +1290,9 @@ class PurchaseService {
       .getRawOne();
     const averageAmount = parseFloat(avgResult.avg) || 0;
 
-    // ✅ Get purchase completion rate
-    const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const completionRate =
+      total > 0 ? Math.round((completed / total) * 100) : 0;
+    const allowedStatuses = await this._getAllowedStatuses(qr);
 
     return {
       total,
@@ -1016,7 +1309,7 @@ class PurchaseService {
   }
 
   /**
-   * ✅ NEW: Get purchase retention info
+   * Get purchase retention info
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async getRetentionInfo(qr = null) {
@@ -1046,6 +1339,36 @@ class PurchaseService {
       allowedStatuses,
       auditEnabled,
     };
+  }
+
+  // Sa src/services/Purchase.js
+  async bulkUpdate(updatesArray, user = "system", qr = null) {
+    const results = { updated: [], errors: [] };
+    for (const { id, updates } of updatesArray) {
+      try {
+        if (updates.status) {
+          switch (updates.status) {
+            case "approved":
+              await this.approve(id, user, qr);
+              break;
+            case "completed":
+              await this.complete(id, user, qr);
+              break;
+            case "cancelled":
+              await this.cancel(id, updates.reason || "", user, qr);
+              break;
+            default:
+              await this.update(id, updates, user, qr);
+          }
+        } else {
+          await this.update(id, updates, user, qr);
+        }
+        results.updated.push({ id, status: "success" });
+      } catch (err) {
+        results.errors.push({ id, error: err.message });
+      }
+    }
+    return results;
   }
 }
 
