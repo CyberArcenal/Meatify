@@ -1,4 +1,5 @@
 // src/main/ipc/core/notificationLog/import_csv.ipc.js
+//@ts-check
 const notificationLogService = require("../../../../services/NotificationLog");
 const fs = require("fs").promises;
 

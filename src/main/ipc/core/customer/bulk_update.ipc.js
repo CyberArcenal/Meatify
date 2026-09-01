@@ -1,4 +1,5 @@
 // src/main/ipc/core/customer/bulk_update.ipc.js
+//@ts-check
 const customerService = require("../../../../services/Customer");
 
 module.exports = async (params, queryRunner) => {

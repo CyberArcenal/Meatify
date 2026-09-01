@@ -5,6 +5,7 @@ const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
+const notificationLogService = require("./NotificationLog");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -89,7 +90,9 @@ class SupplierService {
     try {
       return await system.auditLogEnabled();
     } catch (error) {
-      logger.warn(`[Supplier] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[Supplier] Failed to check audit enabled status: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
@@ -101,9 +104,15 @@ class SupplierService {
    */
   async _getDefaultActiveStatus(qr = null) {
     try {
-      return await system.getBool("default_supplier_active", SettingType.INVENTORY, true);
+      return await system.getBool(
+        "default_supplier_active",
+        SettingType.INVENTORY,
+        true,
+      );
     } catch (error) {
-      logger.warn(`[Supplier] Failed to get default active status: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[Supplier] Failed to get default active status: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
@@ -115,9 +124,15 @@ class SupplierService {
    */
   async _getMaxNameLength(qr = null) {
     try {
-      return await system.getInt("max_supplier_name_length", SettingType.INVENTORY, 100);
+      return await system.getInt(
+        "max_supplier_name_length",
+        SettingType.INVENTORY,
+        100,
+      );
     } catch (error) {
-      logger.warn(`[Supplier] Failed to get max name length: ${error.message}, defaulting to 100`);
+      logger.warn(
+        `[Supplier] Failed to get max name length: ${error.message}, defaulting to 100`,
+      );
       return 100;
     }
   }
@@ -129,9 +144,15 @@ class SupplierService {
    */
   async _getMaxContactInfoLength(qr = null) {
     try {
-      return await system.getInt("max_supplier_contact_length", SettingType.INVENTORY, 255);
+      return await system.getInt(
+        "max_supplier_contact_length",
+        SettingType.INVENTORY,
+        255,
+      );
     } catch (error) {
-      logger.warn(`[Supplier] Failed to get max contact info length: ${error.message}, defaulting to 255`);
+      logger.warn(
+        `[Supplier] Failed to get max contact info length: ${error.message}, defaulting to 255`,
+      );
       return 255;
     }
   }
@@ -143,9 +164,15 @@ class SupplierService {
    */
   async _getMaxNotesLength(qr = null) {
     try {
-      return await system.getInt("max_supplier_notes_length", SettingType.INVENTORY, 500);
+      return await system.getInt(
+        "max_supplier_notes_length",
+        SettingType.INVENTORY,
+        500,
+      );
     } catch (error) {
-      logger.warn(`[Supplier] Failed to get max notes length: ${error.message}, defaulting to 500`);
+      logger.warn(
+        `[Supplier] Failed to get max notes length: ${error.message}, defaulting to 500`,
+      );
       return 500;
     }
   }
@@ -212,18 +239,22 @@ class SupplierService {
     const qb = repo.createQueryBuilder("supplier");
 
     if (options.isActive !== undefined) {
-      qb.andWhere("supplier.isActive = :isActive", { isActive: options.isActive });
+      qb.andWhere("supplier.isActive = :isActive", {
+        isActive: options.isActive,
+      });
     }
     if (options.search) {
       qb.andWhere(
         "(supplier.name LIKE :search OR supplier.contactInfo LIKE :search OR supplier.email LIKE :search OR supplier.phone LIKE :search OR supplier.address LIKE :search)",
-        { search: `%${options.search}%` }
+        { search: `%${options.search}%` },
       );
     }
 
     let sortBy = options.sortBy || "name";
     if (!ALLOWED_SORT_COLUMNS.has(sortBy)) {
-      console.warn(`[Supplier] Invalid sortBy: ${sortBy}, falling back to name`);
+      console.warn(
+        `[Supplier] Invalid sortBy: ${sortBy}, falling back to name`,
+      );
       sortBy = "name";
     }
     const sortOrder = options.sortOrder === "ASC" ? "ASC" : "DESC";
@@ -254,7 +285,9 @@ class SupplierService {
     const batchRepo = this._getRepo(qr, Batch);
 
     const totalActive = await supplierRepo.count({ where: { isActive: true } });
-    const totalInactive = await supplierRepo.count({ where: { isActive: false } });
+    const totalInactive = await supplierRepo.count({
+      where: { isActive: false },
+    });
 
     const suppliersWithMeats = await supplierRepo
       .createQueryBuilder("supplier")
@@ -313,9 +346,17 @@ class SupplierService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
-  async exportSuppliers(format = "json", filters = {}, user = "system", qr = null) {
+  async exportSuppliers(
+    format = "json",
+    filters = {},
+    user = "system",
+    qr = null,
+  ) {
     try {
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
+      const result = await this.findAll(
+        { ...filters, limit: undefined, page: undefined },
+        qr,
+      );
       const suppliers = result.data;
 
       let exportData;
@@ -362,7 +403,9 @@ class SupplierService {
         await auditLogger.debugExport("Supplier", format, filters, user);
       }
 
-      logger.debug(`Exported ${suppliers.length} suppliers in ${format} format`);
+      logger.debug(
+        `Exported ${suppliers.length} suppliers in ${format} format`,
+      );
       return exportData;
     } catch (error) {
       console.error("Failed to export suppliers:", error);
@@ -390,7 +433,9 @@ class SupplierService {
 
       const maxNameLength = await this._getMaxNameLength(qr);
       if (data.name.length > maxNameLength) {
-        throw new Error(`Supplier name cannot exceed ${maxNameLength} characters`);
+        throw new Error(
+          `Supplier name cannot exceed ${maxNameLength} characters`,
+        );
       }
 
       if (data.email && !this._isValidEmail(data.email)) {
@@ -404,7 +449,9 @@ class SupplierService {
       if (data.contactInfo) {
         const maxContactLength = await this._getMaxContactInfoLength(qr);
         if (data.contactInfo.length > maxContactLength) {
-          throw new Error(`Contact info cannot exceed ${maxContactLength} characters`);
+          throw new Error(
+            `Contact info cannot exceed ${maxContactLength} characters`,
+          );
         }
       }
 
@@ -421,21 +468,26 @@ class SupplierService {
       }
 
       if (data.email) {
-        const existingEmail = await repo.findOne({ where: { email: data.email } });
+        const existingEmail = await repo.findOne({
+          where: { email: data.email },
+        });
         if (existingEmail) {
           throw new Error(`Email "${data.email}" already exists`);
         }
       }
 
       if (data.phone) {
-        const existingPhone = await repo.findOne({ where: { phone: data.phone } });
+        const existingPhone = await repo.findOne({
+          where: { phone: data.phone },
+        });
         if (existingPhone) {
           throw new Error(`Phone "${data.phone}" already exists`);
         }
       }
 
       const defaultActive = await this._getDefaultActiveStatus(qr);
-      const isActive = data.isActive !== undefined ? data.isActive : defaultActive;
+      const isActive =
+        data.isActive !== undefined ? data.isActive : defaultActive;
 
       const supplier = repo.create({
         name: data.name,
@@ -487,7 +539,9 @@ class SupplierService {
       if (data.name) {
         const maxNameLength = await this._getMaxNameLength(qr);
         if (data.name.length > maxNameLength) {
-          throw new Error(`Supplier name cannot exceed ${maxNameLength} characters`);
+          throw new Error(
+            `Supplier name cannot exceed ${maxNameLength} characters`,
+          );
         }
         const duplicate = await repo.findOne({ where: { name: data.name } });
         if (duplicate && duplicate.id !== id) {
@@ -518,7 +572,9 @@ class SupplierService {
       if (data.contactInfo) {
         const maxContactLength = await this._getMaxContactInfoLength(qr);
         if (data.contactInfo.length > maxContactLength) {
-          throw new Error(`Contact info cannot exceed ${maxContactLength} characters`);
+          throw new Error(
+            `Contact info cannot exceed ${maxContactLength} characters`,
+          );
         }
       }
 
@@ -531,7 +587,9 @@ class SupplierService {
 
       // Only allow isActive update through dedicated methods
       if (data.isActive !== undefined && data.isActive !== existing.isActive) {
-        throw new Error("Use activate() or deactivate() to update supplier status");
+        throw new Error(
+          "Use activate() or deactivate() to update supplier status",
+        );
       }
 
       Object.assign(existing, data);
@@ -600,7 +658,7 @@ class SupplierService {
     });
     if (meatCount > 0) {
       throw new Error(
-        `Cannot delete supplier #${id} because it is used by ${meatCount} meat(s). Reassign them first.`
+        `Cannot delete supplier #${id} because it is used by ${meatCount} meat(s). Reassign them first.`,
       );
     }
 
@@ -609,7 +667,7 @@ class SupplierService {
     });
     if (purchaseCount > 0) {
       throw new Error(
-        `Cannot delete supplier #${id} because it has ${purchaseCount} purchase(s).`
+        `Cannot delete supplier #${id} because it has ${purchaseCount} purchase(s).`,
       );
     }
 
@@ -618,7 +676,7 @@ class SupplierService {
     });
     if (batchCount > 0) {
       throw new Error(
-        `Cannot delete supplier #${id} because it has ${batchCount} batch(es).`
+        `Cannot delete supplier #${id} because it has ${batchCount} batch(es).`,
       );
     }
 
@@ -661,14 +719,25 @@ class SupplierService {
     supplier.isActive = true;
     supplier.updatedAt = new Date();
 
-    const updated = await updateDb(repo, supplier, { queryRunner: qr, skipSignal: false });
+    const updated = await updateDb(repo, supplier, {
+      queryRunner: qr,
+      skipSignal: false,
+    });
 
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.logUpdate("Supplier", supplierId, oldData, updated, user);
+      await auditLogger.logUpdate(
+        "Supplier",
+        supplierId,
+        oldData,
+        updated,
+        user,
+      );
     }
 
-    logger.info(`[Supplier] Supplier #${supplierId} activated (subscriber will handle side effects)`);
+    logger.info(
+      `[Supplier] Supplier #${supplierId} activated (subscriber will handle side effects)`,
+    );
     return updated;
   }
 
@@ -710,7 +779,7 @@ class SupplierService {
 
     if (pendingPurchases > 0 && !options.allowWithPendingPurchases) {
       throw new Error(
-        `Cannot deactivate supplier #${supplierId} because it has ${pendingPurchases} pending purchase(s). Complete or cancel them first, or use allowWithPendingPurchases option.`
+        `Cannot deactivate supplier #${supplierId} because it has ${pendingPurchases} pending purchase(s). Complete or cancel them first, or use allowWithPendingPurchases option.`,
       );
     }
 
@@ -731,7 +800,7 @@ class SupplierService {
         });
         if (!targetSupplier) {
           throw new Error(
-            `Target supplier with ID ${reassignToSupplierId} not found or inactive`
+            `Target supplier with ID ${reassignToSupplierId} not found or inactive`,
           );
         }
 
@@ -740,7 +809,10 @@ class SupplierService {
           const oldSupplierId = meat.supplier?.id;
           meat.supplier = targetSupplier;
           meat.updatedAt = new Date();
-          await updateDb(meatRepo, meat, { queryRunner: qr, skipSignal: false });
+          await updateDb(meatRepo, meat, {
+            queryRunner: qr,
+            skipSignal: false,
+          });
 
           const auditEnabled = await this._isAuditEnabled(qr);
           if (auditEnabled) {
@@ -749,23 +821,23 @@ class SupplierService {
               meat.id,
               { supplierId: oldSupplierId },
               { supplierId: reassignToSupplierId },
-              user
+              user,
             );
           }
 
           logger.info(
-            `[Supplier] Reassigned meat #${meat.id} from supplier #${supplierId} to #${reassignToSupplierId}`
+            `[Supplier] Reassigned meat #${meat.id} from supplier #${supplierId} to #${reassignToSupplierId}`,
           );
         }
         meatsReassigned = meats.length;
 
         logger.debug(
-          `Reassigned ${meats.length} meat(s) from supplier "${supplier.name}" to "${targetSupplier.name}"`
+          `Reassigned ${meats.length} meat(s) from supplier "${supplier.name}" to "${targetSupplier.name}"`,
         );
       } else {
         // If no reassignment target, prevent deactivation
         throw new Error(
-          `Cannot deactivate supplier #${supplierId} because it has ${meats.length} active meat(s). Provide a reassignToSupplierId or deactivate the meats first.`
+          `Cannot deactivate supplier #${supplierId} because it has ${meats.length} active meat(s). Provide a reassignToSupplierId or deactivate the meats first.`,
         );
       }
     }
@@ -777,7 +849,7 @@ class SupplierService {
 
     if (batches.length > 0) {
       logger.info(
-        `[Supplier] Supplier #${supplierId} has ${batches.length} active batches. They will remain active but with a deactivated supplier.`
+        `[Supplier] Supplier #${supplierId} has ${batches.length} active batches. They will remain active but with a deactivated supplier.`,
       );
     }
 
@@ -786,14 +858,25 @@ class SupplierService {
     supplier.isActive = false;
     supplier.updatedAt = new Date();
 
-    const updated = await updateDb(supplierRepo, supplier, { queryRunner: qr, skipSignal: false });
+    const updated = await updateDb(supplierRepo, supplier, {
+      queryRunner: qr,
+      skipSignal: false,
+    });
 
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.logUpdate("Supplier", supplierId, oldData, updated, user);
+      await auditLogger.logUpdate(
+        "Supplier",
+        supplierId,
+        oldData,
+        updated,
+        user,
+      );
     }
 
-    logger.info(`[Supplier] Supplier #${supplierId} deactivated (subscriber will handle side effects)`);
+    logger.info(
+      `[Supplier] Supplier #${supplierId} deactivated (subscriber will handle side effects)`,
+    );
 
     // Return metadata for subscriber side effects
     return {
@@ -811,7 +894,12 @@ class SupplierService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
-  async mergeSuppliers(sourceSupplierId, targetSupplierId, user = "system", qr = null) {
+  async mergeSuppliers(
+    sourceSupplierId,
+    targetSupplierId,
+    user = "system",
+    qr = null,
+  ) {
     const { updateDb } = require("../utils/dbUtils/dbActions");
     const Supplier = require("../entities/Supplier");
     const Meat = require("../entities/Meat");
@@ -838,7 +926,9 @@ class SupplierService {
       where: { id: targetSupplierId, isActive: true },
     });
     if (!targetSupplier) {
-      throw new Error(`Target supplier with ID ${targetSupplierId} not found or inactive`);
+      throw new Error(
+        `Target supplier with ID ${targetSupplierId} not found or inactive`,
+      );
     }
 
     // Get all meats from source supplier
@@ -859,7 +949,7 @@ class SupplierService {
           meat.id,
           { supplierId: sourceSupplierId },
           { supplierId: targetSupplierId },
-          user
+          user,
         );
       }
     }
@@ -872,7 +962,10 @@ class SupplierService {
     for (const purchase of purchases) {
       purchase.supplier = targetSupplier;
       purchase.updatedAt = new Date();
-      await updateDb(purchaseRepo, purchase, { queryRunner: qr, skipSignal: false });
+      await updateDb(purchaseRepo, purchase, {
+        queryRunner: qr,
+        skipSignal: false,
+      });
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
@@ -881,7 +974,7 @@ class SupplierService {
           purchase.id,
           { supplierId: sourceSupplierId },
           { supplierId: targetSupplierId },
-          user
+          user,
         );
       }
     }
@@ -903,7 +996,7 @@ class SupplierService {
           batch.id,
           { supplierId: sourceSupplierId },
           { supplierId: targetSupplierId },
-          user
+          user,
         );
       }
     }
@@ -912,16 +1005,25 @@ class SupplierService {
     const oldData = { isActive: sourceSupplier.isActive };
     sourceSupplier.isActive = false;
     sourceSupplier.updatedAt = new Date();
-    await updateDb(supplierRepo, sourceSupplier, { queryRunner: qr, skipSignal: false });
+    await updateDb(supplierRepo, sourceSupplier, {
+      queryRunner: qr,
+      skipSignal: false,
+    });
 
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
-      await auditLogger.logUpdate("Supplier", sourceSupplierId, oldData, sourceSupplier, user);
+      await auditLogger.logUpdate(
+        "Supplier",
+        sourceSupplierId,
+        oldData,
+        sourceSupplier,
+        user,
+      );
     }
 
     logger.info(
       `[Supplier] Merged supplier #${sourceSupplierId} into #${targetSupplierId}. ` +
-      `${meats.length} meats, ${purchases.length} purchases, ${batches.length} batches reassigned.`
+        `${meats.length} meats, ${purchases.length} purchases, ${batches.length} batches reassigned.`,
     );
 
     // Return metadata for subscriber side effects
@@ -943,7 +1045,12 @@ class SupplierService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
-  async bulkDeactivateSuppliers(supplierIds, options = {}, user = "system", qr = null) {
+  async bulkDeactivateSuppliers(
+    supplierIds,
+    options = {},
+    user = "system",
+    qr = null,
+  ) {
     const results = { deactivated: [], errors: [] };
 
     for (const supplierId of supplierIds) {
@@ -956,7 +1063,7 @@ class SupplierService {
     }
 
     logger.info(
-      `[Supplier] Bulk deactivate: ${results.deactivated.length} succeeded, ${results.errors.length} failed`
+      `[Supplier] Bulk deactivate: ${results.deactivated.length} succeeded, ${results.errors.length} failed`,
     );
     return results;
   }
@@ -1056,7 +1163,9 @@ class SupplierService {
     const supplierRepo = this._getRepo(qr, Supplier);
 
     const totalActive = await supplierRepo.count({ where: { isActive: true } });
-    const totalInactive = await supplierRepo.count({ where: { isActive: false } });
+    const totalInactive = await supplierRepo.count({
+      where: { isActive: false },
+    });
 
     const defaultActive = await this._getDefaultActiveStatus(qr);
 
@@ -1078,9 +1187,12 @@ class SupplierService {
       .andWhere("supplier.isActive = true")
       .getCount();
 
-    const healthScore = totalActive > 0
-      ? Math.round(((totalActive - noEmail - noPhone - noAddress) / totalActive) * 100)
-      : 100;
+    const healthScore =
+      totalActive > 0
+        ? Math.round(
+            ((totalActive - noEmail - noPhone - noAddress) / totalActive) * 100,
+          )
+        : 100;
 
     return {
       totalActive,
@@ -1149,6 +1261,106 @@ class SupplierService {
       .getRawMany();
 
     return topSuppliers;
+  }
+
+  // ============================================================
+  // 📨 NOTIFY SUPPLIER (using NotificationLogService)
+  // ============================================================
+
+  /**
+   * Send a notification to a supplier via email or SMS.
+   * Uses NotificationLogService to create a queued log entry.
+   *
+   * @param {number} supplierId - Supplier ID
+   * @param {string} subject - Notification subject
+   * @param {string} message - Notification message (plain text or HTML)
+   * @param {string} channel - 'email' or 'sms' (default: 'email')
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<{ success: boolean, logId?: number, message: string }>}
+   */
+  async notifySupplier(
+    supplierId,
+    subject,
+    message,
+    channel = "email",
+    user = "system",
+    qr = null,
+  ) {
+    try {
+      // 1. Validate supplier exists and is active
+      const Supplier = require("../entities/Supplier");
+      const supplierRepo = this._getRepo(qr, Supplier);
+
+      const supplier = await supplierRepo.findOne({
+        where: { id: supplierId, isActive: true },
+      });
+
+      if (!supplier) {
+        throw new Error(`Supplier with ID ${supplierId} not found or inactive`);
+      }
+
+      // 2. Validate input
+      if (!subject || subject.trim().length === 0) {
+        throw new Error("Subject is required");
+      }
+      if (!message || message.trim().length === 0) {
+        throw new Error("Message is required");
+      }
+
+      // 3. Validate channel
+      const validChannels = ["email", "sms"];
+      if (!validChannels.includes(channel)) {
+        throw new Error(
+          `Invalid channel. Must be one of: ${validChannels.join(", ")}`,
+        );
+      }
+
+      // 4. Determine recipient based on channel
+      let recipient = null;
+      if (channel === "email") {
+        recipient = supplier.email;
+        if (!recipient) {
+          throw new Error(
+            `Supplier #${supplierId} has no email address configured`,
+          );
+        }
+      } else if (channel === "sms") {
+        recipient = supplier.phone;
+        if (!recipient) {
+          throw new Error(
+            `Supplier #${supplierId} has no phone number configured`,
+          );
+        }
+      }
+
+      // 5. Create NotificationLog entry via service
+      const logData = {
+        to: recipient,
+        subject: subject,
+        payload: message,
+        channel: channel,
+      };
+
+      const savedLog = await notificationLogService.create(logData, user, qr);
+
+      // 6. Audit log (already handled inside notificationLogService.create)
+      logger.debug(
+        `[Supplier] Notification log #${savedLog.id} created for supplier #${supplierId} (${supplier.name}) via ${channel}`,
+      );
+
+      return {
+        success: true,
+        logId: savedLog.id,
+        message: `Notification queued for supplier "${supplier.name}" via ${channel}`,
+      };
+    } catch (error) {
+      logger.error(
+        `[Supplier] Failed to notify supplier #${supplierId}:`,
+        error,
+      );
+      throw error;
+    }
   }
 }
 

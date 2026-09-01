@@ -1,4 +1,5 @@
 // src/main/ipc/core/sale/permanent_delete.ipc.js
+//@ts-check
 const saleService = require("../../../../services/Sale");
 
 module.exports = async (params, queryRunner) => {

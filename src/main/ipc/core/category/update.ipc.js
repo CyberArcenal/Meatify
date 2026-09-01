@@ -1,4 +1,5 @@
 // src/main/ipc/core/category/update.ipc.js
+//@ts-check
 const categoryService = require("../../../../services/Category");
 
 module.exports = async (params, queryRunner) => {

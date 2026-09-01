@@ -1,4 +1,5 @@
 // src/main/ipc/core/loyaltyTransaction/reverse_transaction.ipc.js
+//@ts-check
 const loyaltyTransactionService = require("../../../../services/LoyaltyTransaction");
 
 module.exports = async (params, queryRunner) => {

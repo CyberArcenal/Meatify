@@ -1,4 +1,5 @@
 // src/main/ipc/core/loyaltyTransaction/bulk_update.ipc.js
+//@ts-check
 const loyaltyTransactionService = require("../../../../services/LoyaltyTransaction");
 
 module.exports = async (params, queryRunner) => {

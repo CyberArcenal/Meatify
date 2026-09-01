@@ -1,4 +1,5 @@
 // src/main/ipc/core/loyaltyTransaction/import_csv.ipc.js
+//@ts-check
 const loyaltyTransactionService = require("../../../../services/LoyaltyTransaction");
 const fs = require("fs").promises;
 

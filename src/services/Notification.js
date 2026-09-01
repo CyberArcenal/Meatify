@@ -47,9 +47,12 @@ class NotificationService {
    * Helper: get a repository (transactional if queryRunner provided)
    */
   _getRepo(qr, entityClass) {
-    const qrType = qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
+    const qrType =
+      qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    logger.debug(`[Notification._getRepo] qr type: ${qrType}, has manager: ${hasManager}`);
+    logger.debug(
+      `[Notification._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
+    );
 
     if (hasManager && typeof qr.manager.getRepository === "function") {
       return qr.manager.getRepository(entityClass);
@@ -108,14 +111,18 @@ class NotificationService {
     if (options.type) {
       const types = Array.isArray(options.type) ? options.type : [options.type];
       const allowedTypes = await this._getAllowedNotificationTypes(qr);
-      const invalidTypes = types.filter(t => !allowedTypes.includes(t));
+      const invalidTypes = types.filter((t) => !allowedTypes.includes(t));
       if (invalidTypes.length > 0) {
-        logger.warn(`[Notification] Invalid types: ${invalidTypes.join(", ")}. Allowed: ${allowedTypes.join(", ")}`);
+        logger.warn(
+          `[Notification] Invalid types: ${invalidTypes.join(", ")}. Allowed: ${allowedTypes.join(", ")}`,
+        );
       }
       qb.andWhere("notification.type IN (:...types)", { types });
     }
     if (options.startDate) {
-      qb.andWhere("notification.createdAt >= :startDate", { startDate: new Date(options.startDate) });
+      qb.andWhere("notification.createdAt >= :startDate", {
+        startDate: new Date(options.startDate),
+      });
     }
     if (options.endDate) {
       const end = new Date(options.endDate);
@@ -125,7 +132,7 @@ class NotificationService {
     if (options.search) {
       qb.andWhere(
         "(notification.title LIKE :search OR notification.message LIKE :search OR notification.type LIKE :search)",
-        { search: `%${options.search}%` }
+        { search: `%${options.search}%` },
       );
     }
 
@@ -164,8 +171,14 @@ class NotificationService {
       .groupBy("notification.type")
       .getRawMany();
 
-    const readCount = await qb.clone().where("notification.isRead = true").getCount();
-    const unreadCount = await qb.clone().where("notification.isRead = false").getCount();
+    const readCount = await qb
+      .clone()
+      .where("notification.isRead = true")
+      .getCount();
+    const unreadCount = await qb
+      .clone()
+      .where("notification.isRead = false")
+      .getCount();
     const total = await qb.clone().getCount();
 
     const sevenDaysAgo = new Date();
@@ -299,7 +312,9 @@ class NotificationService {
     try {
       const inAppEnabled = await this._isInAppNotificationsEnabled(qr);
       if (!inAppEnabled) {
-        logger.debug("[Notification] In-app notifications are disabled, skipping creation");
+        logger.debug(
+          "[Notification] In-app notifications are disabled, skipping creation",
+        );
         return null;
       }
 
@@ -318,9 +333,12 @@ class NotificationService {
       }
 
       const allowedTypes = await this._getAllowedNotificationTypes(qr);
-      let notificationType = data.type || await this._getDefaultNotificationType(qr);
+      let notificationType =
+        data.type || (await this._getDefaultNotificationType(qr));
       if (!allowedTypes.includes(notificationType)) {
-        logger.warn(`[Notification] Invalid type "${notificationType}", defaulting to "info"`);
+        logger.warn(
+          `[Notification] Invalid type "${notificationType}", defaulting to "info"`,
+        );
         notificationType = "info";
       }
 
@@ -329,7 +347,9 @@ class NotificationService {
         try {
           metadata = JSON.stringify(metadata);
         } catch {
-          logger.warn("[Notification] Failed to stringify metadata, using null");
+          logger.warn(
+            "[Notification] Failed to stringify metadata, using null",
+          );
           metadata = null;
         }
       }
@@ -390,7 +410,9 @@ class NotificationService {
       if (data.message) {
         const maxMessageLength = await this._getMaxMessageLength(qr);
         if (data.message.length > maxMessageLength) {
-          throw new Error(`Message cannot exceed ${maxMessageLength} characters`);
+          throw new Error(
+            `Message cannot exceed ${maxMessageLength} characters`,
+          );
         }
       }
 
@@ -398,7 +420,7 @@ class NotificationService {
         const allowedTypes = await this._getAllowedNotificationTypes(qr);
         if (!allowedTypes.includes(data.type)) {
           throw new Error(
-            `Invalid notification type: "${data.type}". Allowed: ${allowedTypes.join(", ")}`
+            `Invalid notification type: "${data.type}". Allowed: ${allowedTypes.join(", ")}`,
           );
         }
       }
@@ -408,7 +430,9 @@ class NotificationService {
           try {
             data.metadata = JSON.stringify(data.metadata);
           } catch {
-            logger.warn("[Notification] Failed to stringify metadata, setting to null");
+            logger.warn(
+              "[Notification] Failed to stringify metadata, setting to null",
+            );
             data.metadata = null;
           }
         }
@@ -472,7 +496,10 @@ class NotificationService {
     const repo = this._getRepo(qr, Notification);
 
     try {
-      const notification = await repo.findOne({ where: { id }, withDeleted: true });
+      const notification = await repo.findOne({
+        where: { id },
+        withDeleted: true,
+      });
       if (!notification) {
         throw new Error(`Notification with ID ${id} not found`);
       }
@@ -505,7 +532,10 @@ class NotificationService {
     const Notification = require("../entities/Notification");
     const repo = this._getRepo(qr, Notification);
 
-    const notification = await repo.findOne({ where: { id }, withDeleted: true });
+    const notification = await repo.findOne({
+      where: { id },
+      withDeleted: true,
+    });
     if (!notification) {
       throw new Error(`Notification with ID ${id} not found`);
     }
@@ -524,19 +554,43 @@ class NotificationService {
   // 📤 EXPORT & BULK OPERATIONS
   // ============================================================
 
-  async exportNotifications(format = "json", filters = {}, user = "system", qr = null) {
+  async exportNotifications(
+    format = "json",
+    filters = {},
+    user = "system",
+    qr = null,
+  ) {
     try {
-      const result = await this.findAll({ ...filters, limit: undefined, page: undefined, ignoreRetention: true }, qr);
+      const result = await this.findAll(
+        {
+          ...filters,
+          limit: undefined,
+          page: undefined,
+          ignoreRetention: true,
+        },
+        qr,
+      );
       const notifications = result.data;
 
       let exportData;
       if (format === "csv") {
         const headers = [
-          "ID", "User ID", "Title", "Message", "Type",
-          "Is Read", "Metadata", "Created At", "Updated At",
+          "ID",
+          "User ID",
+          "Title",
+          "Message",
+          "Type",
+          "Is Read",
+          "Metadata",
+          "Created At",
+          "Updated At",
         ];
         const rows = notifications.map((n) => [
-          n.id, n.userId, n.title, n.message, n.type,
+          n.id,
+          n.userId,
+          n.title,
+          n.message,
+          n.type,
           n.isRead ? "Yes" : "No",
           n.metadata ? JSON.stringify(n.metadata) : "",
           new Date(n.createdAt).toLocaleString(),
@@ -560,7 +614,9 @@ class NotificationService {
         await auditLogger.debugExport("Notification", format, filters, user);
       }
 
-      logger.debug(`Exported ${notifications.length} notifications in ${format} format`);
+      logger.debug(
+        `Exported ${notifications.length} notifications in ${format} format`,
+      );
       return exportData;
     } catch (error) {
       console.error("Failed to export notifications:", error);
@@ -641,7 +697,9 @@ class NotificationService {
       .getMany();
 
     if (oldNotifications.length === 0) {
-      logger.info(`[Notification] No old notifications to clean up (threshold: ${daysOld} days)`);
+      logger.info(
+        `[Notification] No old notifications to clean up (threshold: ${daysOld} days)`,
+      );
       return { count: 0 };
     }
 
@@ -651,21 +709,36 @@ class NotificationService {
         const oldData = { ...notification };
         notification.deletedAt = new Date();
         notification.updatedAt = new Date();
-        await updateDb(repo, notification, { queryRunner: qr, skipSignal: true });
+        await updateDb(repo, notification, {
+          queryRunner: qr,
+          skipSignal: true,
+        });
 
         const auditEnabled = await this._isAuditEnabled(qr);
         if (auditEnabled) {
-          await auditLogger.logCreate("Notification", notification.id, oldData, user);
+          await auditLogger.logCreate(
+            "Notification",
+            notification.id,
+            oldData,
+            user,
+          );
         }
 
         updatedCount++;
-        logger.debug(`[Notification] Soft deleted notification #${notification.id} (older than ${daysOld} days)`);
+        logger.debug(
+          `[Notification] Soft deleted notification #${notification.id} (older than ${daysOld} days)`,
+        );
       } catch (err) {
-        logger.error(`[Notification] Failed to clean notification #${notification.id}:`, err);
+        logger.error(
+          `[Notification] Failed to clean notification #${notification.id}:`,
+          err,
+        );
       }
     }
 
-    logger.info(`[Notification] Cleaned up ${updatedCount} old notifications (older than ${daysOld} days)`);
+    logger.info(
+      `[Notification] Cleaned up ${updatedCount} old notifications (older than ${daysOld} days)`,
+    );
     return { count: updatedCount };
   }
 
@@ -685,14 +758,19 @@ class NotificationService {
     }
 
     if (notification.isRead) {
-      logger.warn(`[Notification] Notification #${notificationId} is already read`);
+      logger.warn(
+        `[Notification] Notification #${notificationId} is already read`,
+      );
       return notification;
     }
 
     notification.isRead = true;
     notification.updatedAt = new Date();
 
-    const updated = await updateDb(repo, notification, { queryRunner: qr, skipSignal: false });
+    const updated = await updateDb(repo, notification, {
+      queryRunner: qr,
+      skipSignal: false,
+    });
 
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
@@ -701,11 +779,13 @@ class NotificationService {
         notificationId,
         { isRead: false },
         { isRead: true },
-        user
+        user,
       );
     }
 
-    logger.debug(`[Notification] Notification #${notificationId} marked as read (subscriber will trigger side effects)`);
+    logger.debug(
+      `[Notification] Notification #${notificationId} marked as read (subscriber will trigger side effects)`,
+    );
     return updated;
   }
 
@@ -720,14 +800,19 @@ class NotificationService {
     }
 
     if (!notification.isRead) {
-      logger.warn(`[Notification] Notification #${notificationId} is already unread`);
+      logger.warn(
+        `[Notification] Notification #${notificationId} is already unread`,
+      );
       return notification;
     }
 
     notification.isRead = false;
     notification.updatedAt = new Date();
 
-    const updated = await updateDb(repo, notification, { queryRunner: qr, skipSignal: false });
+    const updated = await updateDb(repo, notification, {
+      queryRunner: qr,
+      skipSignal: false,
+    });
 
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
@@ -736,11 +821,13 @@ class NotificationService {
         notificationId,
         { isRead: true },
         { isRead: false },
-        user
+        user,
       );
     }
 
-    logger.debug(`[Notification] Notification #${notificationId} marked as unread (subscriber will trigger side effects)`);
+    logger.debug(
+      `[Notification] Notification #${notificationId} marked as unread (subscriber will trigger side effects)`,
+    );
     return updated;
   }
 
@@ -765,7 +852,10 @@ class NotificationService {
     for (const notification of unreadNotifications) {
       notification.isRead = true;
       notification.updatedAt = new Date();
-      const updated = await updateDb(repo, notification, { queryRunner: qr, skipSignal: false });
+      const updated = await updateDb(repo, notification, {
+        queryRunner: qr,
+        skipSignal: false,
+      });
       updatedNotifications.push(updated);
 
       const auditEnabled = await this._isAuditEnabled(qr);
@@ -775,13 +865,18 @@ class NotificationService {
           notification.id,
           { isRead: false },
           { isRead: true },
-          user
+          user,
         );
       }
     }
 
-    logger.debug(`[Notification] Marked ${updatedNotifications.length} notifications as read for user #${userId} (subscriber will trigger side effects)`);
-    return { count: updatedNotifications.length, notifications: updatedNotifications };
+    logger.debug(
+      `[Notification] Marked ${updatedNotifications.length} notifications as read for user #${userId} (subscriber will trigger side effects)`,
+    );
+    return {
+      count: updatedNotifications.length,
+      notifications: updatedNotifications,
+    };
   }
 
   async markAllAsUnread(userId, user = "system", qr = null) {
@@ -805,7 +900,10 @@ class NotificationService {
     for (const notification of readNotifications) {
       notification.isRead = false;
       notification.updatedAt = new Date();
-      const updated = await updateDb(repo, notification, { queryRunner: qr, skipSignal: false });
+      const updated = await updateDb(repo, notification, {
+        queryRunner: qr,
+        skipSignal: false,
+      });
       updatedNotifications.push(updated);
 
       const auditEnabled = await this._isAuditEnabled(qr);
@@ -815,48 +913,18 @@ class NotificationService {
           notification.id,
           { isRead: true },
           { isRead: false },
-          user
+          user,
         );
       }
     }
 
-    logger.debug(`[Notification] Marked ${updatedNotifications.length} notifications as unread for user #${userId} (subscriber will trigger side effects)`);
-    return { count: updatedNotifications.length, notifications: updatedNotifications };
-  }
-
-  async deleteAllRead(userId, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const Notification = require("../entities/Notification");
-    const repo = this._getRepo(qr, Notification);
-
-    const readNotifications = await repo
-      .createQueryBuilder("notification")
-      .where("notification.userId = :userId", { userId })
-      .andWhere("notification.isRead = true")
-      .andWhere("notification.deletedAt IS NULL")
-      .getMany();
-
-    if (readNotifications.length === 0) {
-      logger.info(`[Notification] No read notifications to delete for user #${userId}`);
-      return { count: 0 };
-    }
-
-    const deletedIds = [];
-    for (const notification of readNotifications) {
-      const oldData = { ...notification };
-      notification.deletedAt = new Date();
-      notification.updatedAt = new Date();
-      await updateDb(repo, notification, { queryRunner: qr, skipSignal: false });
-      deletedIds.push(notification.id);
-
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        await auditLogger.logCreate("Notification", notification.id, oldData, user);
-      }
-    }
-
-    logger.debug(`[Notification] Deleted ${deletedIds.length} read notifications for user #${userId} (subscriber will trigger side effects)`);
-    return { count: readNotifications.length };
+    logger.debug(
+      `[Notification] Marked ${updatedNotifications.length} notifications as unread for user #${userId} (subscriber will trigger side effects)`,
+    );
+    return {
+      count: updatedNotifications.length,
+      notifications: updatedNotifications,
+    };
   }
 
   // ============================================================
@@ -880,7 +948,9 @@ class NotificationService {
     try {
       return await system.auditLogEnabled();
     } catch (error) {
-      logger.warn(`[Notification] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[Notification] Failed to check audit enabled status: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
@@ -889,61 +959,175 @@ class NotificationService {
     try {
       return await system.inAppNotificationsEnabled();
     } catch (error) {
-      logger.warn(`[Notification] Failed to check in-app notifications enabled: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[Notification] Failed to check in-app notifications enabled: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
 
   async _getAllowedNotificationTypes(qr = null) {
     try {
-      return await system.getArray("allowed_notification_types", SettingType.NOTIFICATIONS, [
-        "info", "success", "warning", "error", "purchase", "sale"
-      ]);
+      return await system.getArray(
+        "allowed_notification_types",
+        SettingType.NOTIFICATIONS,
+        ["info", "success", "warning", "error", "purchase", "sale"],
+      );
     } catch (error) {
-      logger.warn(`[Notification] Failed to get allowed notification types: ${error.message}, using defaults`);
+      logger.warn(
+        `[Notification] Failed to get allowed notification types: ${error.message}, using defaults`,
+      );
       return ["info", "success", "warning", "error", "purchase", "sale"];
     }
   }
 
   async _getDefaultNotificationType(qr = null) {
     try {
-      const defaultType = await system.getValue("default_notification_type", SettingType.NOTIFICATIONS, "info");
+      const defaultType = await system.getValue(
+        "default_notification_type",
+        SettingType.NOTIFICATIONS,
+        "info",
+      );
       const allowedTypes = await this._getAllowedNotificationTypes(qr);
       if (!allowedTypes.includes(defaultType)) {
-        logger.warn(`[Notification] Invalid default type "${defaultType}", defaulting to "info"`);
+        logger.warn(
+          `[Notification] Invalid default type "${defaultType}", defaulting to "info"`,
+        );
         return "info";
       }
       return defaultType;
     } catch (error) {
-      logger.warn(`[Notification] Failed to get default notification type: ${error.message}, defaulting to "info"`);
+      logger.warn(
+        `[Notification] Failed to get default notification type: ${error.message}, defaulting to "info"`,
+      );
       return "info";
     }
   }
 
   async _getMaxTitleLength(qr = null) {
     try {
-      return await system.getInt("max_notification_title_length", SettingType.NOTIFICATIONS, 255);
+      return await system.getInt(
+        "max_notification_title_length",
+        SettingType.NOTIFICATIONS,
+        255,
+      );
     } catch (error) {
-      logger.warn(`[Notification] Failed to get max title length: ${error.message}, defaulting to 255`);
+      logger.warn(
+        `[Notification] Failed to get max title length: ${error.message}, defaulting to 255`,
+      );
       return 255;
     }
   }
 
   async _getMaxMessageLength(qr = null) {
     try {
-      return await system.getInt("max_notification_message_length", SettingType.NOTIFICATIONS, 1000);
+      return await system.getInt(
+        "max_notification_message_length",
+        SettingType.NOTIFICATIONS,
+        1000,
+      );
     } catch (error) {
-      logger.warn(`[Notification] Failed to get max message length: ${error.message}, defaulting to 1000`);
+      logger.warn(
+        `[Notification] Failed to get max message length: ${error.message}, defaulting to 1000`,
+      );
       return 1000;
     }
   }
 
   async _getNotificationRetentionDays(qr = null) {
     try {
-      return await system.getInt("notification_retention_days", SettingType.NOTIFICATIONS, 90);
+      return await system.getInt(
+        "notification_retention_days",
+        SettingType.NOTIFICATIONS,
+        90,
+      );
     } catch (error) {
-      logger.warn(`[Notification] Failed to get notification retention days: ${error.message}, defaulting to 90`);
+      logger.warn(
+        `[Notification] Failed to get notification retention days: ${error.message}, defaulting to 90`,
+      );
       return 90;
+    }
+  }
+
+  // ============================================================
+  // ✅ DELETE ALL READ NOTIFICATIONS (system-wide or per user)
+  // ============================================================
+
+  /**
+   * Soft delete read notifications.
+   * - If userId is provided: delete read notifications for that specific user.
+   * - If userId is null/undefined: delete ALL read notifications system-wide.
+   *
+   * @param {number | null} userId - User ID (null for system-wide deletion)
+   * @param {string} user - User performing the action (for audit)
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<{ count: number, notificationIds: number[] }>}
+   */
+  async deleteAllRead(userId = null, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Notification = require("../entities/Notification");
+    const repo = this._getRepo(qr, Notification);
+
+    try {
+      // Build query for read notifications not yet soft-deleted
+      const qb = repo
+        .createQueryBuilder("notification")
+        .where("notification.isRead = true")
+        .andWhere("notification.deletedAt IS NULL");
+
+      // Apply userId filter only if provided
+      if (
+        userId !== null &&
+        userId !== undefined &&
+        typeof userId === "number"
+      ) {
+        qb.andWhere("notification.userId = :userId", { userId });
+      }
+
+      const notifications = await qb.getMany();
+
+      if (notifications.length === 0) {
+        const scope = userId ? `for user #${userId}` : "system-wide";
+        logger.info(`[Notification] No read notifications to delete ${scope}`);
+        return { count: 0, notificationIds: [] };
+      }
+
+      const deletedIds = [];
+      for (const notification of notifications) {
+        const oldData = { ...notification };
+        notification.deletedAt = new Date();
+        notification.updatedAt = new Date();
+
+        // updateDb triggers the subscriber (afterUpdate) → state service
+        await updateDb(repo, notification, {
+          queryRunner: qr,
+          skipSignal: false,
+        });
+        deletedIds.push(notification.id);
+
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.logCreate(
+            "Notification",
+            notification.id,
+            oldData,
+            user,
+          );
+        }
+      }
+
+      const scope = userId ? `user #${userId}` : "system";
+      logger.debug(
+        `[Notification] Soft-deleted ${deletedIds.length} read notifications ${scope}`,
+      );
+
+      return {
+        count: deletedIds.length,
+        notificationIds: deletedIds,
+      };
+    } catch (error) {
+      console.error("Failed to delete all read notifications:", error.message);
+      throw error;
     }
   }
 }

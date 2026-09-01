@@ -1,20 +1,22 @@
 // src/main/ipc/core/notification/delete_all_read.ipc.js
-const { NotificationStateService } = require("../../../../stateServices/Notification");
-const { AppDataSource } = require("../../../db/data-source");
+//@ts-check
+const notificationService = require("../../../../services/Notification");
 
 module.exports = async (params, queryRunner) => {
-  const { userId, user = "system" } = params;
+  // userId can be null for system-wide deletion
+  const { userId = null, user = "system" } = params;
 
-  if (!userId || typeof userId !== "number") {
-    return { status: false, message: "Valid user ID is required", data: null };
+  // Validate: if userId is provided, it must be a number
+  if (userId !== null && typeof userId !== "number") {
+    return { status: false, message: "userId must be a number or null", data: null };
   }
 
   try {
-    const stateService = new NotificationStateService(AppDataSource);
-    const result = await stateService.deleteAllRead(userId, user, queryRunner);
+    const result = await notificationService.deleteAllRead(userId, user, queryRunner);
+    const scope = userId ? `user #${userId}` : "system";
     return {
       status: true,
-      message: `${result.count} read notifications deleted for user #${userId}`,
+      message: `${result.count} read notifications deleted ${scope}`,
       data: result,
     };
   } catch (error) {

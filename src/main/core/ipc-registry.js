@@ -6,6 +6,11 @@ const fs = require("fs");
 
 const { logger } = require("./logger");
 const AuditTrailCleanupScheduler = require("../../scheduler/auditTrailCleanupScheduler");
+const BatchExpiryScheduler = require("../../scheduler/BatchExpiryScheduler");
+const LowStockAlertScheduler = require("../../scheduler/LowStockAlertScheduler");
+const DataRetentionScheduler = require("../../scheduler/DataRetentionScheduler");
+const DailySalesReportScheduler = require("../../scheduler/DailySalesReportScheduler");
+const DatabaseBackupScheduler = require("../../scheduler/DatabaseBackupScheduler");
 
 /**
  * Register all IPC handlers
@@ -194,9 +199,28 @@ function loadIpcModules() {
   }
 }
 
+// src/main/core/ipc-registry.js
+
 async function runSchedulers() {
   const auditCleaner = new AuditTrailCleanupScheduler();
-  auditCleaner.start();
+  await auditCleaner.start();
+
+  const batchExpiry = new BatchExpiryScheduler();
+  await batchExpiry.start();
+
+  const lowStockAlert = new LowStockAlertScheduler();
+  await lowStockAlert.start();
+
+  const dailyReport = new DailySalesReportScheduler();
+  await dailyReport.start();
+
+  const backupScheduler = new DatabaseBackupScheduler();
+  await backupScheduler.start();
+
+  const dataRetention = new DataRetentionScheduler();
+  await dataRetention.start();
+
+  logger.info("✅ All schedulers started successfully");
 }
 
 module.exports = { registerIpcHandlers, runSchedulers };

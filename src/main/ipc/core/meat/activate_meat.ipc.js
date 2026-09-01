@@ -1,4 +1,5 @@
 // src/main/ipc/core/meat/activate_meat.ipc.js
+//@ts-check
 const meatService = require("../../../../services/Meat");
 
 module.exports = async (params, queryRunner) => {

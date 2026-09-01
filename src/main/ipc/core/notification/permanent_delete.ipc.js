@@ -1,4 +1,5 @@
 // src/main/ipc/core/notification/permanent_delete.ipc.js
+//@ts-check
 const notificationService = require("../../../../services/Notification");
 
 module.exports = async (params, queryRunner) => {

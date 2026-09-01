@@ -1,4 +1,5 @@
 // src/main/ipc/core/notification/export.ipc.js
+//@ts-check
 const notificationService = require("../../../../services/Notification");
 
 module.exports = async (params) => {

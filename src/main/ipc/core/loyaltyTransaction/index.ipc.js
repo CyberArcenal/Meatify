@@ -1,5 +1,5 @@
 // src/main/ipc/core/loyaltyTransaction/index.ipc.js - Loyalty Transaction Management Handler (Offline Only)
-
+//@ts-check
 const { ipcMain } = require("electron");
 const { logger } = require("../../../../utils/logger");
 const { AppDataSource } = require("../../../db/data-source");

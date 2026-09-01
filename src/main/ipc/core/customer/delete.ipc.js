@@ -1,4 +1,5 @@
 // src/main/ipc/core/customer/delete.ipc.js
+//@ts-check
 const customerService = require("../../../../services/Customer");
 
 module.exports = async (params, queryRunner) => {

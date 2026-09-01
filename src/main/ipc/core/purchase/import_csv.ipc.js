@@ -1,4 +1,5 @@
 // src/main/ipc/core/purchase/import_csv.ipc.js
+//@ts-check
 const purchaseService = require("../../../../services/Purchase");
 const fs = require("fs").promises;
 

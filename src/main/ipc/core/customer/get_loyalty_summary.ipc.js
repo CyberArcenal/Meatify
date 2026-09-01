@@ -1,4 +1,5 @@
 // src/main/ipc/core/customer/get_loyalty_summary.ipc.js
+//@ts-check
 const loyaltyTransactionService = require("../../../../services/LoyaltyTransaction");
 
 module.exports = async (params) => {

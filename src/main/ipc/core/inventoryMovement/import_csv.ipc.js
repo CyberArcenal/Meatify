@@ -1,4 +1,5 @@
 // src/main/ipc/core/inventoryMovement/import_csv.ipc.js
+//@ts-check
 const inventoryMovementService = require("../../../../services/InventoryMovement");
 const fs = require("fs").promises;
 

@@ -1,4 +1,5 @@
 // src/main/ipc/core/purchase/bulk_create.ipc.js
+//@ts-check
 const purchaseService = require("../../../../services/Purchase");
 
 module.exports = async (params, queryRunner) => {

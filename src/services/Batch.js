@@ -60,9 +60,12 @@ class BatchService {
    * Helper: get a repository (transactional if queryRunner provided)
    */
   _getRepo(qr, entityClass) {
-    const qrType = qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
+    const qrType =
+      qr === null ? "null" : qr === undefined ? "undefined" : typeof qr;
     const hasManager = qr && typeof qr === "object" && !!qr.manager;
-    logger.debug(`[Batch._getRepo] qr type: ${qrType}, has manager: ${hasManager}`);
+    logger.debug(
+      `[Batch._getRepo] qr type: ${qrType}, has manager: ${hasManager}`,
+    );
 
     if (hasManager && typeof qr.manager.getRepository === "function") {
       return qr.manager.getRepository(entityClass);
@@ -110,14 +113,22 @@ class BatchService {
       qb.andWhere("batch.meatId = :meatId", { meatId: options.meatId });
     }
     if (options.supplierId) {
-      qb.andWhere("batch.supplierId = :supplierId", { supplierId: options.supplierId });
+      qb.andWhere("batch.supplierId = :supplierId", {
+        supplierId: options.supplierId,
+      });
     }
     if (options.status) {
-      const statuses = Array.isArray(options.status) ? options.status : [options.status];
+      const statuses = Array.isArray(options.status)
+        ? options.status
+        : [options.status];
       const allowedStatuses = await this._getAllowedStatuses(qr);
-      const invalidStatuses = statuses.filter(s => !allowedStatuses.includes(s));
+      const invalidStatuses = statuses.filter(
+        (s) => !allowedStatuses.includes(s),
+      );
       if (invalidStatuses.length > 0) {
-        logger.warn(`[Batch] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`);
+        logger.warn(
+          `[Batch] Invalid statuses: ${invalidStatuses.join(", ")}. Allowed: ${allowedStatuses.join(", ")}`,
+        );
       }
       qb.andWhere("batch.status IN (:...statuses)", { statuses });
     }
@@ -144,7 +155,7 @@ class BatchService {
     if (options.search) {
       qb.andWhere(
         "(batch.batchCode LIKE :search OR batch.note LIKE :search OR meat.name LIKE :search)",
-        { search: `%${options.search}%` }
+        { search: `%${options.search}%` },
       );
     }
 
@@ -183,26 +194,36 @@ class BatchService {
 
     try {
       if (!data.meatId) throw new Error("meatId is required");
-      if (!data.quantity || data.quantity <= 0) throw new Error("quantity must be greater than 0");
-      if (!data.unitCost || data.unitCost < 0) throw new Error("unitCost must be non-negative");
+      if (!data.quantity || data.quantity <= 0)
+        throw new Error("quantity must be greater than 0");
+      if (!data.unitCost || data.unitCost < 0)
+        throw new Error("unitCost must be non-negative");
       if (!data.expiryDate) throw new Error("expiryDate is required");
 
-      const meat = await meatRepo.findOne({ where: { id: data.meatId, isActive: true } });
+      const meat = await meatRepo.findOne({
+        where: { id: data.meatId, isActive: true },
+      });
       if (!meat) {
         throw new Error(`Meat with ID ${data.meatId} not found or inactive`);
       }
 
       let supplier = null;
       if (data.supplierId) {
-        supplier = await supplierRepo.findOne({ where: { id: data.supplierId, isActive: true } });
+        supplier = await supplierRepo.findOne({
+          where: { id: data.supplierId, isActive: true },
+        });
         if (!supplier) {
-          throw new Error(`Supplier with ID ${data.supplierId} not found or inactive`);
+          throw new Error(
+            `Supplier with ID ${data.supplierId} not found or inactive`,
+          );
         }
       }
 
       const allowedStatuses = await this._getAllowedStatuses(qr);
       if (data.status && !allowedStatuses.includes(data.status)) {
-        throw new Error(`Invalid batch status: ${data.status}. Allowed: ${allowedStatuses.join(", ")}`);
+        throw new Error(
+          `Invalid batch status: ${data.status}. Allowed: ${allowedStatuses.join(", ")}`,
+        );
       }
 
       let batchCode = data.batchCode;
@@ -267,7 +288,9 @@ class BatchService {
 
       // ❌ Prevent direct updates to remainingQuantity – use dedicated methods below
       if (data.remainingQuantity !== undefined) {
-        throw new Error("Use updateRemainingQuantity to update remainingQuantity");
+        throw new Error(
+          "Use updateRemainingQuantity to update remainingQuantity",
+        );
       }
 
       // ❌ Prevent direct updates to status – use dedicated methods below
@@ -278,7 +301,9 @@ class BatchService {
       const oldData = { ...existing };
 
       if (data.batchCode && data.batchCode !== existing.batchCode) {
-        const duplicate = await batchRepo.findOne({ where: { batchCode: data.batchCode } });
+        const duplicate = await batchRepo.findOne({
+          where: { batchCode: data.batchCode },
+        });
         if (duplicate) {
           throw new Error(`Batch code "${data.batchCode}" already exists`);
         }
@@ -310,12 +335,18 @@ class BatchService {
    * ✅ DEDICATED SETTER: Update remainingQuantity
    * Called by state service or directly when quantity changes
    */
+
   async updateRemainingQuantity(id, newQuantity, user = "system", qr = null) {
     const { updateDb } = require("../utils/dbUtils/dbActions");
     const Batch = require("../entities/Batch");
     const batchRepo = this._getRepo(qr, Batch);
 
-    const existing = await batchRepo.findOne({ where: { id } });
+    // ✅ Load with relations to prevent false change detection
+    const existing = await batchRepo.findOne({
+      where: { id },
+      relations: ["meat", "supplier"], // <-- ADD THIS
+    });
+
     if (!existing) {
       throw new Error(`Batch with ID ${id} not found`);
     }
@@ -324,7 +355,11 @@ class BatchService {
       throw new Error(`Remaining quantity cannot be negative: ${newQuantity}`);
     }
 
-    const oldData = { remainingQuantity: existing.remainingQuantity, status: existing.status };
+    const oldData = {
+      remainingQuantity: existing.remainingQuantity,
+      status: existing.status,
+    };
+
     existing.remainingQuantity = newQuantity;
 
     // Auto-update status based on remaining quantity
@@ -343,7 +378,9 @@ class BatchService {
       await auditLogger.logUpdate("Batch", id, oldData, saved, user);
     }
 
-    logger.debug(`Batch #${id} remainingQuantity updated: ${oldData.remainingQuantity} → ${newQuantity}`);
+    logger.debug(
+      `Batch #${id} remainingQuantity updated: ${oldData.remainingQuantity} → ${newQuantity}`,
+    );
     return saved;
   }
 
@@ -358,7 +395,9 @@ class BatchService {
 
     const allowedStatuses = await this._getAllowedStatuses(qr);
     if (!allowedStatuses.includes(newStatus)) {
-      throw new Error(`Invalid batch status: ${newStatus}. Allowed: ${allowedStatuses.join(", ")}`);
+      throw new Error(
+        `Invalid batch status: ${newStatus}. Allowed: ${allowedStatuses.join(", ")}`,
+      );
     }
 
     const existing = await batchRepo.findOne({ where: { id } });
@@ -382,7 +421,9 @@ class BatchService {
       await auditLogger.logUpdate("Batch", id, oldData, saved, user);
     }
 
-    logger.debug(`Batch #${id} status updated: ${oldData.status} → ${newStatus}`);
+    logger.debug(
+      `Batch #${id} status updated: ${oldData.status} → ${newStatus}`,
+    );
     return saved;
   }
 
@@ -395,7 +436,7 @@ class BatchService {
     const batch = await this.findById(id, false, qr);
     if (batch.remainingQuantity > 0) {
       throw new Error(
-        `Cannot soft delete batch #${id} because remainingQuantity is ${batch.remainingQuantity}. Use updateRemainingQuantity first.`
+        `Cannot soft delete batch #${id} because remainingQuantity is ${batch.remainingQuantity}. Use updateRemainingQuantity first.`,
       );
     }
     return this.updateStatus(id, "depleted", user, qr);
@@ -404,10 +445,14 @@ class BatchService {
   async restore(id, user = "system", qr = null) {
     const batch = await this.findById(id, true, qr);
     if (batch.status !== "depleted" && batch.status !== "expired") {
-      throw new Error(`Batch #${id} is not soft-deleted (status: ${batch.status})`);
+      throw new Error(
+        `Batch #${id} is not soft-deleted (status: ${batch.status})`,
+      );
     }
     if (batch.remainingQuantity <= 0) {
-      throw new Error(`Cannot restore batch #${id} because remainingQuantity is 0.`);
+      throw new Error(
+        `Cannot restore batch #${id} because remainingQuantity is 0.`,
+      );
     }
     return this.updateStatus(id, "active", user, qr);
   }
@@ -454,7 +499,7 @@ class BatchService {
     reason = "adjustment",
     metadata = {},
     user = "system",
-    queryRunner = null
+    queryRunner = null,
   ) {
     const { saveDb } = require("../utils/dbUtils/dbActions");
     const InventoryMovement = require("../entities/InventoryMovement");
@@ -466,14 +511,16 @@ class BatchService {
 
     // Validate
     if (batch.status !== "active") {
-      throw new Error(`Batch #${batchId} is not active (status: ${batch.status})`);
+      throw new Error(
+        `Batch #${batchId} is not active (status: ${batch.status})`,
+      );
     }
     if (new Date(batch.expiryDate) < new Date()) {
       throw new Error(`Batch #${batchId} is expired (${batch.expiryDate})`);
     }
     if (batch.remainingQuantity < weightToDeduct) {
       throw new Error(
-        `Insufficient remaining quantity in batch #${batchId}. Available: ${batch.remainingQuantity}, Requested: ${weightToDeduct}`
+        `Insufficient remaining quantity in batch #${batchId}. Available: ${batch.remainingQuantity}, Requested: ${weightToDeduct}`,
       );
     }
 
@@ -485,7 +532,7 @@ class BatchService {
       batchId,
       newRemaining,
       user,
-      queryRunner
+      queryRunner,
     );
 
     // 2. Create InventoryMovement record
@@ -504,11 +551,16 @@ class BatchService {
 
     const auditEnabled = await this._isAuditEnabled(queryRunner);
     if (auditEnabled) {
-      await auditLogger.logCreate("InventoryMovement", savedMovement.id, savedMovement, user);
+      await auditLogger.logCreate(
+        "InventoryMovement",
+        savedMovement.id,
+        savedMovement,
+        user,
+      );
     }
 
     logger.info(
-      `[Batch] Deducted ${weightToDeduct}kg from batch #${batchId} (${reason}). Remaining: ${updatedBatch.remainingQuantity}kg`
+      `[Batch] Deducted ${weightToDeduct}kg from batch #${batchId} (${reason}). Remaining: ${updatedBatch.remainingQuantity}kg`,
     );
 
     return { batch: updatedBatch, deductedWeight: weightToDeduct };
@@ -529,7 +581,7 @@ class BatchService {
     reason = "refund",
     metadata = {},
     user = "system",
-    queryRunner = null
+    queryRunner = null,
   ) {
     const { saveDb } = require("../utils/dbUtils/dbActions");
     const InventoryMovement = require("../entities/InventoryMovement");
@@ -550,7 +602,7 @@ class BatchService {
       batchId,
       newRemaining,
       user,
-      queryRunner
+      queryRunner,
     );
 
     // 2. Create InventoryMovement record
@@ -569,11 +621,16 @@ class BatchService {
 
     const auditEnabled = await this._isAuditEnabled(queryRunner);
     if (auditEnabled) {
-      await auditLogger.logCreate("InventoryMovement", savedMovement.id, savedMovement, user);
+      await auditLogger.logCreate(
+        "InventoryMovement",
+        savedMovement.id,
+        savedMovement,
+        user,
+      );
     }
 
     logger.info(
-      `[Batch] Added ${weightToAdd}kg to batch #${batchId} (${reason}). Remaining: ${updatedBatch.remainingQuantity}kg`
+      `[Batch] Added ${weightToAdd}kg to batch #${batchId} (${reason}). Remaining: ${updatedBatch.remainingQuantity}kg`,
     );
 
     return { batch: updatedBatch, addedWeight: weightToAdd };
@@ -595,7 +652,7 @@ class BatchService {
     reason = "sale",
     metadata = {},
     user = "system",
-    queryRunner = null
+    queryRunner = null,
   ) {
     const Batch = require("../entities/Batch");
     const batchRepo = this._getRepo(queryRunner, Batch);
@@ -626,9 +683,12 @@ class BatchService {
         batch.id,
         use,
         reason,
-        { ...metadata, notes: `FIFO deduction (remaining: ${remaining - use}kg)` },
+        {
+          ...metadata,
+          notes: `FIFO deduction (remaining: ${remaining - use}kg)`,
+        },
         user,
-        queryRunner
+        queryRunner,
       );
       deductions.push(result);
       remaining -= use;
@@ -636,12 +696,12 @@ class BatchService {
 
     if (remaining > 0.001) {
       throw new Error(
-        `Insufficient stock for meat ID ${meatId}. Needed ${totalWeight}kg, only ${totalWeight - remaining}kg available from active batches.`
+        `Insufficient stock for meat ID ${meatId}. Needed ${totalWeight}kg, only ${totalWeight - remaining}kg available from active batches.`,
       );
     }
 
     logger.info(
-      `[Batch] FIFO deduction completed for meat #${meatId}: ${totalWeight}kg deducted from ${deductions.length} batch(es)`
+      `[Batch] FIFO deduction completed for meat #${meatId}: ${totalWeight}kg deducted from ${deductions.length} batch(es)`,
     );
 
     return deductions;
@@ -663,7 +723,9 @@ class BatchService {
     }
 
     if (new Date(batch.expiryDate) > new Date()) {
-      throw new Error(`Batch #${batchId} is not yet expired (expiry: ${batch.expiryDate})`);
+      throw new Error(
+        `Batch #${batchId} is not yet expired (expiry: ${batch.expiryDate})`,
+      );
     }
 
     return this.updateStatus(batchId, "expired", user, queryRunner);
@@ -695,9 +757,14 @@ class BatchService {
       try {
         await this.updateStatus(batch.id, "expired", user, qr);
         updatedCount++;
-        logger.info(`[Batch] Batch #${batch.id} (${batch.batchCode}) marked as expired`);
+        logger.info(
+          `[Batch] Batch #${batch.id} (${batch.batchCode}) marked as expired`,
+        );
       } catch (err) {
-        logger.error(`[Batch] Failed to mark batch #${batch.id} as expired:`, err);
+        logger.error(
+          `[Batch] Failed to mark batch #${batch.id} as expired:`,
+          err,
+        );
       }
     }
 
@@ -770,7 +837,7 @@ class BatchService {
       expired,
       lowStockBatches: lowStockBatches.length,
       lowStockThreshold: threshold,
-      lowStockDetails: lowStockBatches.map(b => ({
+      lowStockDetails: lowStockBatches.map((b) => ({
         id: b.id,
         batchCode: b.batchCode,
         meatName: b.meat?.name,
@@ -794,7 +861,9 @@ class BatchService {
     });
     const expiringSoon = await batchRepo
       .createQueryBuilder("batch")
-      .where("batch.expiryDate <= :soon", { soon: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) })
+      .where("batch.expiryDate <= :soon", {
+        soon: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      })
       .andWhere("batch.expiryDate >= :today", { today: new Date() })
       .andWhere("batch.status = 'active'")
       .getCount();
@@ -815,7 +884,12 @@ class BatchService {
       lowStock,
       depleted,
       lowStockThreshold: threshold,
-      healthScore: total > 0 ? Math.round(((total - expired - expiringSoon - lowStock) / total) * 100) : 100,
+      healthScore:
+        total > 0
+          ? Math.round(
+              ((total - expired - expiringSoon - lowStock) / total) * 100,
+            )
+          : 100,
     };
   }
 
@@ -827,18 +901,24 @@ class BatchService {
     try {
       return await system.auditLogEnabled();
     } catch (error) {
-      logger.warn(`[Batch] Failed to check audit enabled status: ${error.message}, defaulting to true`);
+      logger.warn(
+        `[Batch] Failed to check audit enabled status: ${error.message}, defaulting to true`,
+      );
       return true;
     }
   }
 
   async _getAllowedStatuses(qr = null) {
     try {
-      return await system.getArray("allowed_batch_statuses", SettingType.INVENTORY, [
-        "active", "depleted", "expired", "on_hold"
-      ]);
+      return await system.getArray(
+        "allowed_batch_statuses",
+        SettingType.INVENTORY,
+        ["active", "depleted", "expired", "on_hold"],
+      );
     } catch (error) {
-      logger.warn(`[Batch] Failed to get allowed statuses: ${error.message}, using defaults`);
+      logger.warn(
+        `[Batch] Failed to get allowed statuses: ${error.message}, using defaults`,
+      );
       return ["active", "depleted", "expired", "on_hold"];
     }
   }
@@ -847,7 +927,9 @@ class BatchService {
     try {
       return await system.lowStockThreshold();
     } catch (error) {
-      logger.warn(`[Batch] Failed to get low stock threshold: ${error.message}, defaulting to 5`);
+      logger.warn(
+        `[Batch] Failed to get low stock threshold: ${error.message}, defaulting to 5`,
+      );
       return 5;
     }
   }
@@ -857,7 +939,9 @@ class BatchService {
       const company = await system.companyName();
       return company.substring(0, 4).toUpperCase();
     } catch (error) {
-      logger.warn(`[Batch] Failed to get company name: ${error.message}, defaulting to "BATCH"`);
+      logger.warn(
+        `[Batch] Failed to get company name: ${error.message}, defaulting to "BATCH"`,
+      );
       return "BATCH";
     }
   }
@@ -880,6 +964,212 @@ class BatchService {
       code = `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     }
     return code;
+  }
+
+  /**
+   * Bulk create batches
+   * @param {Array<Object>} batchesArray - Array of batch data objects
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<{ created: any[], errors: { batch: any, error: string }[] }>}
+   */
+  async bulkCreate(batchesArray, user = "system", qr = null) {
+    const results = { created: [], errors: [] };
+    for (const data of batchesArray) {
+      try {
+        const saved = await this.create(data, user, qr);
+        results.created.push(saved);
+      } catch (err) {
+        results.errors.push({ batch: data, error: err.message });
+      }
+    }
+    return results;
+  }
+  /**
+   * Bulk update batches – intelligently routes to appropriate setters.
+   * - If updates contains `remainingQuantity`, calls `updateRemainingQuantity`.
+   * - If updates contains `status`, calls `updateStatus`.
+   * - Otherwise calls generic `update`.
+   *
+   * @param {Array<{ id: number, updates: Object }>} updatesArray
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<{ updated: any[], errors: { id: number, error: string }[] }>}
+   */
+  async bulkUpdate(updatesArray, user = "system", qr = null) {
+    const results = { updated: [], errors: [] };
+
+    for (const { id, updates } of updatesArray) {
+      try {
+        let saved;
+
+        // Check for dedicated setters
+        if (updates.remainingQuantity !== undefined) {
+          // updateRemainingQuantity requires only the new quantity
+          const newQty = updates.remainingQuantity;
+          // Remove it from updates so we don't pass it to generic update
+          const { remainingQuantity, ...rest } = updates;
+          saved = await this.updateRemainingQuantity(id, newQty, user, qr);
+          // If there are other fields, update them via generic update (except status, which is handled separately)
+          if (Object.keys(rest).length > 0) {
+            // We need to get the latest entity and apply rest
+            const current = await this.findById(id, false, qr);
+            // Merge rest (but skip status if present)
+            const { status, ...otherFields } = rest;
+            Object.assign(current, otherFields);
+            saved = await this.update(id, otherFields, user, qr);
+          }
+        } else if (updates.status !== undefined) {
+          saved = await this.updateStatus(id, updates.status, user, qr);
+        } else {
+          saved = await this.update(id, updates, user, qr);
+        }
+
+        results.updated.push(saved);
+      } catch (err) {
+        results.errors.push({ id, error: err.message });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Export batches to CSV or JSON
+   * @param {string} format - 'csv' or 'json'
+   * @param {Object} filters - Same filters as findAll
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<{ format: string, data: string | any[], filename: string }>}
+   */
+  async exportBatches(
+    format = "json",
+    filters = {},
+    user = "system",
+    qr = null,
+  ) {
+    try {
+      // Fetch all data without pagination
+      const result = await this.findAll(
+        { ...filters, limit: undefined, page: undefined },
+        qr,
+      );
+      const batches = result.data;
+
+      let exportData;
+      if (format === "csv") {
+        const headers = [
+          "ID",
+          "Batch Code",
+          "Meat",
+          "Supplier",
+          "Initial Quantity (kg)",
+          "Remaining Quantity (kg)",
+          "Unit Cost",
+          "Expiry Date",
+          "Received Date",
+          "Status",
+          "Note",
+          "Created At",
+          "Updated At",
+        ];
+        const rows = batches.map((b) => [
+          b.id,
+          b.batchCode,
+          b.meat?.name ?? "",
+          b.supplier?.name ?? "",
+          b.initialQuantity,
+          b.remainingQuantity,
+          b.unitCost,
+          b.expiryDate ? new Date(b.expiryDate).toLocaleDateString() : "",
+          b.receivedDate ? new Date(b.receivedDate).toLocaleDateString() : "",
+          b.status,
+          b.note ?? "",
+          new Date(b.createdAt).toLocaleString(),
+          b.updatedAt ? new Date(b.updatedAt).toLocaleString() : "",
+        ]);
+        exportData = {
+          format: "csv",
+          data: [headers, ...rows].map((row) => row.join(",")).join("\n"),
+          filename: `batches_export_${new Date().toISOString().split("T")[0]}.csv`,
+        };
+      } else {
+        exportData = {
+          format: "json",
+          data: batches,
+          filename: `batches_export_${new Date().toISOString().split("T")[0]}.json`,
+        };
+      }
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logCreate("Batch", format, filters, user);
+      }
+
+      logger.debug(`Exported ${batches.length} batches in ${format} format`);
+      return exportData;
+    } catch (error) {
+      console.error("Failed to export batches:", error);
+      throw error;
+    }
+  }
+  /**
+   * Import batches from a CSV file
+   * @param {string} filePath - Path to CSV file
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<{ imported: any[], errors: { row: any, error: string }[] }>}
+   */
+  async importFromCSV(filePath, user = "system", qr = null) {
+    const fs = require("fs").promises;
+    const csv = require("csv-parse/sync");
+    const fileContent = await fs.readFile(filePath, "utf-8");
+    const records = csv.parse(fileContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
+
+    const results = { imported: [], errors: [] };
+
+    for (const record of records) {
+      try {
+        // Map CSV fields to batch data
+        const data = {
+          meatId: parseInt(record.meatId, 10),
+          supplierId: record.supplierId
+            ? parseInt(record.supplierId, 10)
+            : null,
+          quantity: parseFloat(record.quantity || record.initialQuantity),
+          unitCost: parseFloat(record.unitCost),
+          expiryDate: record.expiryDate || null,
+          status: record.status || "active",
+          note: record.note || null,
+          batchCode: record.batchCode || null, // optional
+        };
+
+        // Validate required fields
+        if (!data.meatId || isNaN(data.meatId)) {
+          throw new Error("meatId is required and must be a number");
+        }
+        if (!data.quantity || isNaN(data.quantity) || data.quantity <= 0) {
+          throw new Error("quantity must be a positive number");
+        }
+        if (isNaN(data.unitCost) || data.unitCost < 0) {
+          throw new Error("unitCost must be a non-negative number");
+        }
+        if (!data.expiryDate) {
+          throw new Error("expiryDate is required");
+        }
+
+        const saved = await this.create(data, user, qr);
+        results.imported.push(saved);
+      } catch (err) {
+        results.errors.push({ row: record, error: err.message });
+      }
+    }
+
+    return results;
   }
 }
 

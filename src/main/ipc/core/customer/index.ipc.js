@@ -1,4 +1,5 @@
 // src/main/ipc/core/customer/index.ipc.js - Customer Management Handler (Offline Only)
+//@ts-check
 
 const { ipcMain } = require("electron");
 const { logger } = require("../../../../utils/logger");

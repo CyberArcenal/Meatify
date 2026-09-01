@@ -483,7 +483,12 @@ class CategoryService {
       totalInactive,
       totalMeats,
       categoriesWithMeats,
-      emptyCategories: emptyCategories.map((/** @type {{ id: any; name: any; }} */ c) => ({ id: c.id, name: c.name })),
+      emptyCategories: emptyCategories.map(
+        (/** @type {{ id: any; name: any; }} */ c) => ({
+          id: c.id,
+          name: c.name,
+        }),
+      ),
       emptyCategoryCount: emptyCategories.length,
     };
   }
@@ -544,6 +549,65 @@ class CategoryService {
         results.updated.push(saved);
       } catch (err) {
         results.errors.push({ id, updates, error: err.message });
+      }
+    }
+    return results;
+  }
+
+  // src/services/Category.js
+
+  /**
+   * Bulk create categories
+   * @param {Array<Object>} categoriesArray
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async bulkCreate(categoriesArray, user = "system", qr = null) {
+    const results = { created: [], errors: [] };
+    for (const data of categoriesArray) {
+      try {
+        const saved = await this.create(data, user, qr);
+        results.created.push(saved);
+      } catch (err) {
+        results.errors.push({ category: data, error: err.message });
+      }
+    }
+    return results;
+  }
+
+  // src/services/Category.js
+
+  /**
+   * Import categories from CSV file
+   * @param {string} filePath
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async importFromCSV(filePath, user = "system", qr = null) {
+    const fs = require("fs").promises;
+    const csv = require("csv-parse/sync");
+    const fileContent = await fs.readFile(filePath, "utf-8");
+    const records = csv.parse(fileContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
+
+    const results = { imported: [], errors: [] };
+    for (const record of records) {
+      try {
+        const data = {
+          name: record.name,
+          description: record.description || null,
+          isActive: record.isActive !== "false",
+        };
+        if (!data.name) {
+          throw new Error("name is required");
+        }
+        const saved = await this.create(data, user, qr);
+        results.imported.push(saved);
+      } catch (err) {
+        results.errors.push({ row: record, error: err.message });
       }
     }
     return results;

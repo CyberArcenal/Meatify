@@ -94,6 +94,7 @@ async function getAppUrl() {
   }
 
   const possiblePaths = [
+    path.join(__dirname, '..', '..', '..', 'dist', 'renderer', 'index.html'),
     path.join(__dirname, '..', '..', 'dist', 'renderer', 'index.html'),
     path.join(process.resourcesPath, 'app.asar.unpacked', 'dist', 'index.html'),
     path.join(process.resourcesPath, 'dist', 'index.html'),

@@ -1398,6 +1398,108 @@ class SaleService {
     }
     return results;
   }
+
+  // ============================================================
+  // ✅ VOID SALE (setter only – subscriber triggers side effects)
+  // ============================================================
+
+  /**
+   * Void an initiated sale (status → 'voided')
+   * Only allowed for sales with status 'initiated'.
+   *
+   * @param {number} id - Sale ID
+   * @param {string} reason - Reason for voiding (stored in notes)
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<Sale>} Updated sale entity
+   */
+  async voidSale(id, reason = "", user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Sale = require("../entities/Sale");
+    const saleRepo = this._getRepo(qr, Sale);
+
+    try {
+      const sale = await saleRepo.findOne({ where: { id } });
+      if (!sale) {
+        throw new Error(`Sale with ID ${id} not found`);
+      }
+
+      if (sale.status !== "initiated") {
+        throw new Error(`Cannot void a sale with status "${sale.status}"`);
+      }
+
+      const oldData = { ...sale };
+      sale.status = "voided";
+      sale.notes = sale.notes
+        ? `${sale.notes}\nVoided: ${reason}`
+        : `Voided: ${reason}`;
+      sale.updatedAt = new Date();
+
+      const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
+      }
+
+      logger.debug(`Sale #${id} voided`);
+      return updatedSale;
+    } catch (error) {
+      console.error("Failed to void sale:", error.message);
+      throw error;
+    }
+  }
+
+  // ============================================================
+  // ✅ REFUND SALE (setter only – subscriber triggers side effects)
+  // ============================================================
+
+  /**
+   * Refund a paid sale (status → 'refunded')
+   * Only allowed for sales with status 'paid'.
+   *
+   * @param {number} id - Sale ID
+   * @param {string} reason - Reason for refund (stored in notes)
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<Sale>} Updated sale entity
+   */
+  async refundSale(id, reason = "", user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Sale = require("../entities/Sale");
+    const saleRepo = this._getRepo(qr, Sale);
+
+    try {
+      const sale = await saleRepo.findOne({ where: { id } });
+      if (!sale) {
+        throw new Error(`Sale with ID ${id} not found`);
+      }
+
+      if (sale.status !== "paid") {
+        throw new Error(`Cannot refund a sale with status "${sale.status}"`);
+      }
+
+      const oldData = { ...sale };
+      sale.status = "refunded";
+      sale.notes = sale.notes
+        ? `${sale.notes}\nRefunded: ${reason}`
+        : `Refunded: ${reason}`;
+      sale.updatedAt = new Date();
+
+      const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
+      }
+
+      logger.debug(`Sale #${id} refunded`);
+      return updatedSale;
+    } catch (error) {
+      console.error("Failed to refund sale:", error.message);
+      throw error;
+    }
+  }
 }
 
 // Singleton instance

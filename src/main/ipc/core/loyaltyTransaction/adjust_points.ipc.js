@@ -1,4 +1,7 @@
+//@ts-check
+const Customer = require("../../../../entities/Customer");
 const loyaltyTransactionService = require("../../../../services/LoyaltyTransaction");
+const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
   const { customerId, pointsChange, reason, user = "system" } = params;
@@ -24,7 +27,7 @@ module.exports = async (params, queryRunner) => {
     // Balanse ay maaaring hindi pa updated sa oras na ito, ngunit ang subscriber ay mag-a-update nito.
     // Maaari kang maghintay ng ilang milliseconds o mag-fetch ng updated customer.
     // Para sa instant na sagot, maaari mong i-fetch ang customer pagkatapos.
-    const { Customer } = require("../../../../entities/Customer");
+
     const customerRepo = queryRunner?.manager?.getRepository(Customer) || AppDataSource.getRepository(Customer);
     const updatedCustomer = await customerRepo.findOne({ where: { id: customerId } });
 

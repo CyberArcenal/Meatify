@@ -1,4 +1,5 @@
 // src/main/ipc/core/inventoryMovement/export.ipc.js
+//@ts-check
 const inventoryMovementService = require("../../../../services/InventoryMovement");
 
 module.exports = async (params) => {

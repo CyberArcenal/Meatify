@@ -1,4 +1,5 @@
 // src/main/ipc/core/inventoryMovement/recalc_batch.ipc.js
+//@ts-check
 const { InventoryMovementStateService } = require("../../../../stateServices/InventoryMovement");
 const { AppDataSource } = require("../../../db/data-source");
 

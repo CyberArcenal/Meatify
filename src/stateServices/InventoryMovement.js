@@ -46,14 +46,18 @@ class InventoryMovementStateService {
 
     // If movement is not linked to a batch, skip batch update
     if (!movement.batchId) {
-      logger.info(`[InventoryMovementState] Movement #${movement.id} has no batch, skipping batch update.`);
+      logger.info(
+        `[InventoryMovementState] Movement #${movement.id} has no batch, skipping batch update.`,
+      );
       return;
     }
 
     const batchRepo = this._getRepo(queryRunner, Batch);
     const batch = await batchRepo.findOne({ where: { id: movement.batchId } });
     if (!batch) {
-      logger.warn(`[InventoryMovementState] Batch #${movement.batchId} not found for movement #${movement.id}`);
+      logger.warn(
+        `[InventoryMovementState] Batch #${movement.batchId} not found for movement #${movement.id}`,
+      );
       return;
     }
 
@@ -63,7 +67,7 @@ class InventoryMovementStateService {
     if (newRemaining < 0) {
       // This should not happen if business logic is correct, but we log and throw.
       throw new Error(
-        `Batch #${batch.id} would have negative remaining quantity (${newRemaining}) after movement #${movement.id}`
+        `Batch #${batch.id} would have negative remaining quantity (${newRemaining}) after movement #${movement.id}`,
       );
     }
 
@@ -73,7 +77,11 @@ class InventoryMovementStateService {
       batch.status = "depleted";
     }
     // If we are adding back (positive qtyChange) and batch was depleted, reactivate
-    if (movement.qtyChange > 0 && batch.status === "depleted" && batch.remainingQuantity > 0) {
+    if (
+      movement.qtyChange > 0 &&
+      batch.status === "depleted" &&
+      batch.remainingQuantity > 0
+    ) {
       batch.status = "active";
     }
     batch.updatedAt = new Date();
@@ -86,11 +94,11 @@ class InventoryMovementStateService {
       batch.id,
       { remainingQuantity: oldRemaining },
       { remainingQuantity: batch.remainingQuantity },
-      user
+      user,
     );
 
     logger.info(
-      `[InventoryMovementState] Batch #${batch.id} updated: remaining ${oldRemaining} → ${batch.remainingQuantity} (movement #${movement.id})`
+      `[InventoryMovementState] Batch #${batch.id} updated: remaining ${oldRemaining} → ${batch.remainingQuantity} (movement #${movement.id})`,
     );
 
     // Optional: send notification if batch is now depleted or expired
@@ -110,7 +118,9 @@ class InventoryMovementStateService {
     // We need the movement data to know qtyChange and batchId.
     // Since it might be deleted, we may need to store this info before deletion.
     // For now, we'll just log a warning.
-    logger.warn(`[InventoryMovementState] onMovementDeleted not fully implemented for movement #${movementId}`);
+    logger.warn(
+      `[InventoryMovementState] onMovementDeleted not fully implemented for movement #${movementId}`,
+    );
     // In a real implementation, you would retrieve the movement from the database before deletion,
     // or you could have a separate cleanup process.
   }
@@ -142,7 +152,9 @@ class InventoryMovementStateService {
     // Initial quantity + net change = remaining
     const newRemaining = batch.initialQuantity + netChange;
     if (newRemaining < 0) {
-      throw new Error(`Recalculated remaining quantity for batch #${batchId} is negative (${newRemaining})`);
+      throw new Error(
+        `Recalculated remaining quantity for batch #${batchId} is negative (${newRemaining})`,
+      );
     }
 
     const oldRemaining = batch.remainingQuantity;
@@ -161,11 +173,62 @@ class InventoryMovementStateService {
       batchId,
       { remainingQuantity: oldRemaining },
       { remainingQuantity: batch.remainingQuantity },
-      user
+      user,
     );
 
-    logger.info(`[InventoryMovementState] Recalculated batch #${batchId}: ${oldRemaining} → ${batch.remainingQuantity}`);
+    logger.info(
+      `[InventoryMovementState] Recalculated batch #${batchId}: ${oldRemaining} → ${batch.remainingQuantity}`,
+    );
     return batch;
+  }
+
+  /**
+   * Called after a movement is updated.
+   * @param {number} movementId
+   * @param {InventoryMovement} movement
+   * @param {Object} changes - The changed fields
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onMovementUpdated(
+    movementId,
+    movement,
+    changes,
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[InventoryMovementState] Movement #${movementId} updated (fields: ${Object.keys(changes).join(", ")})`,
+    );
+
+    // Broadcast to UI
+    try {
+      const { BrowserWindow } = require("electron");
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send("inventoryMovement:updated", {
+            id: movementId,
+            changes,
+            updatedAt: movement.updatedAt,
+          });
+        }
+      });
+    } catch (error) {
+      logger.warn(
+        "[InventoryMovementState] Failed to send IPC event:",
+        error.message,
+      );
+    }
+
+    // Audit log for movement update
+    await auditLogger.logUpdate(
+      "InventoryMovement",
+      movementId,
+      changes,
+      movement,
+      user,
+    );
   }
 }
 

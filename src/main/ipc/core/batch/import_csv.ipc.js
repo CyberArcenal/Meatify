@@ -1,4 +1,5 @@
 // src/main/ipc/core/batch/import_csv.ipc.js
+//@ts-check
 const batchService = require("../../../../services/Batch");
 const fs = require("fs").promises;
 

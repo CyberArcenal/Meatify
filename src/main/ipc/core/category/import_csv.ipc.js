@@ -1,4 +1,5 @@
 // src/main/ipc/core/category/import_csv.ipc.js
+//@ts-check
 const categoryService = require("../../../../services/Category");
 const fs = require("fs").promises;
 

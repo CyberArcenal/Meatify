@@ -1,4 +1,5 @@
 // src/main/ipc/core/notificationLog/index.ipc.js
+//@ts-check
 const { ipcMain } = require("electron");
 const { logger } = require("../../../../utils/logger");
 const { AppDataSource } = require("../../../db/data-source");

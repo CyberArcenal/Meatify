@@ -1,4 +1,5 @@
 // src/main/ipc/core/customer/import_csv.ipc.js
+//@ts-check
 const customerService = require("../../../../services/Customer");
 const fs = require("fs").promises;
 

@@ -1,5 +1,7 @@
 // src/main/ipc/core/supplier/notify_supplier.ipc.js
+//@ts-check
 // ✅ Ito ay side effect, kaya tama na gamitin ang SupplierStateService
+const supplierService = require("../../../../services/Supplier");
 const { SupplierStateService } = require("../../../../stateServices/Supplier");
 const { AppDataSource } = require("../../../db/data-source");
 
@@ -17,8 +19,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new SupplierStateService(AppDataSource);
-    const result = await stateService.notifySupplier(
+    const result = await supplierService.notifySupplier(
       supplierId,
       subject,
       message,

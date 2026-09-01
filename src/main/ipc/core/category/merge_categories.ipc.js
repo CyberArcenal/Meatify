@@ -1,4 +1,5 @@
 // src/main/ipc/core/category/merge_categories.ipc.js
+//@ts-check
 const categoryService = require("../../../../services/Category");  // ✅ CHANGED
 
 module.exports = async (params, queryRunner) => {

@@ -1,4 +1,5 @@
 // src/main/ipc/core/category/permanent_delete.ipc.js
+//@ts-check
 const categoryService = require("../../../../services/Category");
 
 module.exports = async (params, queryRunner) => {

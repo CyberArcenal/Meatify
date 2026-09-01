@@ -1,4 +1,5 @@
 // src/main/ipc/core/customer/earn_points.ipc.js
+//@ts-check
 const { CustomerStateService } = require("../../../../stateServices/Customer");
 const { AppDataSource } = require("../../../db/data-source");
 

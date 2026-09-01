@@ -1,4 +1,5 @@
 // src/main/ipc/core/batch/delete.ipc.js
+//@ts-check
 const batchService = require("../../../../services/Batch");
 
 module.exports = async (params, queryRunner) => {

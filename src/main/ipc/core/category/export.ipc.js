@@ -1,4 +1,5 @@
 // src/main/ipc/core/category/export.ipc.js
+//@ts-check
 const categoryService = require("../../../../services/Category");
 
 module.exports = async (params) => {

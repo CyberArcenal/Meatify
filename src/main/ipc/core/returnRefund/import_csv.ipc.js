@@ -1,4 +1,5 @@
 // src/main/ipc/core/returnRefund/import_csv.ipc.js
+//@ts-check
 const returnRefundService = require("../../../../services/ReturnRefund");
 const fs = require("fs").promises;
 

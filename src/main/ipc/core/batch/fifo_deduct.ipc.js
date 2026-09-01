@@ -1,4 +1,5 @@
 // src/main/ipc/core/batch/fifo_deduct.ipc.js
+//@ts-check
 const batchService = require("../../../../services/Batch");  // ✅ CHANGED
 const { logger } = require("../../../../utils/logger");
 

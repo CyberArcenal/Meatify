@@ -1,4 +1,5 @@
 // src/main/ipc/core/meat/permanent_delete.ipc.js
+//@ts-check
 const meatService = require("../../../../services/Meat");
 
 module.exports = async (params, queryRunner) => {

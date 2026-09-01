@@ -1,4 +1,5 @@
 // src/main/ipc/core/meat/import_csv.ipc.js
+//@ts-check
 const meatService = require("../../../../services/Meat");
 const fs = require("fs").promises;
 

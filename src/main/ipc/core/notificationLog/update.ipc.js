@@ -1,4 +1,5 @@
 // src/main/ipc/core/notificationLog/update.ipc.js
+//@ts-check
 const notificationLogService = require("../../../../services/NotificationLog");
 
 module.exports = async (params, queryRunner) => {

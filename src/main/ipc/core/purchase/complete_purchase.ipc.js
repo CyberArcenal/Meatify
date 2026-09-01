@@ -1,4 +1,5 @@
 // src/main/ipc/core/purchase/complete_purchase.ipc.js
+//@ts-check
 const purchaseService = require("../../../../services/Purchase");
 
 module.exports = async (params, queryRunner) => {

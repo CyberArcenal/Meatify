@@ -1,4 +1,5 @@
 // src/main/ipc/core/auditLog/export.ipc.js
+//@ts-check
 const auditLogService = require("../../../../services/AuditLog");
 
 module.exports = async (params) => {

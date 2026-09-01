@@ -1,5 +1,6 @@
 // src/main/ipc/core/sale/mark_as_paid.ipc.js
-const { SaleStateService } = require("../../../../stateServices/Sale");
+//@ts-check
+const saleService = require("../../../../services/Sale");
 const { AppDataSource } = require("../../../db/data-source");
 
 module.exports = async (params, queryRunner) => {
@@ -10,8 +11,7 @@ module.exports = async (params, queryRunner) => {
   }
 
   try {
-    const stateService = new SaleStateService(AppDataSource);
-    const result = await stateService.markAsPaid(saleId, user, queryRunner);
+    const result = await saleService.markAsPaid(saleId, user, queryRunner);
     return {
       status: true,
       message: `Sale #${saleId} marked as paid successfully`,

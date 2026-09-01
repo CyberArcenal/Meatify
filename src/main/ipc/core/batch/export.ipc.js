@@ -1,4 +1,5 @@
 // src/main/ipc/core/batch/export.ipc.js
+//@ts-check
 const batchService = require("../../../../services/Batch");
 
 module.exports = async (params) => {

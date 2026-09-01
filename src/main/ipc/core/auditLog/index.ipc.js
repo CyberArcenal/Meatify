@@ -1,5 +1,5 @@
 // src/main/ipc/core/auditLog/index.ipc.js - AuditLog Management Handler (Offline Only)
-
+//@ts-check
 const { ipcMain } = require("electron");
 const { logger } = require("../../../../utils/logger");
 const { AppDataSource } = require("../../../db/data-source");
@@ -17,15 +17,7 @@ class AuditLogHandler {
     this.getAuditLogStatistics = this.importHandler("./get/statistics.ipc");
     this.searchAuditLogs = this.importHandler("./search.ipc");
 
-    // ✏️ WRITE OPERATION HANDLERS
-    this.createAuditLog = this.importHandler("./create.ipc");
-    this.updateAuditLog = this.importHandler("./update.ipc");
-    this.deleteAuditLog = this.importHandler("./delete.ipc");
-    this.permanentlyDeleteAuditLog = this.importHandler("./permanent_delete.ipc");
-
     // 🔄 BATCH OPERATIONS
-    this.bulkCreateAuditLogs = this.importHandler("./bulk_create.ipc");
-    this.bulkUpdateAuditLogs = this.importHandler("./bulk_update.ipc");
     this.importAuditLogsCSV = this.importHandler("./import_csv.ipc");
     this.exportAuditLogs = this.importHandler("./export.ipc");
   }
@@ -64,21 +56,6 @@ class AuditLogHandler {
         case "searchAuditLogs":
           return await this.searchAuditLogs(params);
 
-        // ✏️ WRITE OPERATIONS (with transaction)
-        case "createAuditLog":
-          return await this.handleWithTransaction(this.createAuditLog, params);
-        case "updateAuditLog":
-          return await this.handleWithTransaction(this.updateAuditLog, params);
-        case "deleteAuditLog":
-          return await this.handleWithTransaction(this.deleteAuditLog, params);
-        case "permanentlyDeleteAuditLog":
-          return await this.handleWithTransaction(this.permanentlyDeleteAuditLog, params);
-
-        // 🔄 BATCH OPERATIONS (with transaction)
-        case "bulkCreateAuditLogs":
-          return await this.handleWithTransaction(this.bulkCreateAuditLogs, params);
-        case "bulkUpdateAuditLogs":
-          return await this.handleWithTransaction(this.bulkUpdateAuditLogs, params);
         case "importAuditLogsCSV":
           return await this.handleWithTransaction(this.importAuditLogsCSV, params);
 

@@ -66,9 +66,12 @@ class InventoryMovementSubscriber {
       movementType: entity.movementType,
       qtyChange: entity.qtyChange,
       meatId: entity.meatId,
-      meatName: meatName,
+      meatName:
+        entity.meat?.name || (await this._getMeatName(entity.meatId, manager)),
       batchId: entity.batchId,
-      batchCode: batchCode,
+      batchCode:
+        entity.batch?.batchCode ||
+        (await this._getBatchCode(entity.batchId, manager)),
       saleId: entity.saleId,
       notes: entity.notes?.substring(0, 50),
       timestamp: entity.timestamp,
@@ -77,7 +80,9 @@ class InventoryMovementSubscriber {
     // ✅ Route to state service for side effects (UI broadcast, audit log, batch update broadcast)
     if (entity.batchId) {
       try {
-        const { InventoryMovementStateService } = require("../stateServices/InventoryMovement");
+        const {
+          InventoryMovementStateService,
+        } = require("../stateServices/InventoryMovement");
         const stateService = new InventoryMovementStateService(AppDataSource);
         await stateService.onMovementCreated(entity, "system", queryRunner);
       } catch (err) {
@@ -139,9 +144,12 @@ class InventoryMovementSubscriber {
       movementType: entity.movementType,
       qtyChange: entity.qtyChange,
       meatId: entity.meatId,
-      meatName: meatName,
+      meatName:
+        entity.meat?.name || (await this._getMeatName(entity.meatId, manager)),
       batchId: entity.batchId,
-      batchCode: batchCode,
+      batchCode:
+        entity.batch?.batchCode ||
+        (await this._getBatchCode(entity.batchId, manager)),
       saleId: entity.saleId,
       oldMovementType: databaseEntity?.movementType,
       newMovementType: entity.movementType,
@@ -155,12 +163,22 @@ class InventoryMovementSubscriber {
     // Skip if no changes
     if (!databaseEntity) return;
 
-    const { InventoryMovementStateService } = require("../stateServices/InventoryMovement");
+    const {
+      InventoryMovementStateService,
+    } = require("../stateServices/InventoryMovement");
     const stateService = new InventoryMovementStateService(AppDataSource);
 
     // Detect other field changes (notes, movementType, timestamp)
     const changedFields = {};
-    const skipKeys = ['id', 'updatedAt', 'createdAt', 'meatId', 'batchId', 'saleId', 'qtyChange'];
+    const skipKeys = [
+      "id",
+      "updatedAt",
+      "createdAt",
+      "meatId",
+      "batchId",
+      "saleId",
+      "qtyChange",
+    ];
 
     for (const key of Object.keys(entity)) {
       if (!skipKeys.includes(key)) {
@@ -172,11 +190,17 @@ class InventoryMovementSubscriber {
 
     if (Object.keys(changedFields).length > 0) {
       logger.info(
-        `[InventoryMovementSubscriber] Movement #${entity.id} updated (fields: ${Object.keys(changedFields).join(', ')}) → routing to state service`,
+        `[InventoryMovementSubscriber] Movement #${entity.id} updated (fields: ${Object.keys(changedFields).join(", ")}) → routing to state service`,
       );
 
       try {
-        await stateService.onMovementUpdated(entity.id, entity, changedFields, "system", queryRunner);
+        await stateService.onMovementUpdated(
+          entity.id,
+          entity,
+          changedFields,
+          "system",
+          queryRunner,
+        );
       } catch (err) {
         logger.error(
           `[InventoryMovementSubscriber] Failed to handle onMovementUpdated for movement #${entity.id}:`,
@@ -267,9 +291,16 @@ class InventoryMovementSubscriber {
 
     // ✅ Route to state service for side effects
     try {
-      const { InventoryMovementStateService } = require("../stateServices/InventoryMovement");
+      const {
+        InventoryMovementStateService,
+      } = require("../stateServices/InventoryMovement");
       const stateService = new InventoryMovementStateService(AppDataSource);
-      await stateService.onMovementDeleted(entityId, databaseEntity, "system", queryRunner);
+      await stateService.onMovementDeleted(
+        entityId,
+        databaseEntity,
+        "system",
+        queryRunner,
+      );
     } catch (err) {
       logger.error(
         `[InventoryMovementSubscriber] Failed to handle onMovementDeleted for movement #${entityId}:`,
@@ -277,6 +308,103 @@ class InventoryMovementSubscriber {
       );
     }
   }
+
+  /**
+   * Helper to get meat name by ID
+   * @param {number} meatId
+   * @param {import("typeorm").EntityManager} manager
+   * @returns {Promise<string|null>}
+   */
+  async _getMeatName(meatId, manager) {
+    try {
+      if (!meatId) return null;
+      const meat = await manager.getRepository(Meat).findOne({
+        where: { id: meatId },
+        select: ["name"],
+      });
+      return meat?.name || null;
+    } catch (err) {
+      logger.warn(
+        `[InventoryMovementSubscriber] Failed to get meat name for ID ${meatId}:`,
+        err.message,
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Helper to get batch code by ID
+   * @param {number} batchId
+   * @param {import("typeorm").EntityManager} manager
+   * @returns {Promise<string|null>}
+   */
+  async _getBatchCode(batchId, manager) {
+    try {
+      if (!batchId) return null;
+      const batch = await manager.getRepository(Batch).findOne({
+        where: { id: batchId },
+        select: ["batchCode"],
+      });
+      return batch?.batchCode || null;
+    } catch (err) {
+      logger.warn(
+        `[InventoryMovementSubscriber] Failed to get batch code for ID ${batchId}:`,
+        err.message,
+      );
+      return null;
+    }
+  }
 }
 
 module.exports = InventoryMovementSubscriber;
+
+// ┌──────────────────────────────────────────────────────────────────┐
+// │ 1. IPC Handler: refund_sale.ipc.js                            │
+// │    - Validates saleId                                          │
+// │    - Calls SaleService.refundSale                             │
+// └──────────────────────────────────────────────────────────────────┘
+//                               ↓
+// ┌──────────────────────────────────────────────────────────────────┐
+// │ 2. SaleService.refundSale (SETTER)                             │
+// │    - Validates sale exists and status = "paid"                 │
+// │    - Updates status → "refunded"                              │
+// │    - Updates notes with reason                                 │
+// │    - Saves via updateDb (triggers subscriber)                  │
+// └──────────────────────────────────────────────────────────────────┘
+//                               ↓
+// ┌──────────────────────────────────────────────────────────────────┐
+// │ 3. SaleSubscriber.afterUpdate                                 │
+// │    - Detects status change: paid → refunded                   │
+// │    - Calls SaleStateService.onRefunded                        │
+// └──────────────────────────────────────────────────────────────────┘
+//                               ↓
+// ┌──────────────────────────────────────────────────────────────────┐
+// │ 4. SaleStateService.onRefunded (SIDE EFFECTS)                 │
+// │    - For each sale item:                                       │
+// │      a. Get the batch                                          │
+// │      b. Call BatchService.addToBatch                          │
+// │      c. Create InventoryMovement (refund)                     │
+// │    - Reverse loyalty points (if any)                          │
+// │    - Audit log                                                │
+// │    - Send notification (optional)                             │
+// └──────────────────────────────────────────────────────────────────┘
+//                               ↓
+// ┌──────────────────────────────────────────────────────────────────┐
+// │ 5. BatchService.addToBatch (SETTER)                           │
+// │    - Adds weight to batch.remainingQuantity                   │
+// │    - Updates status if needed (depleted → active)            │
+// │    - Saves via updateDb (triggers BatchSubscriber)           │
+// └──────────────────────────────────────────────────────────────────┘
+//                               ↓
+// ┌──────────────────────────────────────────────────────────────────┐
+// │ 6. BatchSubscriber.afterUpdate                                │
+// │    - Detects remainingQuantity change                         │
+// │    - Calls BatchStateService.onUpdate                         │
+// └──────────────────────────────────────────────────────────────────┘
+//                               ↓
+// ┌──────────────────────────────────────────────────────────────────┐
+// │ 7. BatchStateService.onUpdate (SIDE EFFECTS)                  │
+// │    - Broadcasts to UI (batch:updated)                         │
+// │    - Audit log                                                │
+// │    - Notification if depleted/expired                         │
+// └──────────────────────────────────────────────────────────────────┘

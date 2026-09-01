@@ -1,4 +1,5 @@
 // src/main/ipc/core/auditLog/import_csv.ipc.js
+//@ts-check
 const auditLogService = require("../../../../services/AuditLog");
 const fs = require("fs").promises;
 

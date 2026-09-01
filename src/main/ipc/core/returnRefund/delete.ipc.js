@@ -1,4 +1,5 @@
 // src/main/ipc/core/returnRefund/delete.ipc.js
+//@ts-check
 const returnRefundService = require("../../../../services/ReturnRefund");
 
 module.exports = async (params, queryRunner) => {

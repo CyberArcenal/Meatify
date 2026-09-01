@@ -1,4 +1,5 @@
 // src/main/ipc/core/supplier/merge_suppliers.ipc.js
+//@ts-check
 const supplierService = require("../../../../services/Supplier");
 
 module.exports = async (params, queryRunner) => {

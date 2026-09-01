@@ -1,4 +1,5 @@
 // src/main/ipc/core/sale/restore.ipc.js
+//@ts-check
 const saleService = require("../../../../services/Sale");
 
 module.exports = async (params, queryRunner) => {

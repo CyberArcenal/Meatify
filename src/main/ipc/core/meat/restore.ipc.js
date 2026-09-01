@@ -1,4 +1,5 @@
 // src/main/ipc/core/meat/restore.ipc.js
+//@ts-check
 const meatService = require("../../../../services/Meat");
 
 module.exports = async (params, queryRunner) => {

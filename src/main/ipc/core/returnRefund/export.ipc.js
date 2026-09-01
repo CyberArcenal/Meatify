@@ -1,4 +1,5 @@
 // src/main/ipc/core/returnRefund/export.ipc.js
+//@ts-check
 const returnRefundService = require("../../../../services/ReturnRefund");
 
 module.exports = async (params) => {
