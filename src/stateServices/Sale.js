@@ -11,6 +11,7 @@ const system = require("../utils/system");
 const CashDrawerService = require("../services/CashDrawer");
 const PrinterService = require("../services/Printer");
 const batchService = require("../services/Batch");
+const InventoryMovement = require("../entities/InventoryMovement");
 
 /**
  * SaleStateService handles side effects for sale state transitions.
@@ -285,7 +286,7 @@ class SaleStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onRefunded(saleId, reason = "", user = "system", queryRunner = null) {
+  async onRefunded1(saleId, reason = "", user = "system", queryRunner = null) {
     const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
 
     const saleRepo = this._getRepo(queryRunner, Sale);
@@ -297,28 +298,69 @@ class SaleStateService {
       throw new Error(`Sale #${saleId} not found`);
     }
 
-    if (sale.status !== "refunded") {
-      logger.warn(
-        `[SaleState] onRefunded called for sale #${saleId} with status '${sale.status}' – expected 'refunded'. Proceeding anyway.`,
-      );
-    }
+    // ✅ Get refund metadata
+    const refundMeta = sale._refundMeta || {
+      restock: true,
+      restockItems: sale.saleItems.map((_, i) => ({
+        itemIndex: i,
+        restock: true,
+      })),
+      reason: reason,
+    };
 
-    logger.info(`[SaleState] Processing onRefunded for sale #${saleId}`);
+    const restockItemsMap = new Map();
+    refundMeta.restockItems.forEach((ri) => {
+      restockItemsMap.set(ri.itemIndex, ri.restock);
+    });
 
-    // --- STEP 1: Reverse stock for each sale item (add back to batch) ---
-    for (const item of sale.saleItems) {
+    logger.info(`[SaleState] Processing onRefunded for sale #${saleId}`, {
+      restock: refundMeta.restock,
+      items: refundMeta.restockItems,
+    });
+
+    // --- STEP 1: Reverse stock for each sale item ---
+    for (let i = 0; i < sale.saleItems.length; i++) {
+      const item = sale.saleItems[i];
+      const shouldRestock = refundMeta.restock
+        ? restockItemsMap.get(i) !== false // If restock=true, default to true
+        : restockItemsMap.get(i) === true; // If restock=false, only restock if explicitly true
+
       if (item.batch) {
-        await this.batchService.addToBatch(
-          item.batch.id,
-          item.weightKg,
-          "refund",
-          { saleId: sale.id, notes: `Refund of sale #${sale.id}` },
-          user,
-          queryRunner,
-        );
+        if (shouldRestock) {
+          // ✅ Restock: add back to batch
+          await this.batchService.addToBatch(
+            item.batch.id,
+            item.weightKg,
+            "refund",
+            { saleId: sale.id, notes: `Refund of sale #${sale.id}` },
+            user,
+            queryRunner,
+          );
+          logger.info(
+            `[SaleState] Restocked ${item.weightKg}kg from item #${i} (batch #${item.batch.id})`,
+          );
+        } else {
+          // ❌ Waste: do NOT restock, create waste movement
+          const movementRepo = this._getRepo(queryRunner, InventoryMovement);
+          const movement = movementRepo.create({
+            movementType: "waste", // ✅ New movement type
+            qtyChange: -item.weightKg,
+            notes: `Waste from refund #${sale.id} - item #${i}`,
+            meat: item.meat,
+            batch: item.batch,
+            sale: sale,
+            timestamp: new Date(),
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+          await saveDb(movementRepo, movement, { queryRunner });
+          logger.info(
+            `[SaleState] Marked ${item.weightKg}kg as waste from item #${i} (batch #${item.batch.id})`,
+          );
+        }
       } else {
         logger.warn(
-          `[SaleState] Sale item #${item.id} has no batch, skipping stock reversal`,
+          `[SaleState] Sale item #${item.id} has no batch, skipping stock operation`,
         );
       }
     }
@@ -458,6 +500,8 @@ class SaleStateService {
    * @private
    */
   async _checkLoyaltyMilestone(customer, user, queryRunner) {
+    return; // Disabled for now
+    
     try {
       await notificationService.create(
         {

@@ -142,7 +142,7 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
-      loadTransactions(options);
+      return loadTransactions(options);
     },
     [loadTransactions]
   );

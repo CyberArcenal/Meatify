@@ -22,8 +22,9 @@ import type { Sale } from "../../api/core/sale";
 import { hideLoading, showLoading } from "../../utils/notification";
 import { dialogs } from "../../utils/dialogs";
 import saleAPI from "../../api/core/sale";
-import { PromptDialog } from "../../components/Shared/PromptDialog";
 import { useNavigate } from "react-router-dom";
+import { useRefundOptions } from "./hooks/useRefundOptions";
+import { RefundOptionsModal } from "./components/RefundOptionsModal";
 
 const TransactionsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -58,13 +59,67 @@ const TransactionsPage: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const hasFilters = !!(
-    filters.search ||
+  // ─── Refund Modal State ──────────────────────────────────────────
+  const [refundModalOpen, setRefundModalOpen] = useState(false);
+  const [refundTransaction, setRefundTransaction] = useState<Sale | null>(null);
+  const [refundLoading, setRefundLoading] = useState(false);
+
+  const refundItems =
+    refundTransaction?.saleItems.map((item) => ({
+      name: item.meat?.name || "Unknown",
+      weight: item.weightKg,
+      price: item.unitPrice,
+    })) || [];
+
+  const {
+    restockAll,
+    itemStates,
+    reason,
+    setReason,
+    toggleRestockAll,
+    toggleItem,
+    reset,
+    getOptions,
+  } = useRefundOptions(refundItems);
+
+  const handleRefundClick = (tx: Sale) => {
+    setRefundTransaction(tx);
+    reset();
+    setRefundModalOpen(true);
+  };
+
+  const handleRefundConfirm = async () => {
+    if (!refundTransaction) return;
+    setRefundLoading(true);
+
+    try {
+      const options = getOptions();
+      const response = await saleAPI.refundWithOptions(
+        refundTransaction.id,
+        options
+      );
+
+      if (response.status) {
+        await reload({ page, limit });
+        await dialogs.success("Refund processed successfully.", "Success");
+        setRefundModalOpen(false);
+        setRefundTransaction(null);
+        closeDetails(); // close drawer if open
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (err: any) {
+      await dialogs.error(err.message || "Refund failed", "Error");
+    } finally {
+      setRefundLoading(false);
+    }
+  };
+
+  const hasFilters = !!(filters.search ||
     filters.paymentMethod ||
     filters.status ||
     filters.startDate !== format(new Date(), "yyyy-MM-dd") ||
-    filters.endDate !== format(new Date(), "yyyy-MM-dd")
-  );
+    filters.endDate !== format(new Date(), "yyyy-MM-dd"));
 
   // ─── Pagination Sync ──────────────────────────────────────────────
   const handlePageChange = useCallback(
@@ -126,7 +181,6 @@ const TransactionsPage: React.FC = () => {
   // ─── Filter Handlers ────────────────────────────────────────────
   const handleFilterChange = (key: keyof TransactionFilters, value: any) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-    // Page will be reset to 1 via useTransactions effect
   };
 
   // ─── Action Handlers ────────────────────────────────────────────
@@ -140,42 +194,6 @@ const TransactionsPage: React.FC = () => {
       await dialogs.error("Printer unavailable.", "Printer Error");
     } finally {
       hideLoading();
-    }
-  };
-
-  const [promptOpen, setPromptOpen] = useState(false);
-  const [pendingRefundTransaction, setPendingRefundTransaction] = useState<Sale | null>(null);
-
-  const handleRefund = (transaction: Sale) => {
-    dialogs
-      .confirm({
-        title: "Process Refund",
-        message: `Refund transaction #${transaction.id}?`,
-      })
-      .then((confirmed) => {
-        if (confirmed) {
-          setPendingRefundTransaction(transaction);
-          setPromptOpen(true);
-        }
-      });
-  };
-
-  const handleRefundConfirm = async (reason: string) => {
-    if (!pendingRefundTransaction) return;
-    try {
-      const response = await saleAPI.refund(pendingRefundTransaction.id, reason);
-      if (response.status) {
-        await reload({ page, limit });
-        await dialogs.success("Refund processed successfully.", "Success");
-      } else {
-        throw new Error(response.message);
-      }
-    } catch (err: any) {
-      console.error("Refund failed:", err);
-      await dialogs.error("Refund failed. Please try again.", "Error");
-    } finally {
-      setPendingRefundTransaction(null);
-      setPromptOpen(false);
     }
   };
 
@@ -196,11 +214,14 @@ const TransactionsPage: React.FC = () => {
         },
       });
       if (response.status) {
-        const blob = new Blob([response.data.data], { type: "text/csv" });
+        const csvData = typeof response.data.data === "string" ? response.data.data : JSON.stringify(response.data.data);
+        const blob = new Blob([csvData], { type: "text/csv" });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = response.data.filename || `transactions_${format(new Date(), "yyyy-MM-dd")}.csv`;
+        a.download =
+          response.data.filename ||
+          `transactions_${format(new Date(), "yyyy-MM-dd")}.csv`;
         a.click();
         window.URL.revokeObjectURL(url);
         dialogs.success("Export completed.");
@@ -238,9 +259,15 @@ const TransactionsPage: React.FC = () => {
             title={showStats ? "Hide summary" : "Show summary"}
           >
             {showStats ? (
-              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             ) : (
-              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             )}
           </button>
           <button
@@ -259,7 +286,8 @@ const TransactionsPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export (current filters)"
           >
-            <Download style={{ color: "var(--text-primary)" }}
+            <Download
+              style={{ color: "var(--text-primary)" }}
               className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
             />
           </button>
@@ -269,7 +297,10 @@ const TransactionsPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
           <button
             onClick={handleNewSale}
@@ -303,7 +334,9 @@ const TransactionsPage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading transactions</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading transactions
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit })}
@@ -317,7 +350,10 @@ const TransactionsPage: React.FC = () => {
           transactions={transactions}
           onViewDetails={openDetails}
           onPrint={handlePrint}
-          onRefund={handleRefund}
+          onRefund={handleRefundClick}
+          reload={reload}
+          page={page}
+          limit={limit}
         />
       )}
 
@@ -327,20 +363,27 @@ const TransactionsPage: React.FC = () => {
         isOpen={detailsOpen}
         onClose={closeDetails}
         onPrint={handlePrint}
-        onRefund={handleRefund}
+        onRefund={handleRefundClick}
       />
 
-      {/* Refund Reason Prompt */}
-      <PromptDialog
-        isOpen={promptOpen}
+      {/* Refund Options Modal (Centralized) */}
+      <RefundOptionsModal
+        isOpen={refundModalOpen}
         onClose={() => {
-          setPromptOpen(false);
-          setPendingRefundTransaction(null);
+          setRefundModalOpen(false);
+          setRefundTransaction(null);
         }}
         onConfirm={handleRefundConfirm}
-        title="Refund Reason"
-        message="Please provide a reason for this refund:"
-        placeholder="Enter reason..."
+        saleId={refundTransaction?.id || 0}
+        saleTotal={refundTransaction?.totalAmount || 0}
+        items={refundItems}
+        loading={refundLoading}
+        restockAll={restockAll}
+        onToggleRestockAll={toggleRestockAll}
+        itemStates={itemStates}
+        onToggleItem={toggleItem}
+        reason={reason}
+        onReasonChange={setReason}
       />
     </div>
   );

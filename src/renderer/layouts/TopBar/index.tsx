@@ -4,9 +4,10 @@ import TopBarLeft from "./TopBarLeft";
 import TopBarCenter from "./TopBarCenter";
 import TopBarRight from "./TopBarRight";
 import notificationAPI from "../../api/core/notification";
-import { DollarSign, ShoppingCart, User, Beef } from "lucide-react";
+import { DollarSign, ShoppingCart, User, Beef, Bell } from "lucide-react";
 import { NotificationDrawer } from "../../components/Shared/NotificationDrawer";
 import type { TopBarProps } from "./types";
+import { useNotificationDrawer } from "../../contexts/NotificationDrawerContext";
 
 // Route definitions
 const ROUTES = [
@@ -18,8 +19,16 @@ const ROUTES = [
   { path: "/pos/transactions", name: "Transactions", category: "POS" },
   { path: "/pos/products", name: "Products", category: "POS" },
   // Customers
-  { path: "/customers/list", name: "Customer Directory", category: "Customers" },
-  { path: "/customers/loyalty", name: "Loyalty Program", category: "Customers" },
+  {
+    path: "/customers/list",
+    name: "Customer Directory",
+    category: "Customers",
+  },
+  {
+    path: "/customers/loyalty",
+    name: "Loyalty Program",
+    category: "Customers",
+  },
   // Sales
   { path: "/sales/daily", name: "Daily Sales", category: "Sales" },
   { path: "/sales/reports", name: "Sales Reports", category: "Sales" },
@@ -31,8 +40,16 @@ const ROUTES = [
   { path: "/inventory/suppliers", name: "Suppliers", category: "Inventory" },
   { path: "/inventory/categories", name: "Categories", category: "Inventory" },
   // Reports
-  { path: "/reports/financial", name: "Financial Reports", category: "Reports" },
-  { path: "/reports/inventory", name: "Inventory Reports", category: "Reports" },
+  {
+    path: "/reports/financial",
+    name: "Financial Reports",
+    category: "Reports",
+  },
+  {
+    path: "/reports/inventory",
+    name: "Inventory Reports",
+    category: "Reports",
+  },
   { path: "/reports/customer", name: "Customer Insights", category: "Reports" },
   // System
   { path: "/system/audit", name: "Audit Trail", category: "System" },
@@ -86,11 +103,6 @@ const TopBar: React.FC<TopBarProps> = ({ toggleSidebar }) => {
           onNotificationClick={() => setNotificationsOpen(true)}
         />
       </header>
-
-      <NotificationDrawer
-        isOpen={notificationsOpen}
-        onClose={() => setNotificationsOpen(false)}
-      />
     </>
   );
 };

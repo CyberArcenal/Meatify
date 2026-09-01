@@ -1460,17 +1460,34 @@ class SaleService {
    *
    * @param {number} id - Sale ID
    * @param {string} reason - Reason for refund (stored in notes)
+   * @param {boolean} restock - Whether to restock items (default: true)
+   * @param {Array<{ itemIndex: number; restock: boolean }>} restockItems - Per-item restock options
    * @param {string} user - User performing the action
    * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
    * @returns {Promise<Sale>} Updated sale entity
    */
-  async refundSale(id, reason = "", user = "system", qr = null) {
+  async refundSale(
+    id,
+    reason = "",
+    restock = true,
+    restockItems = [],
+    user = "system",
+    qr = null,
+  ) {
     const { updateDb } = require("../utils/dbUtils/dbActions");
     const Sale = require("../entities/Sale");
     const saleRepo = this._getRepo(qr, Sale);
 
     try {
-      const sale = await saleRepo.findOne({ where: { id } });
+      const sale = await saleRepo.findOne({
+        where: { id },
+        relations: [
+          "saleItems",
+          "saleItems.meat",
+          "saleItems.batch",
+          "customer",
+        ],
+      });
       if (!sale) {
         throw new Error(`Sale with ID ${id} not found`);
       }
@@ -1480,20 +1497,41 @@ class SaleService {
       }
 
       const oldData = { ...sale };
+
+      // Store refund metadata in notes
+      const restockInfo = `Restock: ${restock}`;
+      const itemsInfo = restockItems
+        .map(
+          (ri) => `Item ${ri.itemIndex}: ${ri.restock ? "restock" : "waste"}`,
+        )
+        .join("; ");
+
       sale.status = "refunded";
       sale.notes = sale.notes
-        ? `${sale.notes}\nRefunded: ${reason}`
-        : `Refunded: ${reason}`;
+        ? `${sale.notes}\nRefunded: ${reason || "No reason"} (${restockInfo})`
+        : `Refunded: ${reason || "No reason"} (${restockInfo})`;
+
+      if (restockItems.length > 0) {
+        sale.notes = `${sale.notes}\nItem status: ${itemsInfo}`;
+      }
+
       sale.updatedAt = new Date();
 
       const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
+
+      // ✅ Store restock options in metadata for the state service
+      updatedSale._refundMeta = {
+        restock,
+        restockItems,
+        reason,
+      };
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
         await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
       }
 
-      logger.debug(`Sale #${id} refunded`);
+      logger.debug(`Sale #${id} refunded (restock: ${restock})`);
       return updatedSale;
     } catch (error) {
       console.error("Failed to refund sale:", error.message);

@@ -75,6 +75,9 @@ interface TransactionsTableProps {
   onViewDetails: (transaction: Sale) => void;
   onPrint: (transaction: Sale) => void;
   onRefund: (transaction: Sale) => void;
+  reload: (params: { page: number; limit: number }) => Promise<void>;
+  page?: number;
+  limit?: number;
 }
 
 export const TransactionsTable: React.FC<TransactionsTableProps> = ({
@@ -82,6 +85,9 @@ export const TransactionsTable: React.FC<TransactionsTableProps> = ({
   onViewDetails,
   onPrint,
   onRefund,
+  reload,
+  page = 1,
+  limit = 10,
 }) => {
   if (transactions.length === 0) {
     return (

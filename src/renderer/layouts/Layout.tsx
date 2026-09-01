@@ -1,9 +1,10 @@
 // src/renderer/layouts/Layout.tsx
 import React, { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
-import Sidebar from './SideBar'; // ← Now points to the modular Sidebar
+import Sidebar from './SideBar';
 import { NotificationToastListener } from '../components/Shared/NotificationToastListener';
 import { PaginationProvider, usePagination } from '../contexts/PaginationContext';
+import { NotificationDrawerProvider } from '../contexts/NotificationDrawerContext';
 import Pagination from '../components/UI/Pagination';
 import TopBar from './TopBar';
 
@@ -24,12 +25,10 @@ const LayoutContent: React.FC = () => {
   return (
     <div className="flex h-screen flex-col bg-[var(--background-color)]">
       <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar with onClose handler */}
         <div className="my-1">
           <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
         </div>
 
-        {/* Mobile overlay */}
         {sidebarOpen && (
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-20 md:hidden"
@@ -37,7 +36,6 @@ const LayoutContent: React.FC = () => {
           />
         )}
 
-        {/* Main content area */}
         <div className="flex-1 flex flex-col overflow-hidden m-1">
           <div className="flex-1 flex flex-col bg-[var(--card-bg)] rounded-2xl shadow-lg overflow-hidden border border-[var(--border-color)]">
             <TopBar toggleSidebar={toggleSidebar} />
@@ -45,7 +43,6 @@ const LayoutContent: React.FC = () => {
               <Outlet />
             </main>
 
-            {/* Global Pagination Bar */}
             <div
               className={`
                 px-4 py-2 border-t border-[var(--border-color)] bg-[var(--card-bg)]
@@ -75,7 +72,9 @@ const LayoutContent: React.FC = () => {
 const Layout: React.FC = () => {
   return (
     <PaginationProvider>
-      <LayoutContent />
+      <NotificationDrawerProvider>
+        <LayoutContent />
+      </NotificationDrawerProvider>
     </PaginationProvider>
   );
 };

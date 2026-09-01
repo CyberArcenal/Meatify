@@ -252,25 +252,25 @@ class CashDrawerService {
     console.error("[CashDrawerService] Failed to open drawer:", lastError?.message);
 
     try {
-      await notificationService.create(
-        {
-          userId: 1,
-          title: "Cash Drawer Error",
-          // @ts-ignore
-          message: `Failed to open cash drawer (${reason}) after ${retryAttempts} attempts: ${lastError?.message}`,
-          type: "error",
-          metadata: {
-            reason,
-            // @ts-ignore
-            error: lastError?.message,
-            // @ts-ignore
-            stack: lastError?.stack,
-            attempts: retryAttempts,
-            driverType: this.driverType,
-          },
-        },
-        "system",
-      );
+      // await notificationService.create(
+      //   {
+      //     userId: 1,
+      //     title: "Cash Drawer Error",
+      //     // @ts-ignore
+      //     message: `Failed to open cash drawer (${reason}) after ${retryAttempts} attempts: ${lastError?.message}`,
+      //     type: "error",
+      //     metadata: {
+      //       reason,
+      //       // @ts-ignore
+      //       error: lastError?.message,
+      //       // @ts-ignore
+      //       stack: lastError?.stack,
+      //       attempts: retryAttempts,
+      //       driverType: this.driverType,
+      //     },
+      //   },
+      //   "system",
+      // );
     } catch (notifErr) {
       console.error(
         "Failed to send error notification for cash drawer",

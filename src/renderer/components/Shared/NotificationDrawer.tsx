@@ -4,6 +4,7 @@ import {
   X,
   Bell,
   CheckCheck,
+  CircleOff,
   Trash2,
   Loader2,
   AlertCircle,
@@ -37,6 +38,15 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   const [totalPages, setTotalPages] = useState(0);
   const [totalItems, setTotalItems] = useState(0);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [actionLoading, setActionLoading] = useState<{
+    markRead: boolean;
+    markUnread: boolean;
+    deleteRead: boolean;
+  }>({
+    markRead: false,
+    markUnread: false,
+    deleteRead: false,
+  });
   const limit = 15;
 
   // Track if initial load has been done
@@ -57,7 +67,6 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   // Fetch notifications when page changes (only if drawer is open)
   useEffect(() => {
     if (!isOpen) return;
-    // Only fetch if page is 1 (initial load) or if we're loading more
     if (page === 1 && !initialLoadDone.current) {
       fetchNotifications(true);
     } else if (page > 1) {
@@ -75,6 +84,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
 
     try {
       const response = await notificationAPI.getAll({
+        userId: CURRENT_USER_ID, // ✅ Filter by current user
         page,
         limit,
         sortBy: "createdAt",
@@ -136,19 +146,86 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
     }
   };
 
+  // ─── BULK ACTIONS ──────────────────────────────────────────────
+
   const handleMarkAllAsRead = async () => {
+    if (unreadCount === 0) {
+      dialogs.alert({ title: "Info", message: "No unread notifications to mark." });
+      return;
+    }
+
+    setActionLoading((prev) => ({ ...prev, markRead: true }));
     try {
       const response = await notificationAPI.markAllAsRead(CURRENT_USER_ID);
       if (response.status) {
         setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
         setUnreadCount(0);
+        await dialogs.success("All notifications marked as read.");
       } else {
         throw new Error(response.message);
       }
     } catch (err: any) {
       dialogs.alert({ title: "Error", message: err.message });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, markRead: false }));
     }
   };
+
+  const handleMarkAllAsUnread = async () => {
+    const readCount = notifications.filter((n) => n.isRead).length;
+    if (readCount === 0) {
+      dialogs.alert({ title: "Info", message: "No read notifications to mark as unread." });
+      return;
+    }
+
+    setActionLoading((prev) => ({ ...prev, markUnread: true }));
+    try {
+      const response = await notificationAPI.markAllAsUnread(CURRENT_USER_ID);
+      if (response.status) {
+        setNotifications((prev) => prev.map((n) => ({ ...n, isRead: false })));
+        setUnreadCount(notifications.length);
+        await dialogs.success("All notifications marked as unread.");
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (err: any) {
+      dialogs.alert({ title: "Error", message: err.message });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, markUnread: false }));
+    }
+  };
+
+  const handleDeleteAllRead = async () => {
+    const readCount = notifications.filter((n) => n.isRead).length;
+    if (readCount === 0) {
+      dialogs.alert({ title: "Info", message: "No read notifications to delete." });
+      return;
+    }
+
+    const confirmed = await dialogs.confirm({
+      title: "Delete All Read",
+      message: `Are you sure you want to delete all ${readCount} read notifications? This action cannot be undone.`,
+    });
+    if (!confirmed) return;
+
+    setActionLoading((prev) => ({ ...prev, deleteRead: true }));
+    try {
+      const response = await notificationAPI.deleteAllRead(CURRENT_USER_ID);
+      if (response.status) {
+        setNotifications((prev) => prev.filter((n) => !n.isRead));
+        // Unread count remains unchanged
+        await dialogs.success(`${response.data.count} read notifications deleted.`);
+      } else {
+        throw new Error(response.message);
+      }
+    } catch (err: any) {
+      dialogs.alert({ title: "Error", message: err.message });
+    } finally {
+      setActionLoading((prev) => ({ ...prev, deleteRead: false }));
+    }
+  };
+
+  // ─── SINGLE DELETE ──────────────────────────────────────────────
 
   const handleDelete = async (id: number) => {
     const confirmed = await dialogs.confirm({
@@ -215,6 +292,7 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
   if (!isOpen) return null;
 
   const hasMore = page < totalPages;
+  const readCount = notifications.filter((n) => n.isRead).length;
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden">
@@ -248,20 +326,58 @@ export const NotificationDrawer: React.FC<NotificationDrawerProps> = ({
             </button>
           </div>
 
-          {/* Actions */}
+          {/* Enhanced Actions Bar */}
           {notifications.length > 0 && (
             <div className="flex items-center justify-between px-4 py-2 border-b border-[var(--border-color)] bg-[var(--card-secondary-bg)]">
               <span className="text-xs text-[var(--text-tertiary)]">
-                {totalItems} total
+                {totalItems} total · {readCount} read
               </span>
-              <button
-                onClick={handleMarkAllAsRead}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[var(--accent-gold)] hover:bg-[var(--accent-gold-light)] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={unreadCount === 0}
-              >
-                <CheckCheck className="w-4 h-4" />
-                Mark all as read
-              </button>
+              <div className="flex items-center gap-1">
+                {/* Mark All as Read */}
+                <button
+                  onClick={handleMarkAllAsRead}
+                  disabled={unreadCount === 0 || actionLoading.markRead}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent-gold)] hover:bg-[var(--accent-gold-light)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Mark all as read"
+                >
+                  {actionLoading.markRead ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <CheckCheck className="w-3.5 h-3.5" />
+                  )}
+                  <span className="hidden sm:inline">Mark read</span>
+                </button>
+
+                {/* Mark All as Unread */}
+                <button
+                  onClick={handleMarkAllAsUnread}
+                  disabled={readCount === 0 || actionLoading.markUnread}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--card-hover-bg)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Mark all as unread"
+                >
+                  {actionLoading.markUnread ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <CircleOff className="w-3.5 h-3.5" />
+                  )}
+                  <span className="hidden sm:inline">Mark unread</span>
+                </button>
+
+                {/* Delete All Read */}
+                <button
+                  onClick={handleDeleteAllRead}
+                  disabled={readCount === 0 || actionLoading.deleteRead}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-[var(--accent-red)] hover:bg-[var(--accent-red-light)] rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Delete all read notifications"
+                >
+                  {actionLoading.deleteRead ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-3.5 h-3.5" />
+                  )}
+                  <span className="hidden sm:inline">Delete read</span>
+                </button>
+              </div>
             </div>
           )}
 

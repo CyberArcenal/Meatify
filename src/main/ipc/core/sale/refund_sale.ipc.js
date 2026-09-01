@@ -3,14 +3,27 @@
 const saleService = require("../../../../services/Sale");
 
 module.exports = async (params, queryRunner) => {
-  const { saleId, reason = "", user = "system" } = params;
+  const {
+    saleId,
+    reason = "",
+    restock = true,
+    restockItems = [],
+    user = "system",
+  } = params;
 
   if (!saleId || typeof saleId !== "number") {
     return { status: false, message: "Valid sale ID is required", data: null };
   }
 
   try {
-    const result = await saleService.refundSale(saleId, reason, user, queryRunner);
+    const result = await saleService.refundSale(
+      saleId,
+      reason,
+      restock,
+      restockItems,
+      user,
+      queryRunner
+    );
     return {
       status: true,
       message: `Sale #${saleId} refunded successfully`,

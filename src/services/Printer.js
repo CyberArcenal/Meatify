@@ -95,18 +95,18 @@ class PrinterService {
       this.isReady = false;
 
       try {
-        await notificationService.create(
-          {
-            userId: 1,
-            title: "Printer Error",
-            // @ts-ignore
-            message: `Failed to print receipt: ${err.message}`,
-            type: "error",
-            // @ts-ignore
-            metadata: { error: err.message },
-          },
-          "system",
-        );
+        // await notificationService.create(
+        //   {
+        //     userId: 1,
+        //     title: "Printer Error",
+        //     // @ts-ignore
+        //     message: `Failed to print receipt: ${err.message}`,
+        //     type: "error",
+        //     // @ts-ignore
+        //     metadata: { error: err.message },
+        //   },
+        //   "system",
+        // );
       } catch (notifErr) {
         // @ts-ignore
         logger.error("Failed to send printer error notification", notifErr);

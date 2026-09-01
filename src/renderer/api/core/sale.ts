@@ -95,6 +95,12 @@ export interface SaleExportData {
   filename: string;
 }
 
+export interface RefundOptions {
+  restock: boolean;
+  reason: string;
+  restockItems: Array<{ itemIndex: number; restock: boolean }>;
+}
+
 // ----------------------------------------------------------------------
 // 📨 Response Interfaces
 // ----------------------------------------------------------------------
@@ -534,6 +540,38 @@ class SaleAPI {
       throw new Error(response.message || "Failed to mark sale as paid");
     } catch (error: any) {
       throw new Error(error.message || "Failed to mark sale as paid");
+    }
+  }
+
+  /**
+   * Refund a paid sale with restock options
+   */
+  async refundWithOptions(
+    saleId: number,
+    options: RefundOptions,
+  ): Promise<SaleResponse> {
+    try {
+      if (!window.backendAPI?.sale) {
+        throw new Error("Electron API (sale) not available");
+      }
+
+      const response = await window.backendAPI.sale({
+        method: "refundSale",
+        params: {
+          saleId,
+          reason: options.reason || "",
+          restock: options.restock,
+          restockItems: options.restockItems,
+          user: "system",
+        },
+      });
+
+      if (response.status) {
+        return response;
+      }
+      throw new Error(response.message || "Failed to refund sale");
+    } catch (error: any) {
+      throw new Error(error.message || "Failed to refund sale");
     }
   }
 
