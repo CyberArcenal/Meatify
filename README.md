@@ -94,8 +94,8 @@ Meatify/
 
 ```bash
 # Clone the repository
-git clone https://github.com/CyberArcenal/meatify.git
-cd meatify
+git clone https://github.com/CyberArcenal/Meatify.git
+cd Meatify
 
 # Install dependencies
 npm install
