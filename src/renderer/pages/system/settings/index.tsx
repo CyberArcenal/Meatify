@@ -37,8 +37,6 @@ const MeatifySettingsPage: React.FC = () => {
     updateSales,
     updateCashier,
     updateNotifications,
-    updateReports,
-    updateIntegrations,
     updateAuditSecurity,
     saveSettings,
     resetToDefaults,
