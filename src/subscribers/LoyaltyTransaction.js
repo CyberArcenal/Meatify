@@ -50,7 +50,7 @@ class LoyaltyTransactionSubscriber {
         `[LoyaltyTransactionSubscriber] Failed to handle afterInsert for transaction #${entity.id}:`,
         err
       );
-      // Don't re-throw – we don't want to break the transaction
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 
@@ -107,6 +107,7 @@ class LoyaltyTransactionSubscriber {
           `[LoyaltyTransactionSubscriber] Failed to handle afterUpdate for transaction #${entity.id}:`,
           err
         );
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -138,6 +139,7 @@ class LoyaltyTransactionSubscriber {
       await stateService.onTransactionDeleted(event.entityId, "system");
     } catch (err) {
       logger.error(`[LoyaltyTransactionSubscriber] Failed to handle afterRemove for transaction #${event.entityId}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
     */
   }

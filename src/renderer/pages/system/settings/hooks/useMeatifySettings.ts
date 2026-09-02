@@ -1,9 +1,29 @@
 // src/renderer/pages/system/settings/hooks/useMeatifySettings.ts
 import { useState, useEffect, useCallback, useMemo } from "react";
-import systemConfigAPI, { type MeatifySettings, type GeneralSettings, type InventorySettings, type SalesSettings, type CashierSettings, type NotificationsSettings, type ReportsSettings, type IntegrationsSettings, type AuditSecuritySettings } from "../../../../api/utils/system_config";
+import systemConfigAPI from "../../../../api/utils/system_config";
+import type {
+  GeneralSettings,
+  InventorySettings,
+  SalesSettings,
+  CashierSettings,
+  NotificationsSettings,
+  AuditSecuritySettings,
+} from "../../../../api/utils/system_config";
 import { useSettings } from "../../../../contexts/SettingsContext";
 import { dialogs } from "../../../../utils/dialogs";
 
+// ============================================================
+// 📦 Local interface (only categories we use)
+// ============================================================
+
+export interface MeatifySettings {
+  general: GeneralSettings;
+  inventory: InventorySettings;
+  sales: SalesSettings;
+  cashier: CashierSettings;
+  notifications: NotificationsSettings;
+  audit_security: AuditSecuritySettings;
+}
 
 // ============================================================
 // 📦 DEFAULT VALUES (Matches system.js)
@@ -48,17 +68,12 @@ const DEFAULTS: MeatifySettings = {
     refund_restock_enabled: true,
   },
   cashier: {
-    enable_receipt_printing: true,
-    receipt_printer_type: "thermal",
     receipt_header_message: "",
     receipt_footer_message: "Thank you for shopping at Meatify!",
     receipt_show_logo: true,
     receipt_show_tax: true,
     receipt_show_discount: true,
     receipt_show_loyalty: true,
-    enable_cash_drawer: true,
-    drawer_open_code: "0",
-    cash_drawer_connection_type: "printer",
   },
   notifications: {
     email_enabled: false,
@@ -80,19 +95,6 @@ const DEFAULTS: MeatifySettings = {
     twilio_phone_number: "",
     twilio_messaging_service_sid: "",
   },
-  reports: {
-    export_formats: ["CSV", "Excel", "PDF"],
-    default_export_format: "CSV",
-    auto_backup_enabled: false,
-    backup_schedule: "0 2 * * *",
-    backup_location: "./backups",
-    data_retention_days: 365,
-    include_audit_in_backup: false,
-  },
-  integrations: {
-    webhooks_enabled: false,
-    webhooks: [],
-  },
   audit_security: {
     audit_log_enabled: true,
     log_retention_days: 30,
@@ -110,8 +112,6 @@ const ALLOWED_KEYS: Record<keyof MeatifySettings, string[]> = {
   sales: Object.keys(DEFAULTS.sales),
   cashier: Object.keys(DEFAULTS.cashier),
   notifications: Object.keys(DEFAULTS.notifications),
-  reports: Object.keys(DEFAULTS.reports),
-  integrations: Object.keys(DEFAULTS.integrations),
   audit_security: Object.keys(DEFAULTS.audit_security),
 };
 
@@ -130,8 +130,22 @@ function sanitizeSettings<T extends Record<string, any>>(
 
 export const useMeatifySettings = () => {
   const { refreshSettings } = useSettings();
-  const [settings, setSettings] = useState<MeatifySettings>(DEFAULTS);
-  const [originalSettings, setOriginalSettings] = useState<MeatifySettings>(DEFAULTS);
+  const [settings, setSettings] = useState<MeatifySettings>({
+    general: DEFAULTS.general,
+    inventory: DEFAULTS.inventory,
+    sales: DEFAULTS.sales,
+    cashier: DEFAULTS.cashier,
+    notifications: DEFAULTS.notifications,
+    audit_security: DEFAULTS.audit_security,
+  });
+  const [originalSettings, setOriginalSettings] = useState<MeatifySettings>({
+    general: DEFAULTS.general,
+    inventory: DEFAULTS.inventory,
+    sales: DEFAULTS.sales,
+    cashier: DEFAULTS.cashier,
+    notifications: DEFAULTS.notifications,
+    audit_security: DEFAULTS.audit_security,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,8 +168,6 @@ export const useMeatifySettings = () => {
           sales: { ...DEFAULTS.sales, ...grouped.sales },
           cashier: { ...DEFAULTS.cashier, ...grouped.cashier },
           notifications: { ...DEFAULTS.notifications, ...grouped.notifications },
-          reports: { ...DEFAULTS.reports, ...grouped.reports },
-          integrations: { ...DEFAULTS.integrations, ...grouped.integrations },
           audit_security: { ...DEFAULTS.audit_security, ...grouped.audit_security },
         };
         setSettings(loaded);
@@ -193,10 +205,6 @@ export const useMeatifySettings = () => {
     updateCategory("cashier", field, value);
   const updateNotifications = (field: keyof NotificationsSettings, value: any) =>
     updateCategory("notifications", field, value);
-  const updateReports = (field: keyof ReportsSettings, value: any) =>
-    updateCategory("reports", field, value);
-  const updateIntegrations = (field: keyof IntegrationsSettings, value: any) =>
-    updateCategory("integrations", field, value);
   const updateAuditSecurity = (field: keyof AuditSecuritySettings, value: any) =>
     updateCategory("audit_security", field, value);
 
@@ -206,7 +214,7 @@ export const useMeatifySettings = () => {
     setSuccessMessage(null);
 
     const combinedConfig: Record<string, any> = {};
-    const categories = Object.keys(DEFAULTS) as Array<keyof MeatifySettings>;
+    const categories = Object.keys(ALLOWED_KEYS) as Array<keyof MeatifySettings>;
 
     for (const category of categories) {
       const categoryData = settings[category];
@@ -278,8 +286,6 @@ export const useMeatifySettings = () => {
     updateSales,
     updateCashier,
     updateNotifications,
-    updateReports,
-    updateIntegrations,
     updateAuditSecurity,
     saveSettings,
     resetToDefaults,

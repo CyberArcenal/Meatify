@@ -59,6 +59,9 @@ export const AuditSecurityTab: React.FC<AuditSecurityTabProps> = ({
             <span className="ml-3 text-sm text-[var(--text-secondary)]">
               Enable Audit Log
             </span>
+            <span className="ml-2 text-xs text-[var(--text-tertiary)]">
+              (tracks all CRUD operations)
+            </span>
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
@@ -67,12 +70,13 @@ export const AuditSecurityTab: React.FC<AuditSecurityTabProps> = ({
             <input
               type="number"
               min="1"
+              max="365"
               value={settings.log_retention_days || 30}
               onChange={(e) => updateField("log_retention_days", parseInt(e.target.value) || 30)}
               className="w-full px-3 py-2 rounded-lg border bg-[var(--input-bg)] border-[var(--input-border)] text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-gold)] focus:outline-none"
             />
             <p className="text-xs text-[var(--text-tertiary)] mt-1">
-              Number of days to keep audit logs before auto-deletion
+              Older logs are automatically deleted to save space
             </p>
           </div>
         </div>
@@ -81,11 +85,11 @@ export const AuditSecurityTab: React.FC<AuditSecurityTabProps> = ({
       {/* Log Events */}
       <div className="border-t border-[var(--border-color)] pt-6">
         <h4 className="text-md font-medium text-[var(--text-primary)] mb-4">
-          Log Events
+          Events to Track
         </h4>
         <div>
           <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
-            Events to Log (comma separated)
+            Event Types (comma separated)
           </label>
           <input
             type="text"
@@ -95,53 +99,8 @@ export const AuditSecurityTab: React.FC<AuditSecurityTabProps> = ({
             placeholder="CREATE, UPDATE, DELETE, LOGIN, LOGOUT"
           />
           <p className="text-xs text-[var(--text-tertiary)] mt-1">
-            Enter actions to track. Separate with commas. Use "NONE" to disable all.
+            Available: CREATE, UPDATE, DELETE, LOGIN, LOGOUT. Use "NONE" to disable all.
           </p>
-        </div>
-      </div>
-
-      {/* Security Settings */}
-      <div className="border-t border-[var(--border-color)] pt-6">
-        <h4 className="text-md font-medium text-[var(--text-primary)] mb-4">
-          Security Settings
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex items-center">
-            <Switch
-              checked={settings.force_https || false}
-              onChange={(checked) => updateField("force_https", checked)}
-            />
-            <span className="ml-3 text-sm text-[var(--text-secondary)]">
-              Force HTTPS (for online sync)
-            </span>
-          </div>
-          <div className="flex items-center">
-            <Switch
-              checked={settings.session_encryption_enabled !== false}
-              onChange={(checked) => updateField("session_encryption_enabled", checked)}
-            />
-            <span className="ml-3 text-sm text-[var(--text-secondary)]">
-              Enable Session Encryption
-            </span>
-          </div>
-          <div className="flex items-center">
-            <Switch
-              checked={settings.gdpr_compliance_enabled || false}
-              onChange={(checked) => updateField("gdpr_compliance_enabled", checked)}
-            />
-            <span className="ml-3 text-sm text-[var(--text-secondary)]">
-              GDPR Compliance Mode
-            </span>
-          </div>
-          <div className="flex items-center">
-            <Switch
-              checked={settings.require_mfa_for_admin || false}
-              onChange={(checked) => updateField("require_mfa_for_admin", checked)}
-            />
-            <span className="ml-3 text-sm text-[var(--text-secondary)]">
-              Require MFA for Admin
-            </span>
-          </div>
         </div>
       </div>
     </div>

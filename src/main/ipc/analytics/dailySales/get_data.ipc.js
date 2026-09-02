@@ -1,7 +1,8 @@
 // src/main/ipc/analytics/dailySales/get_data.ipc.js
-const saleService = require("../../../../services/Sale");
-const saleItemService = require("../../../../services/SaleItem");
-const meatService = require("../../../../services/Meat");
+const { AppDataSource } = require("../../../db/data-source");
+const Sale = require("../../../../entities/Sale");
+const SaleItem = require("../../../../entities/SaleItem");
+const Meat = require("../../../../entities/Meat");
 
 module.exports = async (params) => {
   const { 
@@ -40,69 +41,77 @@ module.exports = async (params) => {
       end.setHours(23, 59, 59, 999);
     }
 
-    // Get sales for the date range
-    const salesOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status,
-      paymentMethod,
-      customerId,
-      minAmount,
-      maxAmount,
-      page,
-      limit,
-      sortBy,
-      sortOrder,
-    };
+    const saleRepo = AppDataSource.getRepository(Sale);
+    const saleItemRepo = AppDataSource.getRepository(SaleItem);
+    const meatRepo = AppDataSource.getRepository(Meat);
 
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
+    // ─── 1. Get paginated sales ──────────────────────────────
+    const qb = saleRepo
+      .createQueryBuilder("sale")
+      .leftJoinAndSelect("sale.customer", "customer")
+      .leftJoinAndSelect("sale.saleItems", "items")
+      .leftJoinAndSelect("items.meat", "meat")
+      .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .andWhere("sale.status = :status", { status });
 
-    // Get sales items for these sales to get detailed breakdown
-    const saleIds = sales.map(s => s.id);
-    let items = [];
-    if (saleIds.length > 0) {
-      const itemsOptions = {
-        saleId: saleIds,
-        limit: 10000,
-      };
-      const itemsResult = await saleItemService.findAll(itemsOptions);
-      items = itemsResult.data;
+    if (paymentMethod) {
+      qb.andWhere("sale.paymentMethod = :paymentMethod", { paymentMethod });
+    }
+    if (customerId) {
+      qb.andWhere("sale.customerId = :customerId", { customerId });
+    }
+    if (minAmount !== undefined) {
+      qb.andWhere("sale.totalAmount >= :minAmount", { minAmount });
+    }
+    if (maxAmount !== undefined) {
+      qb.andWhere("sale.totalAmount <= :maxAmount", { maxAmount });
     }
 
-    // Enrich sales with items
+    const validSortColumns = ["timestamp", "totalAmount", "paymentMethod", "status"];
+    const sortColumn = validSortColumns.includes(sortBy) ? sortBy : "timestamp";
+    const order = sortOrder === "ASC" ? "ASC" : "DESC";
+    qb.orderBy(`sale.${sortColumn}`, order);
+
+    const [sales, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
+
+    // Enrich sales with computed totals (weight, discount, tax)
     const enrichedSales = sales.map(sale => {
-      const saleItems = items.filter(item => item.saleId === sale.id);
-      const totalWeight = saleItems.reduce((sum, item) => sum + item.weightKg, 0);
-      const totalDiscount = saleItems.reduce((sum, item) => sum + item.discount, 0);
-      const totalTax = saleItems.reduce((sum, item) => sum + item.tax, 0);
-      
+      const items = sale.saleItems || [];
+      const totalWeight = items.reduce((sum, item) => sum + parseFloat(item.weightKg || 0), 0);
+      const totalDiscount = items.reduce((sum, item) => sum + parseFloat(item.discount || 0), 0);
+      const totalTax = items.reduce((sum, item) => sum + parseFloat(item.tax || 0), 0);
       return {
         ...sale,
-        saleItems,
-        totalWeight,
-        totalDiscount,
-        totalTax,
-        // Add customer name for convenience
+        totalWeight: parseFloat(totalWeight.toFixed(3)),
+        totalDiscount: parseFloat(totalDiscount.toFixed(2)),
+        totalTax: parseFloat(totalTax.toFixed(2)),
         customerName: sale.customer?.name || "Walk-in",
       };
     });
 
-    // Get summary statistics for the period
-    const summary = await getDailySummary(start, end);
+    // ─── 2. Summary statistics (aggregated) ──────────────────
+    const summary = await getDailySummary(start, end, status, paymentMethod, customerId);
 
-    // Get hourly breakdown
-    const hourlyBreakdown = await getHourlyBreakdown(start, end);
+    // ─── 3. Hourly breakdown ──────────────────────────────────
+    const hourlyBreakdown = await getHourlyBreakdown(start, end, status, paymentMethod, customerId);
 
-    // Get top selling meats
-    const topMeats = await getTopMeats(start, end);
+    // ─── 4. Top selling meats ────────────────────────────────
+    const topMeats = await getTopMeats(start, end, status, paymentMethod, customerId);
 
     return {
       status: true,
       message: "Daily sales data retrieved successfully",
       data: {
         sales: enrichedSales,
-        pagination: salesResult.pagination,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
         summary,
         hourlyBreakdown,
         topMeats,
@@ -122,185 +131,192 @@ module.exports = async (params) => {
   }
 };
 
-/**
- * Get daily summary statistics
- */
-async function getDailySummary(start, end) {
-  try {
-    const saleServiceInstance = saleService;
-    const salesOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status: "paid",
-      limit: 10000,
-    };
+// ─── Helper: Daily Summary (uses DB aggregates) ────────────────
+async function getDailySummary(start, end, status, paymentMethod, customerId) {
+  const saleRepo = AppDataSource.getRepository(Sale);
+  const saleItemRepo = AppDataSource.getRepository(SaleItem);
 
-    const salesResult = await saleServiceInstance.findAll(salesOptions);
-    const sales = salesResult.data;
+  // 1. Sales aggregate
+  const saleQb = saleRepo
+    .createQueryBuilder("sale")
+    .select("COUNT(sale.id)", "totalSales")
+    .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "totalRevenue")
+    .addSelect("COALESCE(SUM(sale.totalDiscount), 0)", "totalDiscount")
+    .addSelect("COUNT(DISTINCT sale.customerId)", "uniqueCustomers")
+    .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+    .andWhere("sale.status = :status", { status });
 
-    const totalSales = sales.length;
-    const totalRevenue = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-    const averageTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
-
-    // Get all sale items for this period
-    const saleIds = sales.map(s => s.id);
-    let items = [];
-    if (saleIds.length > 0) {
-      const itemsResult = await saleItemService.findAll({
-        saleId: saleIds,
-        limit: 10000,
-      });
-      items = itemsResult.data;
-    }
-
-    const totalWeight = items.reduce((sum, item) => sum + item.weightKg, 0);
-    const totalDiscount = sales.reduce((sum, s) => sum + s.totalDiscount, 0);
-
-    // Count unique customers
-    const uniqueCustomers = new Set(sales.map(s => s.customerId).filter(id => id !== null));
-
-    // Payment method breakdown
-    const paymentMethods = {};
-    sales.forEach(s => {
-      const method = s.paymentMethod || "unknown";
-      paymentMethods[method] = (paymentMethods[method] || 0) + 1;
-    });
-
-    return {
-      totalSales,
-      totalRevenue,
-      averageTicket,
-      totalWeight,
-      totalDiscount,
-      uniqueCustomers: uniqueCustomers.size,
-      paymentMethods,
-    };
-  } catch (error) {
-    console.error("Error calculating daily summary:", error);
-    return {
-      totalSales: 0,
-      totalRevenue: 0,
-      averageTicket: 0,
-      totalWeight: 0,
-      totalDiscount: 0,
-      uniqueCustomers: 0,
-      paymentMethods: {},
-    };
+  if (paymentMethod) {
+    saleQb.andWhere("sale.paymentMethod = :paymentMethod", { paymentMethod });
   }
+  if (customerId) {
+    saleQb.andWhere("sale.customerId = :customerId", { customerId });
+  }
+
+  const saleAgg = await saleQb.getRawOne();
+
+  // 2. Payment method breakdown
+  const paymentQb = saleRepo
+    .createQueryBuilder("sale")
+    .select("sale.paymentMethod", "method")
+    .addSelect("COUNT(sale.id)", "count")
+    .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+    .andWhere("sale.status = :status", { status });
+
+  if (paymentMethod) {
+    paymentQb.andWhere("sale.paymentMethod = :paymentMethod", { paymentMethod });
+  }
+  if (customerId) {
+    paymentQb.andWhere("sale.customerId = :customerId", { customerId });
+  }
+
+  const paymentMethods = await paymentQb.groupBy("sale.paymentMethod").getRawMany();
+
+  // 3. Total weight (from sale items)
+  const itemQb = saleItemRepo
+    .createQueryBuilder("item")
+    .leftJoin("item.sale", "sale")
+    .select("COALESCE(SUM(item.weightKg), 0)", "totalWeight")
+    .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+    .andWhere("sale.status = :status", { status });
+
+  if (paymentMethod) {
+    itemQb.andWhere("sale.paymentMethod = :paymentMethod", { paymentMethod });
+  }
+  if (customerId) {
+    itemQb.andWhere("sale.customerId = :customerId", { customerId });
+  }
+
+  const itemAgg = await itemQb.getRawOne();
+
+  const totalSales = parseInt(saleAgg.totalSales, 10) || 0;
+  const totalRevenue = parseFloat(saleAgg.totalRevenue) || 0;
+  const totalDiscount = parseFloat(saleAgg.totalDiscount) || 0;
+  const totalWeight = parseFloat(itemAgg.totalWeight) || 0;
+  const uniqueCustomers = parseInt(saleAgg.uniqueCustomers, 10) || 0;
+
+  return {
+    totalSales,
+    totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+    averageTicket: totalSales > 0 ? parseFloat((totalRevenue / totalSales).toFixed(2)) : 0,
+    totalWeight: parseFloat(totalWeight.toFixed(3)),
+    totalDiscount: parseFloat(totalDiscount.toFixed(2)),
+    uniqueCustomers,
+    paymentMethods: paymentMethods.reduce((acc, row) => {
+      acc[row.method] = parseInt(row.count, 10);
+      return acc;
+    }, {}),
+  };
 }
 
-/**
- * Get hourly breakdown of sales
- */
-async function getHourlyBreakdown(start, end) {
-  try {
-    const salesOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status: "paid",
-      limit: 10000,
-    };
+// ─── Helper: Hourly Breakdown ─────────────────────────────────────
+async function getHourlyBreakdown(start, end, status, paymentMethod, customerId) {
+  const saleRepo = AppDataSource.getRepository(Sale);
 
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
+  // For SQLite, we can use strftime to extract hour, but we also need to handle other DBs.
+  // Use a simple approach: fetch sales and group in JS since we only need 24 hours and we can aggregate with SQL.
+  // Better: use raw SQL for SQLite: "strftime('%H', sale.timestamp) as hour"
+  // We'll use a query builder with a raw expression.
+  const qb = saleRepo
+    .createQueryBuilder("sale")
+    .select("strftime('%H', sale.timestamp)", "hour")
+    .addSelect("COUNT(sale.id)", "count")
+    .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "revenue")
+    .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+    .andWhere("sale.status = :status", { status })
+    .groupBy("strftime('%H', sale.timestamp)");
 
-    const hourlyData = {};
-    
-    // Initialize all hours
-    for (let i = 0; i < 24; i++) {
-      hourlyData[i] = { count: 0, revenue: 0, weight: 0 };
-    }
-
-    // Get all sale items for this period
-    const saleIds = sales.map(s => s.id);
-    let items = [];
-    if (saleIds.length > 0) {
-      const itemsResult = await saleItemService.findAll({
-        saleId: saleIds,
-        limit: 10000,
-      });
-      items = itemsResult.data;
-    }
-
-    // Group by hour
-    sales.forEach(sale => {
-      const hour = new Date(sale.timestamp).getHours();
-      hourlyData[hour].count += 1;
-      hourlyData[hour].revenue += sale.totalAmount;
-    });
-
-    items.forEach(item => {
-      const sale = sales.find(s => s.id === item.saleId);
-      if (sale) {
-        const hour = new Date(sale.timestamp).getHours();
-        hourlyData[hour].weight += item.weightKg;
-      }
-    });
-
-    // Convert to array format
-    const hourlyArray = Object.entries(hourlyData).map(([hour, data]) => ({
-      hour: parseInt(hour),
-      ...data,
-    }));
-
-    return hourlyArray;
-  } catch (error) {
-    console.error("Error calculating hourly breakdown:", error);
-    return [];
+  if (paymentMethod) {
+    qb.andWhere("sale.paymentMethod = :paymentMethod", { paymentMethod });
   }
+  if (customerId) {
+    qb.andWhere("sale.customerId = :customerId", { customerId });
+  }
+
+  const rows = await qb.getRawMany();
+
+  // Initialize all 24 hours
+  const hourlyMap = {};
+  for (let i = 0; i < 24; i++) {
+    hourlyMap[i] = { count: 0, revenue: 0, weight: 0 };
+  }
+
+  rows.forEach(row => {
+    const hour = parseInt(row.hour, 10);
+    if (!isNaN(hour) && hour >= 0 && hour < 24) {
+      hourlyMap[hour].count = parseInt(row.count, 10) || 0;
+      hourlyMap[hour].revenue = parseFloat(row.revenue) || 0;
+    }
+  });
+
+  // For weight, we need a separate query: sum item weight per hour
+  const itemRepo = AppDataSource.getRepository(SaleItem);
+  const itemQb = itemRepo
+    .createQueryBuilder("item")
+    .leftJoin("item.sale", "sale")
+    .select("strftime('%H', sale.timestamp)", "hour")
+    .addSelect("COALESCE(SUM(item.weightKg), 0)", "totalWeight")
+    .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+    .andWhere("sale.status = :status", { status })
+    .groupBy("strftime('%H', sale.timestamp)");
+
+  if (paymentMethod) {
+    itemQb.andWhere("sale.paymentMethod = :paymentMethod", { paymentMethod });
+  }
+  if (customerId) {
+    itemQb.andWhere("sale.customerId = :customerId", { customerId });
+  }
+
+  const weightRows = await itemQb.getRawMany();
+  weightRows.forEach(row => {
+    const hour = parseInt(row.hour, 10);
+    if (!isNaN(hour) && hour >= 0 && hour < 24) {
+      hourlyMap[hour].weight = parseFloat(row.totalWeight) || 0;
+    }
+  });
+
+  // Convert to array
+  return Object.entries(hourlyMap).map(([hour, data]) => ({
+    hour: parseInt(hour),
+    count: data.count,
+    revenue: parseFloat(data.revenue.toFixed(2)),
+    weight: parseFloat(data.weight.toFixed(3)),
+  }));
 }
 
-/**
- * Get top selling meats
- */
-async function getTopMeats(start, end) {
-  try {
-    const salesOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status: "paid",
-      limit: 10000,
-    };
+// ─── Helper: Top Meats ────────────────────────────────────────────
+async function getTopMeats(start, end, status, paymentMethod, customerId) {
+  const saleItemRepo = AppDataSource.getRepository(SaleItem);
 
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
-    const saleIds = sales.map(s => s.id);
+  const qb = saleItemRepo
+    .createQueryBuilder("item")
+    .innerJoin("item.sale", "sale")
+    .innerJoin("item.meat", "meat")
+    .select("item.meatId", "meatId")
+    .addSelect("meat.name", "meatName")
+    .addSelect("COALESCE(SUM(item.weightKg), 0)", "totalWeight")
+    .addSelect("COALESCE(SUM(item.lineTotal), 0)", "totalRevenue")
+    .addSelect("COUNT(item.id)", "count")
+    .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+    .andWhere("sale.status = :status", { status })
+    .groupBy("item.meatId")
+    .orderBy("totalRevenue", "DESC")
+    .limit(10);
 
-    let items = [];
-    if (saleIds.length > 0) {
-      const itemsResult = await saleItemService.findAll({
-        saleId: saleIds,
-        limit: 10000,
-      });
-      items = itemsResult.data;
-    }
-
-    // Group by meat
-    const meatMap = {};
-    items.forEach(item => {
-      const meatId = item.meatId;
-      if (!meatMap[meatId]) {
-        meatMap[meatId] = {
-          meatId,
-          meatName: item.meat?.name || "Unknown",
-          totalWeight: 0,
-          totalRevenue: 0,
-          count: 0,
-        };
-      }
-      meatMap[meatId].totalWeight += item.weightKg;
-      meatMap[meatId].totalRevenue += item.lineTotal;
-      meatMap[meatId].count += 1;
-    });
-
-    // Convert to array and sort by revenue
-    const topMeats = Object.values(meatMap)
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
-      .slice(0, 10);
-
-    return topMeats;
-  } catch (error) {
-    console.error("Error calculating top meats:", error);
-    return [];
+  if (paymentMethod) {
+    qb.andWhere("sale.paymentMethod = :paymentMethod", { paymentMethod });
   }
+  if (customerId) {
+    qb.andWhere("sale.customerId = :customerId", { customerId });
+  }
+
+  const rows = await qb.getRawMany();
+
+  return rows.map(row => ({
+    meatId: row.meatId,
+    meatName: row.meatName || "Unknown",
+    totalWeight: parseFloat(row.totalWeight) || 0,
+    totalRevenue: parseFloat(row.totalRevenue) || 0,
+    count: parseInt(row.count, 10) || 0,
+  }));
 }

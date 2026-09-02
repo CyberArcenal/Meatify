@@ -1,9 +1,10 @@
 // src/main/ipc/dashboard/get_chart.ipc.js
 //@ts-check
-const saleService = require("../../../../services/Sale");
+const { AppDataSource } = require("../../../db/data-source");
+const Sale = require("../../../../entities/Sale");
 
 module.exports = async (params) => {
-  const { days = 7, groupBy = "day" } = params;
+  const { days = 7 } = params;
 
   try {
     const endDate = new Date();
@@ -12,43 +13,29 @@ module.exports = async (params) => {
     startDate.setHours(0, 0, 0, 0);
     endDate.setHours(23, 59, 59, 999);
 
-    // Get sales for the date range
-    const salesOptions = {
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-      status: "paid",
-      limit: 10000,
-    };
+    const saleRepo = AppDataSource.getRepository(Sale);
 
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
+    // Group by date using SQLite DATE function (adjust for other DBs)
+    const chartData = await saleRepo
+      .createQueryBuilder("sale")
+      .select("DATE(sale.timestamp)", "date")
+      .addSelect("COUNT(sale.id)", "count")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "revenue")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start: startDate, end: endDate })
+      .groupBy("DATE(sale.timestamp)")
+      .orderBy("date", "ASC")
+      .getRawMany();
 
-    // Group by date
-    const dateMap = {};
-    const currentDate = new Date(startDate);
-
-    // Initialize all dates in range
-    while (currentDate <= endDate) {
-      const dateKey = currentDate.toISOString().split("T")[0];
-      dateMap[dateKey] = { date: dateKey, revenue: 0, count: 0 };
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    // Aggregate sales data
-    sales.forEach((sale) => {
-      const dateKey = new Date(sale.timestamp).toISOString().split("T")[0];
-      if (dateMap[dateKey]) {
-        dateMap[dateKey].revenue += sale.totalAmount;
-        dateMap[dateKey].count += 1;
-      }
-    });
-
-    const chartData = Object.values(dateMap).sort((a, b) => a.date.localeCompare(b.date));
-
+    // Fill missing dates (optional but we can just return what exists)
     return {
       status: true,
       message: "Sales chart data retrieved successfully",
-      data: chartData,
+      data: chartData.map(row => ({
+        date: row.date,
+        revenue: parseFloat(row.revenue) || 0,
+        count: parseInt(row.count, 10) || 0,
+      })),
     };
   } catch (error) {
     console.error("Error in getSalesChart:", error);

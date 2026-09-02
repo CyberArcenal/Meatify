@@ -433,6 +433,7 @@ class AuditLogService {
         }
       } catch (err) {
         results.errors.push({ log: data, error: err.message });
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
     return results;
@@ -480,6 +481,7 @@ class AuditLogService {
         }
       } catch (err) {
         results.errors.push({ row: record, error: err.message });
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
     return results;
@@ -523,6 +525,7 @@ class AuditLogService {
         deletedCount++;
       } catch (err) {
         logger.error(`[AuditLog] Failed to delete log #${log.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 

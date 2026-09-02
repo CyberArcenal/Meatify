@@ -42,6 +42,7 @@ class MeatSubscriber {
       await stateService.onCreated(entity.id, entity, "system", queryRunner);
     } catch (err) {
       logger.error(`[MeatSubscriber] Failed to handle onCreated for meat #${entity.id}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 
@@ -104,6 +105,7 @@ class MeatSubscriber {
             });
           } catch (err) {
             logger.warn(`[MeatSubscriber] Failed to get active batch count for meat #${entity.id}:`, err);
+            throw err; // Rethrow to ensure transaction rollback
           }
 
           await stateService.onDeactivated(
@@ -138,6 +140,7 @@ class MeatSubscriber {
         );
       } catch (err) {
         logger.error(`[MeatSubscriber] Failed to handle price change for meat #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -164,6 +167,7 @@ class MeatSubscriber {
         await stateService.onUpdated(entity.id, entity, changedFields, "system", queryRunner);
       } catch (err) {
         logger.error(`[MeatSubscriber] Failed to handle onUpdated for meat #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -177,6 +181,7 @@ class MeatSubscriber {
         await stateService.onRestored(entity.id, entity, "system", queryRunner);
       } catch (err) {
         logger.error(`[MeatSubscriber] Failed to handle onRestored for meat #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -207,6 +212,7 @@ class MeatSubscriber {
       await stateService.onDeleted(entityId, databaseEntity, "system", queryRunner);
     } catch (err) {
       logger.error(`[MeatSubscriber] Failed to handle onDeleted for meat #${entityId}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 }

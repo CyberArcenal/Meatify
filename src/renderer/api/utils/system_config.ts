@@ -104,174 +104,6 @@ export interface NotificationsSettings {
   notify_expiring_batches?: boolean;
   notify_refund_processed?: boolean;
   notify_purchase_completed?: boolean;
-  sms_provider?: string;
-  // SMTP
-  email_smtp_host?: string;
-  email_smtp_port?: number;
-  email_smtp_username?: string;
-  email_smtp_password?: string;
-  email_from_address?: string;
-  email_from_name?: string;
-  // Twilio
-  twilio_account_sid?: string;
-  twilio_auth_token?: string;
-  twilio_phone_number?: string;
-  twilio_messaging_service_sid?: string;
-}
-
-// ============================================================
-// 📊 REPORTS SETTINGS
-// ============================================================
-
-export interface ReportsSettings {
-  export_formats?: string[];
-  default_export_format?: string;
-  auto_backup_enabled?: boolean;
-  backup_schedule?: string;
-  backup_location?: string;
-  data_retention_days?: number;
-  include_audit_in_backup?: boolean;
-}
-
-// ============================================================
-// 🔗 INTEGRATIONS SETTINGS
-// ============================================================
-
-export interface IntegrationsSettings {
-  webhooks_enabled?: boolean;
-  webhooks?: Array<{
-    url: string;
-    events: string[];
-    enabled: boolean;
-    secret?: string;
-  }>;
-}
-
-// ============================================================
-// 🔒 AUDIT & SECURITY SETTINGS
-// ============================================================
-
-export interface AuditSecuritySettings {
-  audit_log_enabled?: boolean;
-  log_retention_days?: number;
-  log_events?: string[];
-  force_https?: boolean;
-  session_encryption_enabled?: boolean;
-  gdpr_compliance_enabled?: boolean;
-  require_mfa_for_admin?: boolean;
-}
-
-// ============================================================
-// 📦 COMBINED SETTINGS
-// ============================================================
-
-export interface MeatifySettings {
-  general: GeneralSettings;
-  inventory: InventorySettings;
-  sales: SalesSettings;
-  cashier: CashierSettings;
-  notifications: NotificationsSettings;
-  reports: ReportsSettings;
-  integrations: IntegrationsSettings;
-  audit_security: AuditSecuritySettings;
-}
-
-// ============================================================
-// 📨 API RESPONSES
-// ============================================================
-
-export interface GroupedSettingsData {
-  general: GeneralSettings;
-  inventory: InventorySettings;
-  sales: SalesSettings;
-  cashier: CashierSettings;
-  notifications: NotificationsSettings;
-  reports: ReportsSettings;
-  integrations: IntegrationsSettings;
-  audit_security: AuditSecuritySettings;
-}
-
-export interface SystemConfigResponse {
-  status: boolean;
-  message: string;
-  data: {
-    grouped_settings: GroupedSettingsData;
-    system_info: {
-      version: string;
-      name: string;
-      environment: string;
-      debug_mode: boolean;
-      timezone: string;
-      current_time: string;
-      setting_types: string[];
-    };
-  } | null;
-}
-
-
-
-
-// ============================================================
-// 📦 Interfaces per Category (matching system.js functions)
-// ============================================================
-
-// 1. GENERAL SETTINGS
-export interface GeneralSettings {
-  company_name?: string;
-  branch_location?: string;
-  default_timezone?: string;
-  language?: string;
-  currency?: string;
-  decimal_places?: number;
-  auto_logout_minutes?: number;
-  date_format?: string;
-}
-
-// 2. INVENTORY SETTINGS
-export interface InventorySettings {
-  low_stock_threshold?: number;
-  enable_auto_reorder?: boolean;
-  auto_reorder_quantity?: number;
-  allow_negative_stock?: boolean;
-  fifo_enabled?: boolean;
-  inventory_sync_enabled?: boolean;
-}
-
-// 3. SALES & PRICING SETTINGS
-export interface SalesSettings {
-  tax_rate?: number;
-  default_discount_rate?: number;
-  max_discount_percent?: number;
-  enable_discounts?: boolean;
-  default_payment_method?: "cash" | "card" | "wallet";
-  enable_cash_payment?: boolean;
-  enable_card_payment?: boolean;
-  enable_wallet_payment?: boolean;
-  price_rounding?: "nearest" | "up" | "down";
-
-  // Loyalty (nested under sales)
-  enable_loyalty_points?: boolean;
-  loyalty_point_rate?: number;
-  loyalty_vip_threshold?: number;
-  loyalty_elite_threshold?: number;
-
-  // Refunds (nested under sales)
-  enable_refunds?: boolean;
-  refund_window_days?: number;
-  require_receipt_for_refund?: boolean;
-  refund_restock_enabled?: boolean;
-}
-
-
-// 5. NOTIFICATIONS SETTINGS
-export interface NotificationsSettings {
-  email_enabled?: boolean;
-  sms_enabled?: boolean;
-  in_app_notifications_enabled?: boolean;
-  notify_low_stock?: boolean;
-  notify_expiring_batches?: boolean;
-  notify_refund_processed?: boolean;
-  notify_purchase_completed?: boolean;
   sms_provider?: string; // e.g., "twilio"
   email_smtp_host?: string;
   email_smtp_port?: number;
@@ -285,18 +117,24 @@ export interface NotificationsSettings {
   twilio_messaging_service_sid?: string;
 }
 
-// 6. REPORTS & BACKUP SETTINGS
+// ============================================================
+// 📊 REPORTS SETTINGS
+// ============================================================
+
 export interface ReportsSettings {
   export_formats?: string[]; // CSV, Excel, PDF
   default_export_format?: string;
   auto_backup_enabled?: boolean;
-  backup_schedule?: string; // cron expression or string
+  backup_schedule?: string; // cron expression
   backup_location?: string;
   data_retention_days?: number;
   include_audit_in_backup?: boolean;
 }
 
-// 7. INTEGRATIONS SETTINGS
+// ============================================================
+// 🔗 INTEGRATIONS SETTINGS
+// ============================================================
+
 export interface IntegrationsSettings {
   webhooks_enabled?: boolean;
   webhooks?: WebhookSetting[];
@@ -309,7 +147,10 @@ export interface WebhookSetting {
   secret?: string;
 }
 
-// 8. AUDIT & SECURITY SETTINGS
+// ============================================================
+// 🔒 AUDIT & SECURITY SETTINGS
+// ============================================================
+
 export interface AuditSecuritySettings {
   audit_log_enabled?: boolean;
   log_retention_days?: number;
@@ -321,7 +162,7 @@ export interface AuditSecuritySettings {
 }
 
 // ============================================================
-// 📦 System Configuration Aggregated
+// 📦 COMBINED SETTINGS (Grouped)
 // ============================================================
 
 export interface GroupedSettingsData {
@@ -333,35 +174,11 @@ export interface GroupedSettingsData {
   data_reports: ReportsSettings;
   integrations: IntegrationsSettings;
   audit_security: AuditSecuritySettings;
-  settings: SystemSettingData[];
-  grouped_settings: {
-    general: GeneralSettings;
-    inventory: InventorySettings;
-    sales: SalesSettings;
-    cashier: CashierSettings;
-    notifications: NotificationsSettings;
-    data_reports: ReportsSettings;
-    integrations: IntegrationsSettings;
-    audit_security: AuditSecuritySettings;
-  };
-  system_info: SystemInfoData;
 }
 
 // ============================================================
-// 🔧 Base Types
+// 🧠 SYSTEM INFO
 // ============================================================
-
-export interface SystemSettingData {
-  id: number;
-  key: string;
-  value: any;
-  setting_type: SettingType;
-  description?: string;
-  is_public: boolean;
-  is_deleted: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
 
 export interface SystemInfoData {
   version: string;
@@ -374,9 +191,17 @@ export interface SystemInfoData {
 }
 
 // ============================================================
-// 📨 API Response Types
+// 📨 API RESPONSE TYPES
 // ============================================================
 
+export interface SystemConfigResponse {
+  status: boolean;
+  message: string;
+  data: {
+    grouped_settings: GroupedSettingsData;
+    system_info: SystemInfoData;
+  } | null;
+}
 
 export interface SystemInfoResponse {
   status: boolean;
@@ -432,7 +257,23 @@ export interface BulkOperationResponse {
 }
 
 // ============================================================
-// 📨 Request Payloads
+// 🔧 SYSTEM SETTING DATA
+// ============================================================
+
+export interface SystemSettingData {
+  id: number;
+  key: string;
+  value: any;
+  setting_type: SettingType;
+  description?: string;
+  is_public: boolean;
+  is_deleted: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// ============================================================
+// 📨 REQUEST PAYLOADS
 // ============================================================
 
 export interface CreateSettingData {
@@ -444,7 +285,7 @@ export interface CreateSettingData {
 }
 
 export interface UpdateSettingData {
-  id: number;
+  id?: number; // optional for bulk updates
   key?: string;
   value?: any;
   setting_type?: SettingType;
@@ -476,7 +317,7 @@ export interface UpdateCategorySettingsData {
 }
 
 // ============================================================
-// 🧠 API Class
+// 🧠 API CLASS
 // ============================================================
 
 class SystemConfigAPI {
@@ -1568,20 +1409,9 @@ class SystemConfigAPI {
     }
   }
 
-  async getPublicSystemSettings(): Promise<{
-    general: { [key: string]: { value: any; description: string } };
-    system: { site_name: string; currency: string; cache_timestamp: string };
-  }> {
-    // Public settings for frontend
-    if (!window.backendAPI?.systemConfig)
-      throw new Error("Electron API (systemConfig) not available");
-    const response = await window.backendAPI.systemConfig({
-      method: "getPublicSystemSettings",
-      params: {},
-    });
-    if (response.status) return response.data;
-    throw new Error(response.message || "Failed to fetch public settings");
-  }
+  // --------------------------------------------------------------------
+  // FRONTEND-SPECIFIC – uses the backend's "getSystemInfoForFrontend" handler
+  // --------------------------------------------------------------------
 
   async getSystemInfoForFrontend(): Promise<{
     system_info: {
@@ -1604,6 +1434,38 @@ class SystemConfigAPI {
     });
     if (response.status) return response.data;
     throw new Error(response.message || "Failed to fetch system info");
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // 🧪 TEST CONNECTIONS (uses backend handlers)
+  // ────────────────────────────────────────────────────────────────
+
+  async testSmtpConnection(settings: NotificationsSettings): Promise<{
+    status: boolean;
+    message: string;
+    data?: any;
+  }> {
+    if (!window.backendAPI?.systemConfig)
+      throw new Error("Electron API (systemConfig) not available");
+    const response = await window.backendAPI.systemConfig({
+      method: "testSmtpConnection",
+      params: { settings },
+    });
+    return response;
+  }
+
+  async testSmsConnection(settings: NotificationsSettings): Promise<{
+    status: boolean;
+    message: string;
+    data?: any;
+  }> {
+    if (!window.backendAPI?.systemConfig)
+      throw new Error("Electron API (systemConfig) not available");
+    const response = await window.backendAPI.systemConfig({
+      method: "testSmsConnection",
+      params: { settings },
+    });
+    return response;
   }
 }
 

@@ -44,6 +44,7 @@ class CustomerSubscriber {
       await stateService.onCreate(entity.id, entity, "system", queryRunner);
     } catch (err) {
       logger.error(`[CustomerSubscriber] Failed to handle afterInsert for customer #${entity.id}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
     
   }
@@ -100,7 +101,7 @@ class CustomerSubscriber {
           `[CustomerSubscriber] Failed to handle status change for customer #${entity.id}:`,
           err
         );
-        // Don't re-throw – we don't want to break the transaction
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -135,7 +136,7 @@ class CustomerSubscriber {
           `[CustomerSubscriber] Failed to handle points change for customer #${entity.id}:`,
           err
         );
-        // Don't re-throw – we don't want to break the transaction
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -157,6 +158,7 @@ class CustomerSubscriber {
           `[CustomerSubscriber] Failed to handle lifetime points change for customer #${entity.id}:`,
           err
         );
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -218,6 +220,7 @@ class CustomerSubscriber {
       // You might need to fetch it first or pass entityId only
     } catch (err) {
       logger.error(`[CustomerSubscriber] Failed to handle afterRemove for customer #${event.entityId}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
     
   }

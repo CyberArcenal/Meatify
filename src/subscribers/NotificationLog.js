@@ -44,6 +44,7 @@ class NotificationLogSubscriber {
       } catch (err) {
         logger.error(`[NotificationLogSubscriber] Failed to process log #${entity.id}:`, err);
         // Don't throw – we don't want to break the transaction
+        throw err;
       }
     }
   }
@@ -90,6 +91,7 @@ class NotificationLogSubscriber {
         await stateService.onLogUpdated(entity.id, entity, changes, "system", queryRunner);
       } catch (err) {
         logger.error(`[NotificationLogSubscriber] Failed to handle status change for log #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -116,6 +118,7 @@ class NotificationLogSubscriber {
         await stateService.onLogUpdated(entity.id, entity, changedFields, "system", queryRunner);
       } catch (err) {
         logger.error(`[NotificationLogSubscriber] Failed to handle onLogUpdated for log #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -146,6 +149,7 @@ class NotificationLogSubscriber {
       await stateService.onLogDeleted(entityId, databaseEntity, "system", queryRunner);
     } catch (err) {
       logger.error(`[NotificationLogSubscriber] Failed to handle onLogDeleted for log #${entityId}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 }

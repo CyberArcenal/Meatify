@@ -1,11 +1,12 @@
 // src/main/ipc/analytics/returnRefundReports/get_data.ipc.js
-const returnRefundService = require("../../../../services/ReturnRefund");
-const saleService = require("../../../../services/Sale");
-const customerService = require("../../../../services/Customer");
-const meatService = require("../../../../services/Meat");
+//@ts-check
+const { AppDataSource } = require("../../../db/data-source");
+const ReturnRefund = require("../../../../entities/ReturnRefund");
+const ReturnRefundItem = require("../../../../entities/ReturnRefundItem");
+const { paginateQueryBuilder } = require("../../../../utils/dbUtils/pagination");
 
 module.exports = async (params) => {
-  const { 
+  const {
     startDate,
     endDate,
     status,
@@ -19,7 +20,6 @@ module.exports = async (params) => {
   } = params;
 
   try {
-    // Determine date range
     let start, end;
     if (startDate && endDate) {
       start = new Date(startDate);
@@ -27,7 +27,6 @@ module.exports = async (params) => {
       end = new Date(endDate);
       end.setHours(23, 59, 59, 999);
     } else {
-      // Default to last 30 days
       start = new Date();
       start.setDate(start.getDate() - 30);
       start.setHours(0, 0, 0, 0);
@@ -35,60 +34,56 @@ module.exports = async (params) => {
       end.setHours(23, 59, 59, 999);
     }
 
-    // Get returns/refunds
-    const returnOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status,
-      refundMethod,
-      customerId,
-      saleId,
+    const returnRepo = AppDataSource.getRepository(ReturnRefund);
+
+    // ─── 1. Build main return query with pagination ──────────────
+    const qb = returnRepo
+      .createQueryBuilder("returnRefund")
+      .leftJoinAndSelect("returnRefund.sale", "sale")
+      .leftJoinAndSelect("returnRefund.customer", "customer")
+      .leftJoinAndSelect("returnRefund.items", "items")
+      .leftJoinAndSelect("items.meat", "meat")
+      .where("returnRefund.createdAt >= :start AND returnRefund.createdAt <= :end", { start, end });
+
+    if (status) qb.andWhere("returnRefund.status = :status", { status });
+    if (refundMethod) qb.andWhere("returnRefund.refundMethod = :refundMethod", { refundMethod });
+    if (customerId) qb.andWhere("returnRefund.customerId = :customerId", { customerId });
+    if (saleId) qb.andWhere("returnRefund.saleId = :saleId", { saleId });
+
+    const allowedSortColumns = ["id", "referenceNo", "totalAmount", "status", "createdAt", "updatedAt"];
+    const sortBySafe = allowedSortColumns.includes(sortBy) ? sortBy : "createdAt";
+    const sortOrderSafe = sortOrder === "ASC" ? "ASC" : "DESC";
+
+    const returnResult = await paginateQueryBuilder(qb, {
       page,
       limit,
-      sortBy,
-      sortOrder,
-    };
-    const returnResult = await returnRefundService.findAll(returnOptions);
-    const returns = returnResult.data;
+      sortBy: sortBySafe,
+      sortOrder: sortOrderSafe,
+    });
+    const returns = returnResult.data || [];
 
-    // Enrich returns with additional data
-    const enrichedReturns = await Promise.all(
-      returns.map(async (ret) => {
-        // Get associated sale
-        const sale = ret.sale || null;
-        
-        // Get customer details
-        const customer = ret.customer || null;
+    // ─── 2. Enrich returns with computed fields (already joined) ──
+    const enrichedReturns = returns.map(ret => {
+      const items = ret.items || [];
+      const totalWeight = items.reduce((sum, item) => sum + (item.weightKg || 0), 0);
+      return {
+        ...ret,
+        totalWeight,
+        customerName: ret.customer?.name || "Unknown",
+        saleReference: ret.sale?.referenceNo || ret.saleId,
+      };
+    });
 
-        // Get items with meat details
-        const items = ret.items || [];
-
-        // Calculate metrics
-        const totalWeight = items.reduce((sum, item) => sum + item.weightKg, 0);
-
-        return {
-          ...ret,
-          sale,
-          customer,
-          items,
-          totalWeight,
-          // For display
-          customerName: customer?.name || "Unknown",
-          saleReference: sale?.referenceNo || ret.saleId,
-        };
-      })
-    );
-
-    // Get summary statistics
+    // ─── 3. Summary (DB-aggregated) ──────────────────────────────
     const summary = await getReturnSummary(start, end, status, refundMethod, customerId, saleId);
 
-    // Get top items returned
+    // ─── 4. Top items returned (DB-aggregated) ──────────────────
     const topItems = await getTopReturnedItems(start, end);
 
-    // Get return reasons breakdown
+    // ─── 5. Reason breakdown (DB-aggregated) ────────────────────
     const reasonBreakdown = await getReasonBreakdown(start, end);
 
-    // Get daily trend
+    // ─── 6. Daily trend (DB-aggregated) ─────────────────────────
     const dailyTrend = await getDailyReturnTrend(start, end);
 
     return {
@@ -117,179 +112,171 @@ module.exports = async (params) => {
   }
 };
 
+// ─── AGGREGATE HELPERS ─────────────────────────────────────
+
 /**
- * Get return summary statistics
+ * Get return summary using DB aggregates
  */
 async function getReturnSummary(start, end, status, refundMethod, customerId, saleId) {
-  try {
-    const options = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status,
-      refundMethod,
-      customerId,
-      saleId,
-      limit: 10000,
-    };
-    const result = await returnRefundService.findAll(options);
-    const returns = result.data;
+  const returnRepo = AppDataSource.getRepository(ReturnRefund);
 
-    const totalReturns = returns.length;
-    const totalAmount = returns.reduce((sum, r) => sum + r.totalAmount, 0);
-    const processedCount = returns.filter(r => r.status === "processed").length;
-    const pendingCount = returns.filter(r => r.status === "pending").length;
-    const cancelledCount = returns.filter(r => r.status === "cancelled").length;
-    const processedAmount = returns.filter(r => r.status === "processed").reduce((sum, r) => sum + r.totalAmount, 0);
+  // Build base query with filters
+  const baseQb = returnRepo
+    .createQueryBuilder("returnRefund")
+    .where("returnRefund.createdAt >= :start AND returnRefund.createdAt <= :end", { start, end });
 
-    // Average refund amount
-    const avgAmount = totalReturns > 0 ? totalAmount / totalReturns : 0;
+  if (status) baseQb.andWhere("returnRefund.status = :status", { status });
+  if (refundMethod) baseQb.andWhere("returnRefund.refundMethod = :refundMethod", { refundMethod });
+  if (customerId) baseQb.andWhere("returnRefund.customerId = :customerId", { customerId });
+  if (saleId) baseQb.andWhere("returnRefund.saleId = :saleId", { saleId });
 
-    // Refund method breakdown
-    const methodBreakdown = {};
-    returns.forEach(r => {
-      const method = r.refundMethod || "unknown";
-      methodBreakdown[method] = (methodBreakdown[method] || 0) + 1;
-    });
+  // 1. Totals and counts
+  const totals = await baseQb
+    .clone()
+    .select([
+      "COUNT(returnRefund.id) AS totalReturns",
+      "COALESCE(SUM(returnRefund.totalAmount), 0) AS totalAmount",
+      "COALESCE(AVG(returnRefund.totalAmount), 0) AS avgAmount",
+      "COUNT(DISTINCT returnRefund.customerId) AS uniqueCustomers",
+    ])
+    .getRawOne();
 
-    // Get unique customers
-    const uniqueCustomers = new Set(returns.map(r => r.customerId).filter(id => id !== null));
+  // 2. Status breakdown
+  const statusBreakdown = await baseQb
+    .clone()
+    .select("returnRefund.status", "status")
+    .addSelect("COUNT(returnRefund.id)", "count")
+    .groupBy("returnRefund.status")
+    .getRawMany();
 
-    return {
-      totalReturns,
-      totalAmount,
-      processedCount,
-      pendingCount,
-      cancelledCount,
-      processedAmount,
-      avgAmount,
-      methodBreakdown,
-      uniqueCustomers: uniqueCustomers.size,
-    };
-  } catch (error) {
-    console.error("Error calculating return summary:", error);
-    return {
-      totalReturns: 0,
-      totalAmount: 0,
-      processedCount: 0,
-      pendingCount: 0,
-      cancelledCount: 0,
-      processedAmount: 0,
-      avgAmount: 0,
-      methodBreakdown: {},
-      uniqueCustomers: 0,
-    };
-  }
+  const statusMap = { processed: 0, pending: 0, cancelled: 0 };
+  statusBreakdown.forEach(row => {
+    if (row.status in statusMap) statusMap[row.status] = parseInt(row.count, 10) || 0;
+  });
+
+  // 3. Processed amount (only processed returns)
+  const processedAmount = await baseQb
+    .clone()
+    .select("COALESCE(SUM(returnRefund.totalAmount), 0) AS processedAmount")
+    .andWhere("returnRefund.status = 'processed'")
+    .getRawOne();
+
+  // 4. Refund method breakdown
+  const methodBreakdown = await baseQb
+    .clone()
+    .select("returnRefund.refundMethod", "method")
+    .addSelect("COUNT(returnRefund.id)", "count")
+    .where("returnRefund.refundMethod IS NOT NULL")
+    .groupBy("returnRefund.refundMethod")
+    .getRawMany();
+
+  const methodMap = {};
+  methodBreakdown.forEach(row => {
+    methodMap[row.method || "unknown"] = parseInt(row.count, 10) || 0;
+  });
+
+  return {
+    totalReturns: parseInt(totals.totalReturns, 10) || 0,
+    totalAmount: parseFloat(totals.totalAmount) || 0,
+    processedCount: statusMap.processed,
+    pendingCount: statusMap.pending,
+    cancelledCount: statusMap.cancelled,
+    processedAmount: parseFloat(processedAmount.processedAmount) || 0,
+    avgAmount: parseFloat(totals.avgAmount) || 0,
+    methodBreakdown: methodMap,
+    uniqueCustomers: parseInt(totals.uniqueCustomers, 10) || 0,
+  };
 }
 
 /**
- * Get top items returned (by weight or amount)
+ * Get top returned items using DB aggregation (group by meat)
  */
 async function getTopReturnedItems(start, end) {
-  try {
-    const options = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status: "processed",
-      limit: 10000,
-    };
-    const result = await returnRefundService.findAll(options);
-    const returns = result.data;
+  const itemRepo = AppDataSource.getRepository(ReturnRefundItem);
 
-    // Collect all items
-    const itemsMap = {};
-    returns.forEach(ret => {
-      if (ret.items) {
-        ret.items.forEach(item => {
-          const meatId = item.meatId;
-          if (!itemsMap[meatId]) {
-            itemsMap[meatId] = {
-              meatId,
-              meatName: item.meat?.name || "Unknown",
-              totalWeight: 0,
-              totalAmount: 0,
-              count: 0,
-            };
-          }
-          itemsMap[meatId].totalWeight += item.weightKg || 0;
-          itemsMap[meatId].totalAmount += item.subtotal || 0;
-          itemsMap[meatId].count += 1;
-        });
-      }
-    });
+  const top = await itemRepo
+    .createQueryBuilder("item")
+    .innerJoin("item.returnRefund", "returnRefund")
+    .innerJoin("item.meat", "meat")
+    .select("item.meatId", "meatId")
+    .addSelect("meat.name", "meatName")
+    .addSelect("COALESCE(SUM(item.weightKg), 0)", "totalWeight")
+    .addSelect("COALESCE(SUM(item.subtotal), 0)", "totalAmount")
+    .addSelect("COUNT(item.id)", "count")
+    .where("returnRefund.status = 'processed'")
+    .andWhere("returnRefund.createdAt >= :start AND returnRefund.createdAt <= :end", { start, end })
+    .groupBy("item.meatId")
+    .orderBy("totalAmount", "DESC")
+    .limit(10)
+    .getRawMany();
 
-    return Object.values(itemsMap)
-      .sort((a, b) => b.totalAmount - a.totalAmount)
-      .slice(0, 10);
-  } catch (error) {
-    console.error("Error getting top returned items:", error);
-    return [];
-  }
+  return top.map(row => ({
+    meatId: row.meatId,
+    meatName: row.meatName || "Unknown",
+    totalWeight: parseFloat(row.totalWeight) || 0,
+    totalAmount: parseFloat(row.totalAmount) || 0,
+    count: parseInt(row.count, 10) || 0,
+  }));
 }
 
 /**
- * Get return reasons breakdown
+ * Get return reasons breakdown using DB grouping
  */
 async function getReasonBreakdown(start, end) {
-  try {
-    const options = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      limit: 10000,
-    };
-    const result = await returnRefundService.findAll(options);
-    const returns = result.data;
+  const returnRepo = AppDataSource.getRepository(ReturnRefund);
 
-    const reasons = {};
-    returns.forEach(ret => {
-      const reason = ret.reason || "No reason provided";
-      reasons[reason] = (reasons[reason] || 0) + 1;
-    });
+  const reasons = await returnRepo
+    .createQueryBuilder("returnRefund")
+    .select("returnRefund.reason", "reason")
+    .addSelect("COUNT(returnRefund.id)", "count")
+    .where("returnRefund.createdAt >= :start AND returnRefund.createdAt <= :end", { start, end })
+    .andWhere("returnRefund.reason IS NOT NULL")
+    .groupBy("returnRefund.reason")
+    .orderBy("count", "DESC")
+    .getRawMany();
 
-    return Object.entries(reasons).map(([reason, count]) => ({
-      reason,
-      count,
-    })).sort((a, b) => b.count - a.count);
-  } catch (error) {
-    console.error("Error getting reason breakdown:", error);
-    return [];
-  }
+  return reasons.map(row => ({
+    reason: row.reason || "No reason provided",
+    count: parseInt(row.count, 10) || 0,
+  }));
 }
 
 /**
- * Get daily return trend
+ * Get daily return trend using DB GROUP BY DATE
  */
 async function getDailyReturnTrend(start, end) {
-  try {
-    const options = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      limit: 10000,
+  const returnRepo = AppDataSource.getRepository(ReturnRefund);
+
+  const trend = await returnRepo
+    .createQueryBuilder("returnRefund")
+    .select("DATE(returnRefund.createdAt)", "date")
+    .addSelect("COUNT(returnRefund.id)", "count")
+    .addSelect("COALESCE(SUM(returnRefund.totalAmount), 0)", "amount")
+    .where("returnRefund.createdAt >= :start AND returnRefund.createdAt <= :end", { start, end })
+    .groupBy("DATE(returnRefund.createdAt)")
+    .orderBy("date", "ASC")
+    .getRawMany();
+
+  // Fill missing dates
+  const result = [];
+  const current = new Date(start);
+  const trendMap = {};
+  trend.forEach(row => {
+    trendMap[row.date] = {
+      count: parseInt(row.count, 10) || 0,
+      amount: parseFloat(row.amount) || 0,
     };
-    const result = await returnRefundService.findAll(options);
-    const returns = result.data;
+  });
 
-    const dailyData = {};
-    const current = new Date(start);
-    while (current <= end) {
-      const key = current.toISOString().split("T")[0];
-      dailyData[key] = { count: 0, amount: 0 };
-      current.setDate(current.getDate() + 1);
-    }
-
-    returns.forEach(ret => {
-      const key = new Date(ret.createdAt).toISOString().split("T")[0];
-      if (dailyData[key]) {
-        dailyData[key].count += 1;
-        dailyData[key].amount += ret.totalAmount;
-      }
+  while (current <= end) {
+    const key = current.toISOString().split("T")[0];
+    result.push({
+      date: key,
+      count: trendMap[key]?.count || 0,
+      amount: trendMap[key]?.amount || 0,
     });
-
-    return Object.entries(dailyData).map(([date, data]) => ({
-      date,
-      ...data,
-    }));
-  } catch (error) {
-    console.error("Error getting daily trend:", error);
-    return [];
+    current.setDate(current.getDate() + 1);
   }
+
+  return result;
 }

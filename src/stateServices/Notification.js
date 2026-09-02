@@ -3,14 +3,17 @@
 const { logger } = require("../utils/logger");
 const auditLogger = require("../utils/auditLogger");
 const Notification = require("../entities/Notification");
-const { BrowserWindow } = require("electron");
+const {
+  BrowserWindow,
+  Notification: ElectronNotification,
+} = require("electron");
 
 /**
  * NotificationStateService handles side effects for notification state changes.
  * It does NOT perform CRUD updates – those belong to NotificationService.
  * All methods here are event handlers (onCreate, onMarkAsRead, etc.)
  * and are called by the subscriber after a change is detected.
- * 
+ *
  * ✅ Every method sends IPC events to the UI for real-time updates (toast popups, etc.)
  */
 class NotificationStateService {
@@ -57,6 +60,39 @@ class NotificationStateService {
     }
   }
 
+  /**
+   * Show a native OS notification (system toast)
+   * @param {string} title
+   * @param {string} body
+   * @param {Object} [options]
+   * @param {string} [options.icon] - Path to icon file
+   * @param {boolean} [options.silent] - Whether to play a sound
+   */
+  _sendNativeNotification(title, body, options = {}) {
+    try {
+      if (!ElectronNotification || !ElectronNotification.isSupported()) {
+        logger.debug(
+          "[NotificationState] Native notifications not supported in this environment.",
+        );
+        return;
+      }
+
+      const notif = new ElectronNotification({
+        title: title,
+        body: body,
+        silent: options.silent ?? false,
+        icon: options.icon ?? null,
+      });
+      notif.show();
+    } catch (err) {
+      // Non‑critical – log debug only
+      logger.debug(
+        "[NotificationState] Failed to show native notification:",
+        err.message,
+      );
+    }
+  }
+
   // ============================================================
   // 🔄 STATE TRANSITION SIDE EFFECTS (on...)
   // ============================================================
@@ -69,8 +105,15 @@ class NotificationStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onCreate(notificationId, notification, user = "system", queryRunner = null) {
-    logger.info(`[NotificationState] ✅ Notification #${notificationId} created by ${user}`);
+  async onCreate(
+    notificationId,
+    notification,
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[NotificationState] ✅ Notification #${notificationId} created by ${user}`,
+    );
 
     // Broadcast to UI for toast popup
     this._sendToRenderers("notification:created", {
@@ -84,8 +127,20 @@ class NotificationStateService {
       createdAt: notification.createdAt,
     });
 
+    // Show native OS notification (system toast)
+    this._sendNativeNotification(
+      notification.title,
+      notification.message,
+      { silent: notification.type === "info" }, // you can adjust based on type
+    );
+
     // Audit log
-    await auditLogger.logCreate("Notification", notificationId, notification, user);
+    await auditLogger.logCreate(
+      "Notification",
+      notificationId,
+      notification,
+      user,
+    );
   }
 
   /**
@@ -96,7 +151,12 @@ class NotificationStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onMarkAsRead(notificationId, updatedNotification, user = "system", queryRunner = null) {
+  async onMarkAsRead(
+    notificationId,
+    updatedNotification,
+    user = "system",
+    queryRunner = null,
+  ) {
     // Broadcast to UI for read status update
     this._sendToRenderers("notification:read", {
       id: updatedNotification.id,
@@ -112,10 +172,12 @@ class NotificationStateService {
       notificationId,
       { isRead: false },
       { isRead: true },
-      user
+      user,
     );
 
-    logger.info(`[NotificationState] ✅ Notification #${notificationId} marked as read (side effects applied)`);
+    logger.info(
+      `[NotificationState] ✅ Notification #${notificationId} marked as read (side effects applied)`,
+    );
   }
 
   /**
@@ -126,7 +188,12 @@ class NotificationStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onMarkAsUnread(notificationId, updatedNotification, user = "system", queryRunner = null) {
+  async onMarkAsUnread(
+    notificationId,
+    updatedNotification,
+    user = "system",
+    queryRunner = null,
+  ) {
     // Broadcast to UI for unread status update
     this._sendToRenderers("notification:unread", {
       id: updatedNotification.id,
@@ -142,10 +209,12 @@ class NotificationStateService {
       notificationId,
       { isRead: true },
       { isRead: false },
-      user
+      user,
     );
 
-    logger.info(`[NotificationState] ✅ Notification #${notificationId} marked as unread (side effects applied)`);
+    logger.info(
+      `[NotificationState] ✅ Notification #${notificationId} marked as unread (side effects applied)`,
+    );
   }
 
   /**
@@ -157,7 +226,13 @@ class NotificationStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onUpdate(notificationId, updatedNotification, changes, user = "system", queryRunner = null) {
+  async onUpdate(
+    notificationId,
+    updatedNotification,
+    changes,
+    user = "system",
+    queryRunner = null,
+  ) {
     // Broadcast to UI
     this._sendToRenderers("notification:updated", {
       id: updatedNotification.id,
@@ -173,10 +248,12 @@ class NotificationStateService {
       notificationId,
       changes,
       updatedNotification,
-      user
+      user,
     );
 
-    logger.info(`[NotificationState] ✅ Notification #${notificationId} updated (side effects applied)`);
+    logger.info(
+      `[NotificationState] ✅ Notification #${notificationId} updated (side effects applied)`,
+    );
   }
 
   /**
@@ -187,7 +264,12 @@ class NotificationStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onDelete(notificationId, notification, user = "system", queryRunner = null) {
+  async onDelete(
+    notificationId,
+    notification,
+    user = "system",
+    queryRunner = null,
+  ) {
     // Broadcast to UI
     this._sendToRenderers("notification:deleted", {
       id: notificationId,
@@ -197,9 +279,16 @@ class NotificationStateService {
     });
 
     // Audit log
-    await auditLogger.logCreate("Notification", notificationId, notification, user);
+    await auditLogger.logCreate(
+      "Notification",
+      notificationId,
+      notification,
+      user,
+    );
 
-    logger.info(`[NotificationState] ✅ Notification #${notificationId} soft-deleted (side effects applied)`);
+    logger.info(
+      `[NotificationState] ✅ Notification #${notificationId} soft-deleted (side effects applied)`,
+    );
   }
 
   /**
@@ -209,7 +298,12 @@ class NotificationStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onRestore(notificationId, restoredNotification, user = "system", queryRunner = null) {
+  async onRestore(
+    notificationId,
+    restoredNotification,
+    user = "system",
+    queryRunner = null,
+  ) {
     // Broadcast to UI
     this._sendToRenderers("notification:restored", {
       id: restoredNotification.id,
@@ -224,10 +318,12 @@ class NotificationStateService {
       notificationId,
       { deletedAt: restoredNotification.deletedAt },
       { deletedAt: null },
-      user
+      user,
     );
 
-    logger.info(`[NotificationState] ✅ Notification #${notificationId} restored (side effects applied)`);
+    logger.info(
+      `[NotificationState] ✅ Notification #${notificationId} restored (side effects applied)`,
+    );
   }
 
   /**
@@ -237,7 +333,12 @@ class NotificationStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onMarkAllAsRead(userId, updatedNotifications, user = "system", queryRunner = null) {
+  async onMarkAllAsRead(
+    userId,
+    updatedNotifications,
+    user = "system",
+    queryRunner = null,
+  ) {
     const count = updatedNotifications.length;
     if (count > 0) {
       // Broadcast to UI
@@ -245,7 +346,7 @@ class NotificationStateService {
         userId,
         count,
         updatedAt: new Date().toISOString(),
-        notificationIds: updatedNotifications.map(n => n.id),
+        notificationIds: updatedNotifications.map((n) => n.id),
       });
 
       // Audit log
@@ -254,10 +355,12 @@ class NotificationStateService {
         null,
         { userId, previousStatus: "unread" },
         { userId, newStatus: "read all", count },
-        user
+        user,
       );
 
-      logger.info(`[NotificationState] ✅ Marked ${count} notifications as read for user #${userId} (side effects applied)`);
+      logger.info(
+        `[NotificationState] ✅ Marked ${count} notifications as read for user #${userId} (side effects applied)`,
+      );
     }
   }
 
@@ -268,7 +371,12 @@ class NotificationStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onMarkAllAsUnread(userId, updatedNotifications, user = "system", queryRunner = null) {
+  async onMarkAllAsUnread(
+    userId,
+    updatedNotifications,
+    user = "system",
+    queryRunner = null,
+  ) {
     const count = updatedNotifications.length;
     if (count > 0) {
       // Broadcast to UI
@@ -276,7 +384,7 @@ class NotificationStateService {
         userId,
         count,
         updatedAt: new Date().toISOString(),
-        notificationIds: updatedNotifications.map(n => n.id),
+        notificationIds: updatedNotifications.map((n) => n.id),
       });
 
       // Audit log
@@ -285,10 +393,12 @@ class NotificationStateService {
         null,
         { userId, previousStatus: "read" },
         { userId, newStatus: "unread all", count },
-        user
+        user,
       );
 
-      logger.info(`[NotificationState] ✅ Marked ${count} notifications as unread for user #${userId} (side effects applied)`);
+      logger.info(
+        `[NotificationState] ✅ Marked ${count} notifications as unread for user #${userId} (side effects applied)`,
+      );
     }
   }
 
@@ -299,7 +409,12 @@ class NotificationStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onDeleteAllRead(userId, deletedIds, user = "system", queryRunner = null) {
+  async onDeleteAllRead(
+    userId,
+    deletedIds,
+    user = "system",
+    queryRunner = null,
+  ) {
     const count = deletedIds.length;
     if (count > 0) {
       // Broadcast to UI
@@ -316,10 +431,12 @@ class NotificationStateService {
         null,
         { userId, action: "delete all read" },
         { userId, deletedCount: count, ids: deletedIds },
-        user
+        user,
       );
 
-      logger.info(`[NotificationState] ✅ Deleted ${count} read notifications for user #${userId} (side effects applied)`);
+      logger.info(
+        `[NotificationState] ✅ Deleted ${count} read notifications for user #${userId} (side effects applied)`,
+      );
     }
   }
 }

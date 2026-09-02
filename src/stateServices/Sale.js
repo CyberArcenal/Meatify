@@ -286,7 +286,7 @@ class SaleStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onRefunded1(saleId, reason = "", user = "system", queryRunner = null) {
+  async onRefunded(saleId, reason = "", user = "system", queryRunner = null) {
     const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
 
     const saleRepo = this._getRepo(queryRunner, Sale);

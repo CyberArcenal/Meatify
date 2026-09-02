@@ -1,18 +1,13 @@
 // src/main/ipc/analytics/salesReport/get_summary.ipc.js
-const saleService = require("../../../../services/Sale");
-const saleItemService = require("../../../../services/SaleItem");
-const customerService = require("../../../../services/Customer");
-const meatService = require("../../../../services/Meat");
+//@ts-check
+const { AppDataSource } = require("../../../db/data-source");
+const Sale = require("../../../../entities/Sale");
+const SaleItem = require("../../../../entities/SaleItem");
 
 module.exports = async (params) => {
-  const { 
-    period = "month", // week, month, quarter, year
-    startDate,
-    endDate,
-  } = params || {};
+  const { period = "month", startDate, endDate } = params || {};
 
   try {
-    // Determine date range
     let start, end;
     if (startDate && endDate) {
       start = new Date(startDate);
@@ -52,113 +47,109 @@ module.exports = async (params) => {
       }
     }
 
-    // Get sales
-    const salesOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status: "paid",
-      limit: 10000,
-    };
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
+    const saleRepo = AppDataSource.getRepository(Sale);
+    const itemRepo = AppDataSource.getRepository(SaleItem);
 
-    // Get sale items for product analysis
-    const saleIds = sales.map(s => s.id);
-    let saleItems = [];
-    if (saleIds.length > 0) {
-      const itemsOptions = {
-        saleId: saleIds,
-        limit: 10000,
-      };
-      const itemsResult = await saleItemService.findAll(itemsOptions);
-      saleItems = itemsResult.data;
-    }
+    // ─── 1. Sales summary ──────────────────────────────────────
+    const salesSummary = await saleRepo
+      .createQueryBuilder("sale")
+      .select([
+        "COUNT(sale.id) AS totalTransactions",
+        "COALESCE(SUM(sale.totalAmount), 0) AS totalRevenue",
+        "COALESCE(SUM(sale.totalDiscount), 0) AS totalDiscounts",
+        "COALESCE(AVG(sale.totalAmount), 0) AS averageTicket",
+      ])
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .getRawOne();
 
-    // Calculate key metrics
-    const totalRevenue = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-    const totalTransactions = sales.length;
-    const averageTicket = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
-    const totalDiscounts = sales.reduce((sum, s) => sum + (s.totalDiscount || 0), 0);
-    const totalWeight = saleItems.reduce((sum, i) => sum + i.weightKg, 0);
+    // ─── 2. Total weight from sale items ──────────────────────
+    const weightResult = await itemRepo
+      .createQueryBuilder("item")
+      .innerJoin("item.sale", "sale")
+      .select("COALESCE(SUM(item.weightKg), 0) AS totalWeight")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .getRawOne();
 
-    // Payment method breakdown
+    // ─── 3. Payment method breakdown ──────────────────────────
+    const paymentResults = await saleRepo
+      .createQueryBuilder("sale")
+      .select("sale.paymentMethod", "method")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0) AS total")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .groupBy("sale.paymentMethod")
+      .getRawMany();
+
     const paymentMethods = {};
-    sales.forEach(s => {
-      const method = s.paymentMethod || "unknown";
-      paymentMethods[method] = (paymentMethods[method] || 0) + s.totalAmount;
+    paymentResults.forEach(row => {
+      paymentMethods[row.method || "unknown"] = parseFloat(row.total) || 0;
     });
 
-    // Top products
-    const productMap = {};
-    saleItems.forEach(item => {
-      const key = item.meatId;
-      if (!productMap[key]) {
-        productMap[key] = {
-          meatId: item.meatId,
-          meatName: item.meat?.name || "Unknown",
-          totalRevenue: 0,
-          totalWeight: 0,
-          count: 0,
-        };
-      }
-      productMap[key].totalRevenue += item.lineTotal || 0;
-      productMap[key].totalWeight += item.weightKg;
-      productMap[key].count += 1;
-    });
-    const topProducts = Object.values(productMap)
-      .sort((a, b) => b.totalRevenue - a.totalRevenue)
-      .slice(0, 10);
+    // ─── 4. Top products ──────────────────────────────────────
+    const topProducts = await itemRepo
+      .createQueryBuilder("item")
+      .innerJoin("item.sale", "sale")
+      .innerJoin("item.meat", "meat")
+      .select("item.meatId", "meatId")
+      .addSelect("meat.name", "meatName")
+      .addSelect("COALESCE(SUM(item.lineTotal), 0)", "totalRevenue")
+      .addSelect("COALESCE(SUM(item.weightKg), 0)", "totalWeight")
+      .addSelect("COUNT(item.id)", "count")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .groupBy("item.meatId")
+      .orderBy("totalRevenue", "DESC")
+      .limit(10)
+      .getRawMany();
 
-    // Top customers
-    const customerMap = {};
-    sales.forEach(sale => {
-      const id = sale.customerId || "walk-in";
-      if (!customerMap[id]) {
-        customerMap[id] = {
-          customerId: id,
-          customerName: sale.customer?.name || "Walk-in",
-          totalSpent: 0,
-          purchaseCount: 0,
-        };
-      }
-      customerMap[id].totalSpent += sale.totalAmount;
-      customerMap[id].purchaseCount += 1;
-    });
-    const topCustomers = Object.values(customerMap)
-      .sort((a, b) => b.totalSpent - a.totalSpent)
-      .slice(0, 10);
+    // ─── 5. Top customers ─────────────────────────────────────
+    const topCustomers = await saleRepo
+      .createQueryBuilder("sale")
+      .leftJoin("sale.customer", "customer")
+      .select("sale.customerId", "customerId")
+      .addSelect("COALESCE(customer.name, 'Walk-in')", "customerName")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "totalSpent")
+      .addSelect("COUNT(sale.id)", "purchaseCount")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .groupBy("sale.customerId")
+      .orderBy("totalSpent", "DESC")
+      .limit(10)
+      .getRawMany();
 
-    // Get daily trend
-    const dailyTrend = [];
-    const current = new Date(start);
-    const dailyData = {};
-    while (current <= end) {
-      const key = current.toISOString().split("T")[0];
-      dailyData[key] = { date: key, revenue: 0, count: 0 };
-      current.setDate(current.getDate() + 1);
-    }
-    sales.forEach(sale => {
-      const key = new Date(sale.timestamp).toISOString().split("T")[0];
-      if (dailyData[key]) {
-        dailyData[key].revenue += sale.totalAmount;
-        dailyData[key].count += 1;
-      }
-    });
-    Object.values(dailyData).forEach(d => dailyTrend.push(d));
+    // ─── 6. Daily trend ──────────────────────────────────────
+    const dailyTrend = await saleRepo
+      .createQueryBuilder("sale")
+      .select("DATE(sale.timestamp)", "date")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "revenue")
+      .addSelect("COUNT(sale.id)", "count")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .groupBy("DATE(sale.timestamp)")
+      .orderBy("date", "ASC")
+      .getRawMany();
 
-    // Get weekly trend
-    const weeklyTrend = [];
-    const weekData = {};
-    sales.forEach(sale => {
-      const d = new Date(sale.timestamp);
-      const weekKey = `${d.getFullYear()}-W${String(Math.ceil((d.getDate() + 6 - d.getDay()) / 7)).padStart(2, '0')}`;
-      if (!weekData[weekKey]) {
-        weekData[weekKey] = { week: weekKey, revenue: 0, count: 0 };
-      }
-      weekData[weekKey].revenue += sale.totalAmount;
-      weekData[weekKey].count += 1;
-    });
-    Object.values(weekData).forEach(w => weeklyTrend.push(w));
+    // ─── 7. Weekly trend ──────────────────────────────────────
+    const weeklyTrend = await saleRepo
+      .createQueryBuilder("sale")
+      .select("strftime('%Y-W%W', sale.timestamp)", "week")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "revenue")
+      .addSelect("COUNT(sale.id)", "count")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .groupBy("strftime('%Y-W%W', sale.timestamp)")
+      .orderBy("week", "ASC")
+      .getRawMany();
+
+    const totalTransactions = parseInt(salesSummary.totalTransactions, 10) || 0;
+    const totalRevenue = parseFloat(salesSummary.totalRevenue) || 0;
+    const totalDiscounts = parseFloat(salesSummary.totalDiscounts) || 0;
+    const averageTicket = parseFloat(salesSummary.averageTicket) || 0;
+    const totalWeight = parseFloat(weightResult.totalWeight) || 0;
+    const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+    const averageDailyRevenue = totalRevenue / days;
 
     return {
       status: true,
@@ -175,14 +166,33 @@ module.exports = async (params) => {
           averageTicket,
           totalDiscounts,
           totalWeight,
-          averageDailyRevenue: dailyTrend.length > 0 ? totalRevenue / dailyTrend.length : 0,
+          averageDailyRevenue,
         },
         paymentMethods,
-        topProducts,
-        topCustomers,
+        topProducts: topProducts.map(row => ({
+          meatId: row.meatId,
+          meatName: row.meatName || "Unknown",
+          totalRevenue: parseFloat(row.totalRevenue) || 0,
+          totalWeight: parseFloat(row.totalWeight) || 0,
+          count: parseInt(row.count, 10) || 0,
+        })),
+        topCustomers: topCustomers.map(row => ({
+          customerId: row.customerId || "walk-in",
+          customerName: row.customerName || "Walk-in",
+          totalSpent: parseFloat(row.totalSpent) || 0,
+          purchaseCount: parseInt(row.purchaseCount, 10) || 0,
+        })),
         trends: {
-          daily: dailyTrend,
-          weekly: weeklyTrend,
+          daily: dailyTrend.map(row => ({
+            date: row.date,
+            revenue: parseFloat(row.revenue) || 0,
+            count: parseInt(row.count, 10) || 0,
+          })),
+          weekly: weeklyTrend.map(row => ({
+            week: row.week,
+            revenue: parseFloat(row.revenue) || 0,
+            count: parseInt(row.count, 10) || 0,
+          })),
         },
       },
     };

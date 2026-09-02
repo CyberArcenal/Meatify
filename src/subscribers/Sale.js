@@ -1,4 +1,5 @@
 // src/subscribers/SaleSubscriber.js
+//@ts-check
 const Sale = require("../entities/Sale");
 const { logger } = require("../utils/logger");
 const { SaleStateService } = require("../stateServices/Sale");
@@ -11,6 +12,9 @@ class SaleSubscriber {
     this.stateService = null;
   }
 
+  /**
+   * @param {import("typeorm").DataSource} dataSource
+   */
   async getStateService(dataSource) {
     if (!this.stateService) {
       this.stateService = new SaleStateService(dataSource);
@@ -53,7 +57,11 @@ class SaleSubscriber {
         const service = await this.getStateService(manager.connection);
         await service.onPaid(entity.id, "system", queryRunner);
       } catch (err) {
-        logger.error("[SaleSubscriber] Failed to process paid sale on insert:", err);
+        logger.error(
+          "[SaleSubscriber] Failed to process paid sale on insert:",
+          err,
+        );
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -104,7 +112,11 @@ class SaleSubscriber {
           break;
       }
     } catch (err) {
-      logger.error(`[SaleSubscriber] Failed to handle status change to ${entity.status}:`, err);
+      logger.error(
+        `[SaleSubscriber] Failed to handle status change to ${entity.status}:`,
+        err,
+      );
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 

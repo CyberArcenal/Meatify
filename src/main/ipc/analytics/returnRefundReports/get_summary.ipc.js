@@ -1,15 +1,13 @@
 // src/main/ipc/analytics/returnRefundReports/get_summary.ipc.js
-const returnRefundService = require("../../../../services/ReturnRefund");
-const saleService = require("../../../../services/Sale");
+//@ts-check
+const { AppDataSource } = require("../../../db/data-source");
+const ReturnRefund = require("../../../../entities/ReturnRefund");
+const Sale = require("../../../../entities/Sale");
 
 module.exports = async (params) => {
-  const { 
-    period = "month",
-    status = "processed",
-  } = params || {};
+  const { period = "month", status = "processed" } = params || {};
 
   try {
-    // Determine date range based on period
     const now = new Date();
     let start, end;
 
@@ -56,88 +54,107 @@ module.exports = async (params) => {
         end.setHours(23, 59, 59, 999);
     }
 
-    // Get returns/refunds
-    const returnOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status,
-      limit: 10000,
-    };
-    const returnResult = await returnRefundService.findAll(returnOptions);
-    const returns = returnResult.data;
+    const returnRepo = AppDataSource.getRepository(ReturnRefund);
+    const saleRepo = AppDataSource.getRepository(Sale);
 
-    // Get total sales for the period to calculate return rate
-    const salesOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status: "paid",
-      limit: 10000,
-    };
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
+    // ─── 1. Returns summary ──────────────────────────────────────
+    const returnQb = returnRepo
+      .createQueryBuilder("returnRefund")
+      .where("returnRefund.createdAt >= :start AND returnRefund.createdAt <= :end", { start, end });
 
-    const totalSalesCount = sales.length;
-    const totalSalesAmount = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-    const totalReturnsCount = returns.length;
-    const totalReturnsAmount = returns.reduce((sum, r) => sum + r.totalAmount, 0);
+    if (status) returnQb.andWhere("returnRefund.status = :status", { status });
 
-    // Return rate (by count and amount)
-    const returnRateByCount = totalSalesCount > 0 ? (totalReturnsCount / totalSalesCount) * 100 : 0;
-    const returnRateByAmount = totalSalesAmount > 0 ? (totalReturnsAmount / totalSalesAmount) * 100 : 0;
+    const returnTotals = await returnQb
+      .clone()
+      .select([
+        "COUNT(returnRefund.id) AS totalReturns",
+        "COALESCE(SUM(returnRefund.totalAmount), 0) AS totalAmount",
+        "COALESCE(AVG(returnRefund.totalAmount), 0) AS avgRefund",
+      ])
+      .getRawOne();
 
     // Status breakdown
-    const statusBreakdown = {};
-    returns.forEach(r => {
-      statusBreakdown[r.status] = (statusBreakdown[r.status] || 0) + 1;
+    const statusBreakdown = await returnQb
+      .clone()
+      .select("returnRefund.status", "status")
+      .addSelect("COUNT(returnRefund.id)", "count")
+      .groupBy("returnRefund.status")
+      .getRawMany();
+
+    const statusMap = {};
+    statusBreakdown.forEach(row => {
+      statusMap[row.status] = parseInt(row.count, 10) || 0;
     });
 
     // Refund method breakdown
-    const methodBreakdown = {};
-    returns.forEach(r => {
-      const method = r.refundMethod || "unknown";
-      methodBreakdown[method] = (methodBreakdown[method] || 0) + 1;
-    });
+    const methodBreakdown = await returnQb
+      .clone()
+      .select("returnRefund.refundMethod", "method")
+      .addSelect("COUNT(returnRefund.id)", "count")
+      .where("returnRefund.refundMethod IS NOT NULL")
+      .groupBy("returnRefund.refundMethod")
+      .getRawMany();
 
-    // Average refund per return
-    const avgRefund = totalReturnsCount > 0 ? totalReturnsAmount / totalReturnsCount : 0;
+    const methodMap = {};
+    methodBreakdown.forEach(row => {
+      methodMap[row.method || "unknown"] = parseInt(row.count, 10) || 0;
+    });
 
     // Top customers by return count
-    const customerMap = {};
-    returns.forEach(r => {
-      const custId = r.customerId;
-      if (!customerMap[custId]) {
-        customerMap[custId] = {
-          customerId: custId,
-          customerName: r.customer?.name || "Unknown",
-          count: 0,
-          totalAmount: 0,
-        };
-      }
-      customerMap[custId].count += 1;
-      customerMap[custId].totalAmount += r.totalAmount;
-    });
-    const topCustomers = Object.values(customerMap)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 5);
+    const topCustomers = await returnQb
+      .clone()
+      .leftJoin("returnRefund.customer", "customer")
+      .select("returnRefund.customerId", "customerId")
+      .addSelect("customer.name", "customerName")
+      .addSelect("COUNT(returnRefund.id)", "count")
+      .addSelect("COALESCE(SUM(returnRefund.totalAmount), 0)", "totalAmount")
+      .where("returnRefund.customerId IS NOT NULL")
+      .groupBy("returnRefund.customerId")
+      .orderBy("count", "DESC")
+      .limit(5)
+      .getRawMany();
 
-    // Get previous period for comparison
-    const prevStart = new Date(start);
-    const prevEnd = new Date(start);
+    // ─── 2. Sales summary for return rate ────────────────────────
+    const salesTotals = await saleRepo
+      .createQueryBuilder("sale")
+      .select([
+        "COUNT(sale.id) AS totalSalesCount",
+        "COALESCE(SUM(sale.totalAmount), 0) AS totalSalesAmount",
+      ])
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .getRawOne();
+
+    const totalReturns = parseInt(returnTotals.totalReturns, 10) || 0;
+    const totalReturnsAmount = parseFloat(returnTotals.totalAmount) || 0;
+    const totalSalesCount = parseInt(salesTotals.totalSalesCount, 10) || 0;
+    const totalSalesAmount = parseFloat(salesTotals.totalSalesAmount) || 0;
+
+    // Return rate
+    const returnRateByCount = totalSalesCount > 0 ? (totalReturns / totalSalesCount) * 100 : 0;
+    const returnRateByAmount = totalSalesAmount > 0 ? (totalReturnsAmount / totalSalesAmount) * 100 : 0;
+
+    // ─── 3. Previous period comparison ──────────────────────────
     const diff = end - start;
+    const prevStart = new Date(start);
     prevStart.setTime(prevStart.getTime() - diff);
+    const prevEnd = new Date(end);
     prevEnd.setTime(prevEnd.getTime() - diff);
 
-    const prevReturnOptions = {
-      startDate: prevStart.toISOString(),
-      endDate: prevEnd.toISOString(),
-      status,
-      limit: 10000,
-    };
-    const prevReturnResult = await returnRefundService.findAll(prevReturnOptions);
-    const prevReturnsCount = prevReturnResult.data.length;
-    const prevReturnsAmount = prevReturnResult.data.reduce((sum, r) => sum + r.totalAmount, 0);
+    const prevReturns = await returnRepo
+      .createQueryBuilder("returnRefund")
+      .select([
+        "COUNT(returnRefund.id) AS count",
+        "COALESCE(SUM(returnRefund.totalAmount), 0) AS amount",
+      ])
+      .where("returnRefund.createdAt >= :prevStart AND returnRefund.createdAt <= :prevEnd", { prevStart, prevEnd })
+      .andWhere("returnRefund.status = :status", { status })
+      .getRawOne();
 
-    const returnCountChange = prevReturnsCount > 0 ? ((totalReturnsCount - prevReturnsCount) / prevReturnsCount) * 100 : 0;
+    const prevReturnsCount = parseInt(prevReturns.count, 10) || 0;
+    const prevReturnsAmount = parseFloat(prevReturns.amount) || 0;
+
+    const returnCountChange = prevReturnsCount > 0 ? ((totalReturns - prevReturnsCount) / prevReturnsCount) * 100 : 0;
     const returnAmountChange = prevReturnsAmount > 0 ? ((totalReturnsAmount - prevReturnsAmount) / prevReturnsAmount) * 100 : 0;
 
     return {
@@ -150,25 +167,27 @@ module.exports = async (params) => {
           end: end.toISOString(),
         },
         summary: {
-          totalReturns: totalReturnsCount,
+          totalReturns,
           totalReturnsAmount,
           totalSalesCount,
           totalSalesAmount,
           returnRateByCount,
           returnRateByAmount,
-          avgRefund,
-          statusBreakdown,
-          methodBreakdown,
-          topCustomers,
+          avgRefund: parseFloat(returnTotals.avgRefund) || 0,
+          statusBreakdown: statusMap,
+          methodBreakdown: methodMap,
+          topCustomers: topCustomers.map(row => ({
+            customerId: row.customerId,
+            customerName: row.customerName || "Unknown",
+            count: parseInt(row.count, 10) || 0,
+            totalAmount: parseFloat(row.totalAmount) || 0,
+          })),
         },
         comparison: {
           previousReturnsCount: prevReturnsCount,
           previousReturnsAmount: prevReturnsAmount,
           returnCountChange,
           returnAmountChange,
-        },
-        trends: {
-          // We can add trend data here if needed
         },
       },
     };

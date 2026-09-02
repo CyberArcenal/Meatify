@@ -38,6 +38,7 @@ class CategorySubscriber {
       await stateService.onCreate(entity.id, entity, "system", queryRunner);
     } catch (err) {
       logger.error(`[CategorySubscriber] Failed to handle onCreate for #${entity.id}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 
@@ -81,6 +82,7 @@ class CategorySubscriber {
         await stateService.onActivated(entity.id, entity, "system", queryRunner);
       } catch (err) {
         logger.error(`[CategorySubscriber] Failed to handle onActivated for #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
       return;
     }
@@ -94,6 +96,7 @@ class CategorySubscriber {
         await stateService.onDeactivated(entity.id, entity, {}, "system", queryRunner);
       } catch (err) {
         logger.error(`[CategorySubscriber] Failed to handle onDeactivated for #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
       return;
     }
@@ -106,6 +109,7 @@ class CategorySubscriber {
         await stateService.onRestore(entity.id, entity, "system", queryRunner);
       } catch (err) {
         logger.error(`[CategorySubscriber] Failed to handle onRestore for #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
       return;
     }
@@ -127,6 +131,7 @@ class CategorySubscriber {
         await stateService.onUpdate(entity.id, entity, changedFields, "system", queryRunner);
       } catch (err) {
         logger.error(`[CategorySubscriber] Failed to handle onUpdate for #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -158,6 +163,7 @@ class CategorySubscriber {
       await stateService.onDelete(entityId, databaseEntity, "system", queryRunner);
     } catch (err) {
       logger.error(`[CategorySubscriber] Failed to handle onDelete for #${entityId}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 }

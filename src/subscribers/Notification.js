@@ -41,6 +41,7 @@ class NotificationSubscriber {
       await stateService.onCreate(entity.id, entity, "system", queryRunner);
     } catch (err) {
       logger.error(`[NotificationSubscriber] Failed to handle onCreate for #${entity.id}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 
@@ -81,6 +82,7 @@ class NotificationSubscriber {
         await stateService.onMarkAsRead(entity.id, entity, "system", queryRunner);
       } catch (err) {
         logger.error(`[NotificationSubscriber] Failed to handle markAsRead for #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
       return;
     }
@@ -92,6 +94,7 @@ class NotificationSubscriber {
         await stateService.onMarkAsUnread(entity.id, entity, "system", queryRunner);
       } catch (err) {
         logger.error(`[NotificationSubscriber] Failed to handle markAsUnread for #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
       return;
     }
@@ -112,6 +115,7 @@ class NotificationSubscriber {
         await stateService.onUpdate(entity.id, entity, changedFields, "system", queryRunner);
       } catch (err) {
         logger.error(`[NotificationSubscriber] Failed to handle onUpdate for #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -143,6 +147,7 @@ class NotificationSubscriber {
       await stateService.onDelete(entityId, databaseEntity, "system", queryRunner);
     } catch (err) {
       logger.error(`[NotificationSubscriber] Failed to handle onDelete for #${entityId}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 }

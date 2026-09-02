@@ -42,6 +42,7 @@ class SupplierSubscriber {
       await stateService.onCreated(entity.id, entity, "system", queryRunner);
     } catch (err) {
       logger.error(`[SupplierSubscriber] Failed to handle onCreated for supplier #${entity.id}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 
@@ -103,6 +104,7 @@ class SupplierSubscriber {
         }
       } catch (err) {
         logger.error(`[SupplierSubscriber] Failed to handle status change for supplier #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -129,6 +131,7 @@ class SupplierSubscriber {
         await stateService.onUpdated(entity.id, entity, changedFields, "system", queryRunner);
       } catch (err) {
         logger.error(`[SupplierSubscriber] Failed to handle onUpdated for supplier #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -142,6 +145,7 @@ class SupplierSubscriber {
         await stateService.onRestored(entity.id, entity, "system", queryRunner);
       } catch (err) {
         logger.error(`[SupplierSubscriber] Failed to handle onRestored for supplier #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -172,6 +176,7 @@ class SupplierSubscriber {
       await stateService.onDeleted(entityId, databaseEntity, "system", queryRunner);
     } catch (err) {
       logger.error(`[SupplierSubscriber] Failed to handle onDeleted for supplier #${entityId}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 }

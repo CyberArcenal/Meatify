@@ -7,7 +7,7 @@
 [![TypeORM](https://img.shields.io/badge/TypeORM-0.3.x-fe7a37?style=flat-square)](https://typeorm.io/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.x-3178c6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![SQLite](https://img.shields.io/badge/SQLite-5.x-003b57?style=flat-square&logo=sqlite&logoColor=white)](https://www.sqlite.org/)
-[![License](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
+[![License](https://img.shields.io/badge/License-GNU-blue?style=flat-square)](LICENSE)
 
 ---
 
@@ -249,7 +249,7 @@ npm run test -- --grep "SaleService"
 
 ## 📄 License
 
-This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU GENERAL PUBLIC LICENSE – see the [LICENSE](LICENSE) file for details.
 
 ---
 

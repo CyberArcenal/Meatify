@@ -1,12 +1,13 @@
 // src/main/ipc/analytics/salesReport/get_data.ipc.js
-const saleService = require("../../../../services/Sale");
-const saleItemService = require("../../../../services/SaleItem");
-const customerService = require("../../../../services/Customer");
-const meatService = require("../../../../services/Meat");
-const returnRefundService = require("../../../../services/ReturnRefund");
+//@ts-check
+const { AppDataSource } = require("../../../db/data-source");
+const Sale = require("../../../../entities/Sale");
+const SaleItem = require("../../../../entities/SaleItem");
+const ReturnRefund = require("../../../../entities/ReturnRefund");
+const { paginateQueryBuilder } = require("../../../../utils/dbUtils/pagination");
 
 module.exports = async (params) => {
-  const { 
+  const {
     startDate,
     endDate,
     groupBy = "day",
@@ -26,7 +27,6 @@ module.exports = async (params) => {
   } = params;
 
   try {
-    // Determine date range
     let start, end;
     if (startDate && endDate) {
       start = new Date(startDate);
@@ -41,171 +41,145 @@ module.exports = async (params) => {
       end.setHours(23, 59, 59, 999);
     }
 
-    // Build sales options - only include customerId if valid
-    const salesOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status,
-      paymentMethod,
-      minAmount,
-      maxAmount,
+    const saleRepo = AppDataSource.getRepository(Sale);
+
+    // ─── 1. Build main sale query with pagination ──────────────
+    const qb = saleRepo
+      .createQueryBuilder("sale")
+      .leftJoinAndSelect("sale.customer", "customer")
+      .leftJoinAndSelect("sale.saleItems", "saleItems")
+      .leftJoinAndSelect("saleItems.meat", "meat")
+      .where("sale.status = :status", { status })
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end });
+
+    if (paymentMethod) qb.andWhere("sale.paymentMethod = :paymentMethod", { paymentMethod });
+    if (customerId) qb.andWhere("sale.customerId = :customerId", { customerId });
+    if (minAmount) qb.andWhere("sale.totalAmount >= :minAmount", { minAmount });
+    if (maxAmount) qb.andWhere("sale.totalAmount <= :maxAmount", { maxAmount });
+
+    // If meatId filter is provided, we need to filter by sale items
+    if (meatId) {
+      qb.andWhere("EXISTS (SELECT 1 FROM sale_items si WHERE si.saleId = sale.id AND si.meatId = :meatId)", { meatId });
+    }
+
+    const allowedSortColumns = ["id", "timestamp", "status", "paymentMethod", "totalAmount", "createdAt", "updatedAt"];
+    const sortBySafe = allowedSortColumns.includes(sortBy) ? sortBy : "timestamp";
+    const sortOrderSafe = sortOrder === "ASC" ? "ASC" : "DESC";
+
+    const salesResult = await paginateQueryBuilder(qb, {
       page,
       limit,
-      sortBy,
-      sortOrder,
-    };
-    
-    // ✅ Only add customerId if it's a valid number
-    if (customerId !== undefined && customerId !== null && !isNaN(customerId)) {
-      salesOptions.customerId = customerId;
-    }
+      sortBy: sortBySafe,
+      sortOrder: sortOrderSafe,
+    });
+    const sales = salesResult.data || [];
 
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
-
-    // Get sale items for product breakdown
-    let saleItems = [];
-    if (includeProductBreakdown && sales.length > 0) {
-      const saleIds = sales.map(s => s.id);
-      const itemsOptions = {
-        saleId: saleIds,
-        limit: 10000,
-      };
-      const itemsResult = await saleItemService.findAll(itemsOptions);
-      saleItems = itemsResult.data;
-    }
-
-    // Get refund data
-    let refunds = [];
-    if (includeRefundData) {
-      const refundOptions = {
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
-        status: "processed",
-        limit: 10000,
-      };
-      const refundResult = await returnRefundService.findAll(refundOptions);
-      refunds = refundResult.data;
-    }
-
-    // Get customer data for breakdown
-    let customers = [];
-    if (includeCustomerBreakdown && sales.length > 0) {
-      // ✅ Filter out null, undefined, and invalid IDs
-      const customerIds = [...new Set(
-        sales
-          .map(s => s.customerId)
-          .filter(id => id !== null && id !== undefined && !isNaN(id) && id > 0)
-      )];
-      
-      if (customerIds.length > 0) {
-        // ✅ Use try-catch for each customer fetch to prevent one failure from breaking all
-        const customerPromises = customerIds.map(async (id) => {
-          try {
-            return await customerService.findById(id);
-          } catch (err) {
-            console.warn(`[SalesReport] Failed to fetch customer ${id}:`, err.message);
-            return null;
-          }
-        });
-        customers = (await Promise.all(customerPromises)).filter(c => c !== null);
-      }
-    }
-
-    // Build enriched sales data
+    // ─── 2. Enrich sales with computed fields ──────────────────
     const enrichedSales = sales.map(sale => {
-      const items = saleItems.filter(item => item.saleId === sale.id);
+      const items = sale.saleItems || [];
       const totalWeight = items.reduce((sum, item) => sum + (item.weightKg || 0), 0);
       const totalDiscount = items.reduce((sum, item) => sum + (item.discount || 0), 0);
       const totalTax = items.reduce((sum, item) => sum + (item.tax || 0), 0);
-      
-      // Find customer name from fetched customers
-      let customerName = "Walk-in";
-      if (sale.customerId && sale.customerId > 0) {
-        const found = customers.find(c => c.id === sale.customerId);
-        if (found) customerName = found.name;
-      }
-      
+
       return {
         ...sale,
-        saleItems: items,
         totalWeight,
         totalDiscount,
         totalTax,
-        customerName,
         itemCount: items.length,
+        customerName: sale.customer?.name || "Walk-in",
       };
     });
 
-    // Generate product breakdown
+    // ─── 3. Product breakdown (DB aggregated) ──────────────────
     let productBreakdown = [];
     if (includeProductBreakdown) {
-      const productMap = {};
-      saleItems.forEach(item => {
-        const key = item.meatId;
-        if (!productMap[key]) {
-          productMap[key] = {
-            meatId: item.meatId,
-            meatName: item.meat?.name || "Unknown",
-            sku: item.meat?.sku || "",
-            totalWeight: 0,
-            totalRevenue: 0,
-            quantity: 0,
-            averagePrice: 0,
-          };
-        }
-        productMap[key].totalWeight += item.weightKg || 0;
-        productMap[key].totalRevenue += item.lineTotal || 0;
-        productMap[key].quantity += 1;
-      });
-      
-      productBreakdown = Object.values(productMap).map(p => ({
-        ...p,
-        averagePrice: p.quantity > 0 ? p.totalRevenue / p.quantity : 0,
-      })).sort((a, b) => b.totalRevenue - a.totalRevenue);
+      const itemRepo = AppDataSource.getRepository(SaleItem);
+      const productQb = itemRepo
+        .createQueryBuilder("item")
+        .innerJoin("item.sale", "sale")
+        .innerJoin("item.meat", "meat")
+        .select("item.meatId", "meatId")
+        .addSelect("meat.name", "meatName")
+        .addSelect("meat.sku", "sku")
+        .addSelect("COALESCE(SUM(item.weightKg), 0)", "totalWeight")
+        .addSelect("COALESCE(SUM(item.lineTotal), 0)", "totalRevenue")
+        .addSelect("COUNT(item.id)", "quantity")
+        .addSelect("COALESCE(AVG(item.unitPrice), 0)", "averagePrice")
+        .where("sale.status = :status", { status })
+        .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end });
+
+      if (meatId) productQb.andWhere("item.meatId = :meatId", { meatId });
+
+      const productResults = await productQb
+        .groupBy("item.meatId")
+        .orderBy("totalRevenue", "DESC")
+        .getRawMany();
+
+      productBreakdown = productResults.map(row => ({
+        meatId: row.meatId,
+        meatName: row.meatName || "Unknown",
+        sku: row.sku || "",
+        totalWeight: parseFloat(row.totalWeight) || 0,
+        totalRevenue: parseFloat(row.totalRevenue) || 0,
+        quantity: parseInt(row.quantity, 10) || 0,
+        averagePrice: parseFloat(row.averagePrice) || 0,
+      }));
     }
 
-    // Generate customer breakdown
+    // ─── 4. Customer breakdown (DB aggregated) ──────────────────
     let customerBreakdown = [];
     if (includeCustomerBreakdown) {
-      const customerMap = {};
-      sales.forEach(sale => {
-        const id = sale.customerId || "walk-in";
-        if (!customerMap[id]) {
-          customerMap[id] = {
-            customerId: id,
-            customerName: "Walk-in",
-            totalSpent: 0,
-            purchaseCount: 0,
-            averageTicket: 0,
-          };
-        }
-        customerMap[id].totalSpent += sale.totalAmount;
-        customerMap[id].purchaseCount += 1;
-      });
-      
-      // Update customer names from fetched customers
-      customers.forEach(c => {
-        const key = c.id;
-        if (customerMap[key]) {
-          customerMap[key].customerName = c.name;
-        }
-      });
-      
-      customerBreakdown = Object.values(customerMap).map(c => ({
-        ...c,
-        averageTicket: c.purchaseCount > 0 ? c.totalSpent / c.purchaseCount : 0,
-      })).sort((a, b) => b.totalSpent - a.totalSpent);
+      const customerQb = saleRepo
+        .createQueryBuilder("sale")
+        .leftJoin("sale.customer", "customer")
+        .select("sale.customerId", "customerId")
+        .addSelect("COALESCE(customer.name, 'Walk-in')", "customerName")
+        .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "totalSpent")
+        .addSelect("COUNT(sale.id)", "purchaseCount")
+        .where("sale.status = :status", { status })
+        .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end });
+
+      if (paymentMethod) customerQb.andWhere("sale.paymentMethod = :paymentMethod");
+      if (minAmount) customerQb.andWhere("sale.totalAmount >= :minAmount");
+      if (maxAmount) customerQb.andWhere("sale.totalAmount <= :maxAmount");
+
+      const customerResults = await customerQb
+        .groupBy("sale.customerId")
+        .orderBy("totalSpent", "DESC")
+        .getRawMany();
+
+      customerBreakdown = customerResults.map(row => ({
+        customerId: row.customerId || "walk-in",
+        customerName: row.customerName || "Walk-in",
+        totalSpent: parseFloat(row.totalSpent) || 0,
+        purchaseCount: parseInt(row.purchaseCount, 10) || 0,
+        averageTicket: parseInt(row.purchaseCount, 10) > 0 ? parseFloat(row.totalSpent) / parseInt(row.purchaseCount, 10) : 0,
+      }));
     }
 
-    // Get daily trend
-    const dailyTrend = getDailySalesTrend(sales, start, end);
+    // ─── 5. Refund data (DB aggregated) ─────────────────────────
+    let refunds = [];
+    if (includeRefundData) {
+      const refundRepo = AppDataSource.getRepository(ReturnRefund);
+      const refundQb = refundRepo
+        .createQueryBuilder("refund")
+        .leftJoinAndSelect("refund.sale", "sale")
+        .leftJoinAndSelect("refund.customer", "customer")
+        .leftJoinAndSelect("refund.items", "items")
+        .leftJoinAndSelect("items.meat", "meat")
+        .where("refund.status = 'processed'")
+        .andWhere("refund.createdAt >= :start AND refund.createdAt <= :end", { start, end });
 
-    // Get aggregated summary
-    const summary = await getSalesReportSummary(start, end, sales, refunds);
+      // Limit refunds to 1000 for performance
+      refunds = await refundQb.limit(1000).getMany();
+    }
 
-    // Get top selling products
-    const topProducts = productBreakdown.slice(0, 10);
+    // ─── 6. Daily trend (DB aggregated) ─────────────────────────
+    const dailyTrend = await getDailySalesTrend(start, end, status, paymentMethod, customerId);
+
+    // ─── 7. Summary (DB aggregated) ─────────────────────────────
+    const summary = await getSalesReportSummary(start, end, status, paymentMethod, customerId);
 
     return {
       status: true,
@@ -216,7 +190,7 @@ module.exports = async (params) => {
         summary,
         productBreakdown,
         customerBreakdown,
-        topProducts,
+        topProducts: productBreakdown.slice(0, 10),
         dailyTrend,
         refunds: includeRefundData ? refunds : [],
         dateRange: {
@@ -225,7 +199,7 @@ module.exports = async (params) => {
         },
         filters: {
           paymentMethod,
-          customerId: customerId && !isNaN(customerId) ? customerId : undefined,
+          customerId,
           meatId,
           status,
           minAmount,
@@ -243,49 +217,118 @@ module.exports = async (params) => {
   }
 };
 
+// ─── AGGREGATE HELPERS ─────────────────────────────────────
+
 /**
- * Get daily sales trend
+ * Get daily sales trend using DB GROUP BY DATE
  */
-function getDailySalesTrend(sales, start, end) {
-  const dailyData = {};
+async function getDailySalesTrend(start, end, status, paymentMethod, customerId) {
+  const saleRepo = AppDataSource.getRepository(Sale);
+
+  const qb = saleRepo
+    .createQueryBuilder("sale")
+    .select("DATE(sale.timestamp)", "date")
+    .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "revenue")
+    .addSelect("COUNT(sale.id)", "count")
+    .where("sale.status = :status", { status })
+    .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end });
+
+  if (paymentMethod) qb.andWhere("sale.paymentMethod = :paymentMethod");
+  if (customerId) qb.andWhere("sale.customerId = :customerId");
+
+  const trend = await qb
+    .groupBy("DATE(sale.timestamp)")
+    .orderBy("date", "ASC")
+    .getRawMany();
+
+  // Fill missing dates
+  const result = [];
   const current = new Date(start);
+  const trendMap = {};
+  trend.forEach(row => {
+    trendMap[row.date] = {
+      revenue: parseFloat(row.revenue) || 0,
+      count: parseInt(row.count, 10) || 0,
+    };
+  });
+
   while (current <= end) {
     const key = current.toISOString().split("T")[0];
-    dailyData[key] = { date: key, revenue: 0, count: 0, weight: 0 };
+    result.push({
+      date: key,
+      revenue: trendMap[key]?.revenue || 0,
+      count: trendMap[key]?.count || 0,
+      weight: 0, // weight needs join with sale items, can be added separately
+    });
     current.setDate(current.getDate() + 1);
   }
 
-  sales.forEach(sale => {
-    const key = new Date(sale.timestamp).toISOString().split("T")[0];
-    if (dailyData[key]) {
-      dailyData[key].revenue += sale.totalAmount;
-      dailyData[key].count += 1;
-    }
-  });
-
-  return Object.values(dailyData);
+  return result;
 }
 
 /**
- * Get sales report summary
+ * Get sales report summary using DB aggregates
  */
-async function getSalesReportSummary(start, end, sales, refunds) {
-  const totalRevenue = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-  const totalTransactions = sales.length;
-  const averageTicket = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
-  const totalDiscounts = sales.reduce((sum, s) => sum + (s.totalDiscount || 0), 0);
-  const totalRefunds = refunds.reduce((sum, r) => sum + r.totalAmount, 0);
-  const netRevenue = totalRevenue - totalRefunds;
+async function getSalesReportSummary(start, end, status, paymentMethod, customerId) {
+  const saleRepo = AppDataSource.getRepository(Sale);
+  const refundRepo = AppDataSource.getRepository(ReturnRefund);
+
+  // Sales summary
+  const qb = saleRepo
+    .createQueryBuilder("sale")
+    .select([
+      "COUNT(sale.id) AS totalTransactions",
+      "COALESCE(SUM(sale.totalAmount), 0) AS totalRevenue",
+      "COALESCE(SUM(sale.totalDiscount), 0) AS totalDiscounts",
+      "COALESCE(AVG(sale.totalAmount), 0) AS averageTicket",
+    ])
+    .where("sale.status = :status", { status })
+    .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end });
+
+  if (paymentMethod) qb.andWhere("sale.paymentMethod = :paymentMethod");
+  if (customerId) qb.andWhere("sale.customerId = :customerId");
+
+  const salesSummary = await qb.getRawOne();
+
+  // Refunds summary
+  const refundQb = refundRepo
+    .createQueryBuilder("refund")
+    .select("COALESCE(SUM(refund.totalAmount), 0) AS totalRefunds")
+    .where("refund.status = 'processed'")
+    .andWhere("refund.createdAt >= :start AND refund.createdAt <= :end", { start, end });
+
+  const refundSummary = await refundQb.getRawOne();
+
+  // Payment method breakdown
+  const paymentQb = saleRepo
+    .createQueryBuilder("sale")
+    .select("sale.paymentMethod", "method")
+    .addSelect("COUNT(sale.id)", "count")
+    .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "total")
+    .where("sale.status = :status", { status })
+    .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end });
+
+  if (paymentMethod) paymentQb.andWhere("sale.paymentMethod = :paymentMethod");
+  if (customerId) paymentQb.andWhere("sale.customerId = :customerId");
+
+  const paymentResults = await paymentQb
+    .groupBy("sale.paymentMethod")
+    .getRawMany();
 
   const paymentMethods = {};
-  sales.forEach(s => {
-    const method = s.paymentMethod || "unknown";
-    if (!paymentMethods[method]) {
-      paymentMethods[method] = { count: 0, total: 0 };
-    }
-    paymentMethods[method].count += 1;
-    paymentMethods[method].total += s.totalAmount;
+  paymentResults.forEach(row => {
+    paymentMethods[row.method || "unknown"] = {
+      count: parseInt(row.count, 10) || 0,
+      total: parseFloat(row.total) || 0,
+    };
   });
+
+  const totalTransactions = parseInt(salesSummary.totalTransactions, 10) || 0;
+  const totalRevenue = parseFloat(salesSummary.totalRevenue) || 0;
+  const totalRefunds = parseFloat(refundSummary.totalRefunds) || 0;
+  const totalDiscounts = parseFloat(salesSummary.totalDiscounts) || 0;
+  const averageTicket = parseFloat(salesSummary.averageTicket) || 0;
+  const netRevenue = totalRevenue - totalRefunds;
 
   const days = Math.max(1, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
 

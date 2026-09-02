@@ -1,56 +1,82 @@
 // src/main/ipc/analytics/customerInsights/get_summary.ipc.js
-const customerService = require("../../../../services/Customer");
+const { AppDataSource } = require("../../../db/data-source");
+const Customer = require("../../../../entities/Customer");
+const Sale = require("../../../../entities/Sale");
+const LoyaltyTransaction = require("../../../../entities/LoyaltyTransaction");
 
 module.exports = async (params) => {
   const { startDate, endDate } = params || {};
 
   try {
-    // Get all active customers
-    const allCustomers = await customerService.findAll({
-      isActive: true,
-      limit: 10000,
+    const customerRepo = AppDataSource.getRepository(Customer);
+    const saleRepo = AppDataSource.getRepository(Sale);
+    const loyaltyRepo = AppDataSource.getRepository(LoyaltyTransaction);
+
+    // 1. Total active customers
+    const totalCustomers = await customerRepo.count({ where: { isActive: true } });
+
+    // 2. By status (using GROUP BY)
+    const byStatusRaw = await customerRepo
+      .createQueryBuilder("customer")
+      .select("customer.status", "status")
+      .addSelect("COUNT(customer.id)", "count")
+      .where("customer.isActive = true")
+      .groupBy("customer.status")
+      .getRawMany();
+
+    const byStatus = {
+      regular: 0,
+      vip: 0,
+      elite: 0,
+    };
+    byStatusRaw.forEach(row => {
+      byStatus[row.status] = parseInt(row.count, 10) || 0;
     });
 
-    const customers = allCustomers.data;
+    // 3. Loyalty points summary
+    const pointsAgg = await customerRepo
+      .createQueryBuilder("customer")
+      .select("SUM(customer.loyaltyPointsBalance)", "total")
+      .addSelect("AVG(customer.loyaltyPointsBalance)", "average")
+      .addSelect("MAX(customer.loyaltyPointsBalance)", "max")
+      .addSelect("MIN(customer.loyaltyPointsBalance)", "min")
+      .where("customer.isActive = true")
+      .getRawOne();
 
-    // Total customers
-    const totalCustomers = customers.length;
-
-    // By status
-    const byStatus = {
-      regular: customers.filter(c => c.status === "regular").length,
-      vip: customers.filter(c => c.status === "vip").length,
-      elite: customers.filter(c => c.status === "elite").length,
-    };
-
-    // Loyalty points summary
     const pointsSummary = {
-      total: customers.reduce((sum, c) => sum + c.loyaltyPointsBalance, 0),
-      average: totalCustomers > 0 ? customers.reduce((sum, c) => sum + c.loyaltyPointsBalance, 0) / totalCustomers : 0,
-      max: totalCustomers > 0 ? Math.max(...customers.map(c => c.loyaltyPointsBalance)) : 0,
-      min: totalCustomers > 0 ? Math.min(...customers.map(c => c.loyaltyPointsBalance)) : 0,
+      total: parseFloat(pointsAgg.total) || 0,
+      average: parseFloat(pointsAgg.average) || 0,
+      max: parseFloat(pointsAgg.max) || 0,
+      min: parseFloat(pointsAgg.min) || 0,
     };
 
-    // Customers with points
-    const customersWithPoints = customers.filter(c => c.loyaltyPointsBalance > 0).length;
+    // 4. Customers with points > 0
+    const customersWithPoints = await customerRepo
+      .createQueryBuilder("customer")
+      .where("customer.isActive = true")
+      .andWhere("customer.loyaltyPointsBalance > 0")
+      .getCount();
+
     const customersWithoutPoints = totalCustomers - customersWithPoints;
 
-    // Top customers by points
-    const topCustomersByPoints = customers
-      .sort((a, b) => b.loyaltyPointsBalance - a.loyaltyPointsBalance)
-      .slice(0, 10)
-      .map(c => ({
-        id: c.id,
-        name: c.name,
-        email: c.email,
-        phone: c.phone,
-        points: c.loyaltyPointsBalance,
-        status: c.status,
-      }));
+    // 5. Top 10 customers by points
+    const topCustomersByPoints = await customerRepo
+      .createQueryBuilder("customer")
+      .select([
+        "customer.id",
+        "customer.name",
+        "customer.email",
+        "customer.phone",
+        "customer.loyaltyPointsBalance",
+        "customer.status",
+      ])
+      .where("customer.isActive = true")
+      .orderBy("customer.loyaltyPointsBalance", "DESC")
+      .limit(10)
+      .getMany();
 
-    // Active vs inactive
-    const activeCount = customers.filter(c => c.isActive).length;
-    const inactiveCount = customers.filter(c => !c.isActive).length;
+    // 6. Active vs inactive (from the count above)
+    const inactiveCount = await customerRepo.count({ where: { isActive: false } });
 
     return {
       status: true,
@@ -61,8 +87,15 @@ module.exports = async (params) => {
         pointsSummary,
         customersWithPoints,
         customersWithoutPoints,
-        topCustomersByPoints,
-        activeCount,
+        topCustomersByPoints: topCustomersByPoints.map(c => ({
+          id: c.id,
+          name: c.name,
+          email: c.email,
+          phone: c.phone,
+          points: c.loyaltyPointsBalance,
+          status: c.status,
+        })),
+        activeCount: totalCustomers,
         inactiveCount,
       },
     };

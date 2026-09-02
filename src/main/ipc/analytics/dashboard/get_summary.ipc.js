@@ -1,79 +1,73 @@
 // src/main/ipc/dashboard/get_summary.ipc.js
 //@ts-check
-const saleService = require("../../../../services/Sale");
-const customerService = require("../../../../services/Customer");
-const batchService = require("../../../../services/Batch");
-const meatService = require("../../../../services/Meat");
-const inventoryMovementService = require("../../../../services/InventoryMovement");
+const { AppDataSource } = require("../../../db/data-source");
+const Sale = require("../../../../entities/Sale");
+const Batch = require("../../../../entities/Batch");
+const Meat = require("../../../../entities/Meat");
+const Customer = require("../../../../entities/Customer");
+const InventoryMovement = require("../../../../entities/InventoryMovement");
 
 module.exports = async (params) => {
   try {
-    // Get today's date range
     const today = new Date();
     const start = new Date(today);
     start.setHours(0, 0, 0, 0);
     const end = new Date(today);
     end.setHours(23, 59, 59, 999);
 
-    // Get today's sales (paid only)
-    const salesOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status: "paid",
-      limit: 10000,
-    };
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
-    const salesToday = sales.length;
-    const revenueToday = sales.reduce((sum, s) => sum + s.totalAmount, 0);
+    const saleRepo = AppDataSource.getRepository(Sale);
+    const batchRepo = AppDataSource.getRepository(Batch);
+    const meatRepo = AppDataSource.getRepository(Meat);
+    const customerRepo = AppDataSource.getRepository(Customer);
+    const movementRepo = AppDataSource.getRepository(InventoryMovement);
 
-    // Get total active customers
-    const customerResult = await customerService.findAll({ isActive: true, limit: 1 });
-    const totalCustomers = customerResult.pagination?.total || 0;
+    // 1. Today's sales (paid)
+    const todaySales = await saleRepo
+      .createQueryBuilder("sale")
+      .select("COUNT(sale.id)", "count")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "revenue")
+      .where("sale.status = 'paid'")
+      .andWhere("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .getRawOne();
 
-    // Get low stock count (batches with remaining < 5kg)
-    const lowStockThreshold = 5;
-    const batchOptions = {
-      status: "active",
-      maxRemaining: lowStockThreshold,
-      includeInactive: false,
-      limit: 10000,
-    };
-    const batchResult = await batchService.findAll(batchOptions);
-    const lowStockCount = batchResult.data.length;
+    // 2. Total active customers
+    const totalCustomers = await customerRepo.count({ where: { isActive: true } });
 
-    // Get total active products (meats)
-    const meatOptions = { isActive: true, limit: 1 };
-    const meatResult = await meatService.findAll(meatOptions);
-    const totalProducts = meatResult.pagination?.total || 0;
+    // 3. Low stock count (batches with remaining <= threshold)
+    const lowStockThreshold = 5; // can be fetched from system settings later
+    const lowStockCount = await batchRepo
+      .createQueryBuilder("batch")
+      .where("batch.status = 'active'")
+      .andWhere("batch.remainingQuantity <= :threshold", { threshold: lowStockThreshold })
+      .getCount();
 
-    // Get inventory movements today
-    const movementOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      limit: 10000,
-    };
-    const movementResult = await inventoryMovementService.findAll(movementOptions);
-    const inventoryMovementsToday = movementResult.data.length;
+    // 4. Total active meat products
+    const totalProducts = await meatRepo.count({ where: { isActive: true } });
 
-    // Get expiring count (within 7 days)
+    // 5. Inventory movements today
+    const inventoryMovementsToday = await movementRepo
+      .createQueryBuilder("movement")
+      .where("movement.timestamp >= :start AND movement.timestamp <= :end", { start, end })
+      .getCount();
+
+    // 6. Expiring count (within 7 days)
     const sevenDaysFromNow = new Date();
     sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
-    const expiringOptions = {
-      status: "active",
-      expiryDateTo: sevenDaysFromNow.toISOString(),
-      includeInactive: false,
-      limit: 10000,
-    };
-    const expiringResult = await batchService.findAll(expiringOptions);
-    const expiringCount = expiringResult.data.length;
+    const expiringCount = await batchRepo
+      .createQueryBuilder("batch")
+      .where("batch.status = 'active'")
+      .andWhere("batch.expiryDate >= :today AND batch.expiryDate <= :expiryLimit", {
+        today,
+        expiryLimit: sevenDaysFromNow,
+      })
+      .getCount();
 
     return {
       status: true,
       message: "Dashboard summary retrieved successfully",
       data: {
-        salesToday,
-        revenueToday,
+        salesToday: parseInt(todaySales.count, 10) || 0,
+        revenueToday: parseFloat(todaySales.revenue) || 0,
         totalCustomers,
         lowStockCount,
         totalProducts,

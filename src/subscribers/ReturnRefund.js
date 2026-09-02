@@ -45,6 +45,7 @@ class ReturnRefundSubscriber {
       await stateService.onCreated(entity.id, entity, "system", queryRunner);
     } catch (err) {
       logger.error(`[ReturnRefundSubscriber] Failed to handle onCreated for return #${entity.id}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
 
     // ✅ If return is created with 'processed' status, trigger processed side effects
@@ -63,6 +64,7 @@ class ReturnRefundSubscriber {
         );
       } catch (err) {
         logger.error(`[ReturnRefundSubscriber] Failed to handle onProcessed for return #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -128,6 +130,7 @@ class ReturnRefundSubscriber {
         }
       } catch (err) {
         logger.error(`[ReturnRefundSubscriber] Failed to handle status change to ${entity.status} for return #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -154,6 +157,7 @@ class ReturnRefundSubscriber {
         await stateService.onUpdated(entity.id, entity, changedFields, "system", queryRunner);
       } catch (err) {
         logger.error(`[ReturnRefundSubscriber] Failed to handle onUpdated for return #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -167,6 +171,7 @@ class ReturnRefundSubscriber {
         await stateService.onRestored(entity.id, entity, "system", queryRunner);
       } catch (err) {
         logger.error(`[ReturnRefundSubscriber] Failed to handle onRestored for return #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -197,6 +202,7 @@ class ReturnRefundSubscriber {
       await stateService.onDeleted(entityId, databaseEntity, "system", queryRunner);
     } catch (err) {
       logger.error(`[ReturnRefundSubscriber] Failed to handle onDeleted for return #${entityId}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 }

@@ -1,81 +1,82 @@
 // src/main/ipc/dashboard/get_customer_stats.ipc.js
 //@ts-check
-const customerService = require("../../../../services/Customer");
-const saleService = require("../../../../services/Sale");
+const { AppDataSource } = require("../../../db/data-source");
+const Customer = require("../../../../entities/Customer");
+const Sale = require("../../../../entities/Sale");
 
 module.exports = async (params) => {
   try {
-    // Get total customers
-    const customerResult = await customerService.findAll({ isActive: true, limit: 1 });
-    const totalCustomers = customerResult.pagination?.total || 0;
+    const customerRepo = AppDataSource.getRepository(Customer);
+    const saleRepo = AppDataSource.getRepository(Sale);
 
-    // Get new customers today
     const today = new Date();
     const startOfDay = new Date(today);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(today);
     endOfDay.setHours(23, 59, 59, 999);
 
-    const newTodayOptions = {
-      startDate: startOfDay.toISOString(),
-      endDate: endOfDay.toISOString(),
-      limit: 1,
-    };
-    const newTodayResult = await customerService.findAll(newTodayOptions);
-    const newCustomersToday = newTodayResult.pagination?.total || 0;
+    // 1. Total active customers
+    const totalCustomers = await customerRepo.count({ where: { isActive: true } });
 
-    // Get new customers this week
+    // 2. New customers today
+    const newToday = await customerRepo
+      .createQueryBuilder("customer")
+      .where("customer.createdAt >= :start AND customer.createdAt <= :end", {
+        start: startOfDay,
+        end: endOfDay,
+      })
+      .getCount();
+
+    // 3. New customers this week
     const startOfWeek = new Date(today);
     startOfWeek.setDate(startOfWeek.getDate() - 7);
     startOfWeek.setHours(0, 0, 0, 0);
+    const newWeek = await customerRepo
+      .createQueryBuilder("customer")
+      .where("customer.createdAt >= :start", { start: startOfWeek })
+      .getCount();
 
-    const newWeekOptions = {
-      startDate: startOfWeek.toISOString(),
-      endDate: endOfDay.toISOString(),
-      limit: 1,
-    };
-    const newWeekResult = await customerService.findAll(newWeekOptions);
-    const newCustomersThisWeek = newWeekResult.pagination?.total || 0;
+    // 4. Top spenders (group by customer, sum totalAmount from paid sales)
+    const topSpenders = await saleRepo
+      .createQueryBuilder("sale")
+      .select("sale.customerId", "customerId")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "totalSpent")
+      .addSelect("customer.name", "name")
+      .innerJoin("sale.customer", "customer")
+      .where("sale.status = 'paid'")
+      .andWhere("customer.isActive = true")
+      .groupBy("sale.customerId")
+      .orderBy("totalSpent", "DESC")
+      .limit(5)
+      .getRawMany();
 
-    // Get top spenders (from sales)
-    const salesOptions = {
-      status: "paid",
-      limit: 10000,
-    };
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
+    // 5. Loyalty distribution
+    const distribution = await customerRepo
+      .createQueryBuilder("customer")
+      .select(
+        `CASE 
+          WHEN customer.loyaltyPointsBalance <= 100 THEN '0-100'
+          WHEN customer.loyaltyPointsBalance <= 500 THEN '101-500'
+          WHEN customer.loyaltyPointsBalance <= 1000 THEN '501-1000'
+          ELSE '1000+'
+        END`,
+        "range"
+      )
+      .addSelect("COUNT(customer.id)", "count")
+      .where("customer.isActive = true")
+      .groupBy("range")
+      .getRawMany();
 
-    // Group by customer
-    const customerSpend = {};
-    sales.forEach((sale) => {
-      const customerId = sale.customerId;
-      if (customerId) {
-        if (!customerSpend[customerId]) {
-          customerSpend[customerId] = { customerId, totalSpent: 0, name: sale.customer?.name || "Unknown" };
-        }
-        customerSpend[customerId].totalSpent += sale.totalAmount;
-      }
-    });
-
-    const topSpenders = Object.values(customerSpend)
-      .sort((a, b) => b.totalSpent - a.totalSpent)
-      .slice(0, 5);
-
-    // Loyalty distribution
+    // Format distribution
     const loyaltyDistribution = [
       { range: "0-100", count: 0 },
       { range: "101-500", count: 0 },
       { range: "501-1000", count: 0 },
       { range: "1000+", count: 0 },
     ];
-
-    const allCustomersResult = await customerService.findAll({ isActive: true, limit: 10000 });
-    allCustomersResult.data.forEach((customer) => {
-      const points = customer.loyaltyPointsBalance || 0;
-      if (points <= 100) loyaltyDistribution[0].count++;
-      else if (points <= 500) loyaltyDistribution[1].count++;
-      else if (points <= 1000) loyaltyDistribution[2].count++;
-      else loyaltyDistribution[3].count++;
+    distribution.forEach(row => {
+      const found = loyaltyDistribution.find(d => d.range === row.range);
+      if (found) found.count = parseInt(row.count, 10) || 0;
     });
 
     return {
@@ -83,9 +84,13 @@ module.exports = async (params) => {
       message: "Customer stats retrieved successfully",
       data: {
         totalCustomers,
-        newCustomersToday,
-        newCustomersThisWeek,
-        topSpenders,
+        newCustomersToday: newToday,
+        newCustomersThisWeek: newWeek,
+        topSpenders: topSpenders.map(row => ({
+          customerId: row.customerId,
+          name: row.name || "Unknown",
+          totalSpent: parseFloat(row.totalSpent) || 0,
+        })),
         loyaltyDistribution,
       },
     };

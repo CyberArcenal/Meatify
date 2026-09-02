@@ -32,7 +32,7 @@ module.exports = async (params) => {
           batchCode: batch.batchCode,
           name: meat?.name || "Unknown Meat",
           sku: meat?.sku || "N/A",
-          stockQty: batch.remainingQuantity,
+          stockQty: Number(batch.remainingQuantity).toFixed(3), // ✅ format to 3 decimals
           price: meat?.pricePerKg || batch.unitCost || 0,
           expiryDate: batch.expiryDate,
           daysUntilExpiry: batch.expiryDate

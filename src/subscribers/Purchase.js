@@ -43,6 +43,7 @@ class PurchaseSubscriber {
       await stateService.onCreated(entity.id, entity, "system", queryRunner);
     } catch (err) {
       logger.error(`[PurchaseSubscriber] Failed to handle onCreated for purchase #${entity.id}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
 
     // ✅ If purchase is created with 'approved' or 'completed' status, trigger status side effects
@@ -51,6 +52,7 @@ class PurchaseSubscriber {
         await stateService.onApproved(entity.id, entity, "system", queryRunner);
       } catch (err) {
         logger.error(`[PurchaseSubscriber] Failed to handle onApproved for purchase #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -60,6 +62,7 @@ class PurchaseSubscriber {
         await stateService.onCompleted(entity.id, entity, { batchCount }, "system", queryRunner);
       } catch (err) {
         logger.error(`[PurchaseSubscriber] Failed to handle onCompleted for purchase #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -114,6 +117,7 @@ class PurchaseSubscriber {
         }
       } catch (err) {
         logger.error(`[PurchaseSubscriber] Failed to handle status change to ${entity.status} for purchase #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -140,6 +144,7 @@ class PurchaseSubscriber {
         await stateService.onUpdated(entity.id, entity, changedFields, "system", queryRunner);
       } catch (err) {
         logger.error(`[PurchaseSubscriber] Failed to handle onUpdated for purchase #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
 
@@ -153,6 +158,7 @@ class PurchaseSubscriber {
         await stateService.onRestored(entity.id, entity, "system", queryRunner);
       } catch (err) {
         logger.error(`[PurchaseSubscriber] Failed to handle onRestored for purchase #${entity.id}:`, err);
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -183,6 +189,7 @@ class PurchaseSubscriber {
       await stateService.onDeleted(entityId, databaseEntity, "system", queryRunner);
     } catch (err) {
       logger.error(`[PurchaseSubscriber] Failed to handle onDeleted for purchase #${entityId}:`, err);
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 }

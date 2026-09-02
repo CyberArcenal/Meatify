@@ -1,93 +1,113 @@
 // src/main/ipc/analytics/dailySales/get_summary.ipc.js
-const saleService = require("../../../../services/Sale");
-const saleItemService = require("../../../../services/SaleItem");
+const { AppDataSource } = require("../../../db/data-source");
+const Sale = require("../../../../entities/Sale");
+const SaleItem = require("../../../../entities/SaleItem");
 
 module.exports = async (params) => {
   const { date } = params || {};
 
   try {
-    // Determine date range for today
     const today = date ? new Date(date) : new Date();
     const start = new Date(today);
     start.setHours(0, 0, 0, 0);
     const end = new Date(today);
     end.setHours(23, 59, 59, 999);
 
-    // Get today's sales
-    const salesOptions = {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      status: "paid",
-      limit: 10000,
-    };
+    // ─── 1. Today's aggregates ──────────────────────────────
+    const saleRepo = AppDataSource.getRepository(Sale);
+    const itemRepo = AppDataSource.getRepository(SaleItem);
 
-    const salesResult = await saleService.findAll(salesOptions);
-    const sales = salesResult.data;
+    const saleAgg = await saleRepo
+      .createQueryBuilder("sale")
+      .select("COUNT(sale.id)", "totalSales")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "totalRevenue")
+      .addSelect("COALESCE(SUM(sale.totalDiscount), 0)", "totalDiscount")
+      .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .andWhere("sale.status = 'paid'")
+      .getRawOne();
 
-    // Get sale items for today
-    const saleIds = sales.map(s => s.id);
-    let items = [];
-    if (saleIds.length > 0) {
-      const itemsResult = await saleItemService.findAll({
-        saleId: saleIds,
-        limit: 10000,
-      });
-      items = itemsResult.data;
-    }
+    const itemAgg = await itemRepo
+      .createQueryBuilder("item")
+      .leftJoin("item.sale", "sale")
+      .select("COALESCE(SUM(item.weightKg), 0)", "totalWeight")
+      .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .andWhere("sale.status = 'paid'")
+      .getRawOne();
 
-    // Calculate metrics
-    const totalSales = sales.length;
-    const totalRevenue = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-    const totalWeight = items.reduce((sum, item) => sum + item.weightKg, 0);
-    const totalDiscount = sales.reduce((sum, s) => sum + s.totalDiscount, 0);
+    const totalSales = parseInt(saleAgg.totalSales, 10) || 0;
+    const totalRevenue = parseFloat(saleAgg.totalRevenue) || 0;
+    const totalDiscount = parseFloat(saleAgg.totalDiscount) || 0;
+    const totalWeight = parseFloat(itemAgg.totalWeight) || 0;
     const averageTicket = totalSales > 0 ? totalRevenue / totalSales : 0;
 
-    // Payment method breakdown
-    const paymentMethods = {};
-    sales.forEach(s => {
-      const method = s.paymentMethod || "unknown";
-      paymentMethods[method] = (paymentMethods[method] || 0) + 1;
-    });
+    // ─── 2. Payment method breakdown ──────────────────────────
+    const paymentMethods = await saleRepo
+      .createQueryBuilder("sale")
+      .select("sale.paymentMethod", "method")
+      .addSelect("COUNT(sale.id)", "count")
+      .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .andWhere("sale.status = 'paid'")
+      .groupBy("sale.paymentMethod")
+      .getRawMany();
 
-    // Top selling items (by weight)
-    const itemMap = {};
-    items.forEach(item => {
-      const meatId = item.meatId;
-      if (!itemMap[meatId]) {
-        itemMap[meatId] = {
-          meatId,
-          meatName: item.meat?.name || "Unknown",
-          totalWeight: 0,
-          totalRevenue: 0,
-          count: 0,
-        };
-      }
-      itemMap[meatId].totalWeight += item.weightKg;
-      itemMap[meatId].totalRevenue += item.lineTotal;
-      itemMap[meatId].count += 1;
-    });
+    const paymentBreakdown = paymentMethods.reduce((acc, row) => {
+      acc[row.method] = parseInt(row.count, 10);
+      return acc;
+    }, {});
 
-    const topItems = Object.values(itemMap)
-      .sort((a, b) => b.totalWeight - a.totalWeight)
-      .slice(0, 5);
+    // ─── 3. Top items (by weight) ─────────────────────────────
+    const topItems = await itemRepo
+      .createQueryBuilder("item")
+      .innerJoin("item.meat", "meat")
+      .innerJoin("item.sale", "sale")
+      .select("item.meatId", "meatId")
+      .addSelect("meat.name", "meatName")
+      .addSelect("COALESCE(SUM(item.weightKg), 0)", "totalWeight")
+      .addSelect("COALESCE(SUM(item.lineTotal), 0)", "totalRevenue")
+      .addSelect("COUNT(item.id)", "count")
+      .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .andWhere("sale.status = 'paid'")
+      .groupBy("item.meatId")
+      .orderBy("totalWeight", "DESC")
+      .limit(5)
+      .getRawMany();
 
-    // Hourly breakdown
-    const hourlyData = {};
+    const topItemsFormatted = topItems.map(row => ({
+      meatId: row.meatId,
+      meatName: row.meatName || "Unknown",
+      totalWeight: parseFloat(row.totalWeight) || 0,
+      totalRevenue: parseFloat(row.totalRevenue) || 0,
+      count: parseInt(row.count, 10) || 0,
+    }));
+
+    // ─── 4. Hourly breakdown ──────────────────────────────────
+    const hourlyRows = await saleRepo
+      .createQueryBuilder("sale")
+      .select("strftime('%H', sale.timestamp)", "hour")
+      .addSelect("COUNT(sale.id)", "count")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "revenue")
+      .where("sale.timestamp >= :start AND sale.timestamp <= :end", { start, end })
+      .andWhere("sale.status = 'paid'")
+      .groupBy("strftime('%H', sale.timestamp)")
+      .getRawMany();
+
+    const hourlyMap = {};
     for (let i = 0; i < 24; i++) {
-      hourlyData[i] = { count: 0, revenue: 0 };
+      hourlyMap[i] = { count: 0, revenue: 0 };
     }
-    sales.forEach(sale => {
-      const hour = new Date(sale.timestamp).getHours();
-      hourlyData[hour].count += 1;
-      hourlyData[hour].revenue += sale.totalAmount;
+    hourlyRows.forEach(row => {
+      const hour = parseInt(row.hour, 10);
+      if (!isNaN(hour) && hour >= 0 && hour < 24) {
+        hourlyMap[hour].count = parseInt(row.count, 10) || 0;
+        hourlyMap[hour].revenue = parseFloat(row.revenue) || 0;
+      }
     });
-
-    const hourlyBreakdown = Object.entries(hourlyData).map(([hour, data]) => ({
+    const hourlyBreakdown = Object.entries(hourlyMap).map(([hour, data]) => ({
       hour: parseInt(hour),
       ...data,
     }));
 
-    // Compare with yesterday
+    // ─── 5. Compare with yesterday ─────────────────────────────
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     const yStart = new Date(yesterday);
@@ -95,22 +115,22 @@ module.exports = async (params) => {
     const yEnd = new Date(yesterday);
     yEnd.setHours(23, 59, 59, 999);
 
-    const ySalesOptions = {
-      startDate: yStart.toISOString(),
-      endDate: yEnd.toISOString(),
-      status: "paid",
-      limit: 10000,
-    };
+    const yAgg = await saleRepo
+      .createQueryBuilder("sale")
+      .select("COUNT(sale.id)", "totalSales")
+      .addSelect("COALESCE(SUM(sale.totalAmount), 0)", "totalRevenue")
+      .where("sale.timestamp >= :yStart AND sale.timestamp <= :yEnd", { yStart, yEnd })
+      .andWhere("sale.status = 'paid'")
+      .getRawOne();
 
-    const ySalesResult = await saleService.findAll(ySalesOptions);
-    const yesterdayRevenue = ySalesResult.data.reduce((sum, s) => sum + s.totalAmount, 0);
-    const yesterdayCount = ySalesResult.data.length;
+    const yesterdayRevenue = parseFloat(yAgg.totalRevenue) || 0;
+    const yesterdayCount = parseInt(yAgg.totalSales, 10) || 0;
 
-    const revenueChange = yesterdayRevenue > 0 
-      ? ((totalRevenue - yesterdayRevenue) / yesterdayRevenue) * 100 
+    const revenueChange = yesterdayRevenue > 0
+      ? ((totalRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
       : 0;
-    const countChange = yesterdayCount > 0 
-      ? ((totalSales - yesterdayCount) / yesterdayCount) * 100 
+    const countChange = yesterdayCount > 0
+      ? ((totalSales - yesterdayCount) / yesterdayCount) * 100
       : 0;
 
     return {
@@ -119,23 +139,20 @@ module.exports = async (params) => {
       data: {
         date: start.toISOString(),
         totalSales,
-        totalRevenue,
-        totalWeight,
-        totalDiscount,
-        averageTicket,
-        paymentMethods,
-        topItems,
+        totalRevenue: parseFloat(totalRevenue.toFixed(2)),
+        totalWeight: parseFloat(totalWeight.toFixed(3)),
+        totalDiscount: parseFloat(totalDiscount.toFixed(2)),
+        averageTicket: parseFloat(averageTicket.toFixed(2)),
+        paymentMethods: paymentBreakdown,
+        topItems: topItemsFormatted,
         hourlyBreakdown,
         comparison: {
-          yesterdayRevenue,
+          yesterdayRevenue: parseFloat(yesterdayRevenue.toFixed(2)),
           yesterdayCount,
-          revenueChange,
-          countChange,
+          revenueChange: parseFloat(revenueChange.toFixed(1)),
+          countChange: parseFloat(countChange.toFixed(1)),
         },
-        trends: {
-          // Simple trend: compare with same day last week
-          // We can add more complex trend analysis here
-        },
+        trends: {},
       },
     };
   } catch (error) {

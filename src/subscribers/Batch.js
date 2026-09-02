@@ -45,6 +45,7 @@ class BatchSubscriber {
         `[BatchSubscriber] Failed to handle onCreate for #${entity.id}:`,
         err,
       );
+      throw err; // Rethrow to ensure transaction rollback
     }
 
     // ✅ Check if batch is expiring soon (side effect)
@@ -63,6 +64,7 @@ class BatchSubscriber {
         `[BatchSubscriber] Failed to check expiring soon for #${entity.id}:`,
         err,
       );
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 
@@ -112,6 +114,7 @@ class BatchSubscriber {
           `[BatchSubscriber] Failed to handle onDepleted for #${entity.id}:`,
           err,
         );
+        throw err; // Rethrow to ensure transaction rollback
       }
       return;
     }
@@ -128,6 +131,7 @@ class BatchSubscriber {
           `[BatchSubscriber] Failed to handle onExpired for #${entity.id}:`,
           err,
         );
+        throw err; // Rethrow to ensure transaction rollback
       }
       return;
     }
@@ -153,6 +157,7 @@ class BatchSubscriber {
           `[BatchSubscriber] Failed to handle status change for #${entity.id}:`,
           err,
         );
+        throw err; // Rethrow to ensure transaction rollback
       }
       return;
     }
@@ -184,6 +189,7 @@ class BatchSubscriber {
             `[BatchSubscriber] Failed to handle quantity change for #${entity.id}:`,
             err,
           );
+          throw err; // Rethrow to ensure transaction rollback
         }
       }
     }
@@ -235,6 +241,7 @@ class BatchSubscriber {
           `[BatchSubscriber] Failed to handle onUpdate for #${entity.id}:`,
           err,
         );
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -274,6 +281,7 @@ class BatchSubscriber {
         `[BatchSubscriber] Failed to handle onDelete for #${entityId}:`,
         err,
       );
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 }

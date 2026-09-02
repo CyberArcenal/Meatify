@@ -59,6 +59,7 @@ class InventoryMovementSubscriber {
         `[InventoryMovementSubscriber] Failed to load relations for movement #${entity.id}:`,
         err.message,
       );
+      throw err; // Rethrow to ensure transaction rollback
     }
 
     logger.info("[InventoryMovementSubscriber] afterInsert:", {
@@ -90,6 +91,7 @@ class InventoryMovementSubscriber {
           `[InventoryMovementSubscriber] Failed to handle movement #${entity.id}:`,
           err,
         );
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -137,6 +139,7 @@ class InventoryMovementSubscriber {
         `[InventoryMovementSubscriber] Failed to load relations for movement #${entity.id} on update:`,
         err.message,
       );
+      throw err; // Rethrow to ensure transaction rollback
     }
 
     logger.info("[InventoryMovementSubscriber] afterUpdate:", {
@@ -206,6 +209,7 @@ class InventoryMovementSubscriber {
           `[InventoryMovementSubscriber] Failed to handle onMovementUpdated for movement #${entity.id}:`,
           err,
         );
+        throw err; // Rethrow to ensure transaction rollback
       }
     }
   }
@@ -276,6 +280,7 @@ class InventoryMovementSubscriber {
         `[InventoryMovementSubscriber] Failed to load relations for deleted movement #${entityId}:`,
         err.message,
       );
+      throw err; // Rethrow to ensure transaction rollback
     }
 
     logger.info("[InventoryMovementSubscriber] afterRemove:", {
@@ -306,6 +311,7 @@ class InventoryMovementSubscriber {
         `[InventoryMovementSubscriber] Failed to handle onMovementDeleted for movement #${entityId}:`,
         err,
       );
+      throw err; // Rethrow to ensure transaction rollback
     }
   }
 

@@ -38,42 +38,13 @@ const { registerIpcHandlers, runSchedulers } = require('./core/ipc-registry');
 
 // Service Container
 const { defaultContainer } = require('./core/service-container');
+const { registerServices } = require('./core/register-services');
+const { registerUpdateModule } = require('./core/register-update-module');
 
 // ===================== REGISTER SCHEMES BEFORE APP READY =====================
 registerCustomSchemes();   // ✅ DAPAT NASA TOP-LEVEL
 
-// ===================== REGISTER SERVICES =====================
 
-// Register core services in the container
-function registerServices() {
-  logger.debug('Registering services...');
-
-  // Printer Service
-  const PrinterService = require('../services/Printer');
-  defaultContainer.registerClass('printer', PrinterService, {
-    lifetime: 'singleton',
-  });
-
-  // Cash Drawer Service
-  const CashDrawerService = require('../services/CashDrawer');
-  defaultContainer.registerClass('cashDrawer', CashDrawerService, {
-    lifetime: 'singleton',
-  });
-
-  // Database Service
-  defaultContainer.register('database', () => {
-    return require('./db/database');
-  }, { lifetime: 'singleton' });
-
-  // Logger Service
-  defaultContainer.registerValue('logger', logger);
-
-  // Configuration Service
-  defaultContainer.registerValue('config', APP_CONFIG);
-  defaultContainer.registerValue('environment', ENVIRONMENT);
-
-  logger.debug(`Registered ${defaultContainer.getServiceNames().length} services`);
-}
 
 // ===================== GLOBAL STATE =====================
 let isShuttingDown = false;
@@ -94,7 +65,7 @@ async function startupSequence() {
     registerCustomProtocolHandlers();
 
     // 3. Register services in DI container
-    registerServices();
+    await registerServices(mainWindow, splashWindow);
     defaultContainer.lock();
 
     // 4. Create splash window
@@ -144,6 +115,9 @@ async function startupSequence() {
     if (APP_CONFIG.isDev) {
       defaultContainer.dump();
     }
+
+
+    await registerUpdateModule(mainWindow);
 
     logger.success(`✅ ${APP_CONFIG.appName} started successfully!`);
   } catch (error) {
