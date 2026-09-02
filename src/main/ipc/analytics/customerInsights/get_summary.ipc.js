@@ -13,7 +13,9 @@ module.exports = async (params) => {
     const loyaltyRepo = AppDataSource.getRepository(LoyaltyTransaction);
 
     // 1. Total active customers
-    const totalCustomers = await customerRepo.count({ where: { isActive: true } });
+    const totalCustomers = await customerRepo.count({
+      where: { isActive: true },
+    });
 
     // 2. By status (using GROUP BY)
     const byStatusRaw = await customerRepo
@@ -29,7 +31,7 @@ module.exports = async (params) => {
       vip: 0,
       elite: 0,
     };
-    byStatusRaw.forEach(row => {
+    byStatusRaw.forEach((row) => {
       byStatus[row.status] = parseInt(row.count, 10) || 0;
     });
 
@@ -75,8 +77,18 @@ module.exports = async (params) => {
       .limit(10)
       .getMany();
 
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    const newCustomers = await customerRepo
+      .createQueryBuilder("customer")
+      .where("customer.createdAt >= :start", { start: startOfMonth })
+      .getCount();
+
     // 6. Active vs inactive (from the count above)
-    const inactiveCount = await customerRepo.count({ where: { isActive: false } });
+    const inactiveCount = await customerRepo.count({
+      where: { isActive: false },
+    });
 
     return {
       status: true,
@@ -86,8 +98,9 @@ module.exports = async (params) => {
         byStatus,
         pointsSummary,
         customersWithPoints,
+        newCustomers,
         customersWithoutPoints,
-        topCustomersByPoints: topCustomersByPoints.map(c => ({
+        topCustomersByPoints: topCustomersByPoints.map((c) => ({
           id: c.id,
           name: c.name,
           email: c.email,

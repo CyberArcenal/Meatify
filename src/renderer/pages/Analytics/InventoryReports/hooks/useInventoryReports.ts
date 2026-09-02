@@ -1,5 +1,5 @@
 // src/renderer/pages/Analytics/InventoryReports/hooks/useInventoryReports.ts
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   type InventorySummary,
   type MeatInventorySummary,
@@ -15,17 +15,25 @@ interface UseInventoryReportsParams {
   supplierId?: number;
   startDate?: string;
   endDate?: string;
+  movementPage?: number;
+  // ✅ We keep movementLimit in interface but we'll ignore it and use constant 10
+  movementLimit?: number;
 }
 
+const MOVEMENT_LIMIT = 10; // ✅ Force 10 items per page
+
 export const useInventoryReports = (initialParams: UseInventoryReportsParams = {}) => {
+  const safeParams = initialParams || {};
+
   const [params, setParams] = useState<UseInventoryReportsParams>({
-    ...initialParams,
+    movementPage: 1,
+    ...safeParams,
   });
 
   const [summary, setSummary] = useState<InventorySummary | null>(null);
   const [lowStock, setLowStock] = useState<MeatInventorySummary[]>([]);
   const [outOfStock, setOutOfStock] = useState<MeatInventorySummary[]>([]);
-  const [movements, setMovements] = useState<InventoryMovement[]>([]);
+  const [allMovements, setAllMovements] = useState<InventoryMovement[]>([]);
   const [stats, setStats] = useState<InventorySummaryData | null>(null);
   const [topValueItems, setTopValueItems] = useState<MeatInventorySummary[]>([]);
   const [categorySummary, setCategorySummary] = useState<CategorySummary[]>([]);
@@ -39,8 +47,20 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // ─── Client-side pagination ─────────────────────────────────────
+  const page = params.movementPage ?? 1;
+  const limit = MOVEMENT_LIMIT; // ✅ Always 10
+  const total = allMovements.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  const paginatedMovements = useMemo(() => {
+    const start = (page - 1) * limit;
+    const end = start + limit;
+    return allMovements.slice(start, end);
+  }, [allMovements, page, limit]);
+
+  // ─── Fetch Summary ─────────────────────────────────────────────
   const fetchSummary = useCallback(async () => {
-    // Cancel previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -60,7 +80,6 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
 
     try {
       const res = await inventoryReportsAPI.getSummary(summaryParams);
-      // ✅ Only update state if not aborted
       if (!controller.signal.aborted) {
         if (res.status) {
           const data = res.data as InventorySummaryData;
@@ -76,13 +95,10 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
         }
       }
     } catch (err: any) {
-      // ✅ Only set error if not aborted
       if (!controller.signal.aborted) {
         setError(err.message || 'Failed to load inventory summary');
       }
     } finally {
-      // ✅ FIX: Always set loading to false, even if aborted
-      // Check if this is still the current request
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
@@ -90,8 +106,8 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
     }
   }, [params.categoryId, params.supplierId]);
 
+  // ─── Fetch All Movements ───────────────────────────────────────
   const fetchMovements = useCallback(async () => {
-    // Cancel previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -102,7 +118,7 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
 
     const movementParams: any = {
       includeMovementHistory: true,
-      limit: 100,
+      limit: 10000, // get all, we'll paginate client-side
     };
     if (params.categoryId !== undefined && params.categoryId !== null) {
       movementParams.categoryId = params.categoryId;
@@ -117,7 +133,7 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
       const res = await inventoryReportsAPI.getData(movementParams);
       if (!controller.signal.aborted) {
         if (res.status) {
-          setMovements(res.data.movementHistory || []);
+          setAllMovements(res.data.movementHistory || []);
         } else {
           throw new Error(res.message || 'Failed to fetch movements');
         }
@@ -127,7 +143,6 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
         setError(err.message || 'Failed to load movements');
       }
     } finally {
-      // ✅ FIX: Always set loading to false, even if aborted
       if (abortControllerRef.current === controller) {
         abortControllerRef.current = null;
       }
@@ -135,7 +150,7 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
     }
   }, [params.categoryId, params.supplierId, params.startDate, params.endDate]);
 
-  // Auto-fetch on mount and when fetch functions change
+  // ─── Auto-fetch ────────────────────────────────────────────────
   useEffect(() => {
     fetchSummary();
     fetchMovements();
@@ -147,8 +162,13 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
     };
   }, [fetchSummary, fetchMovements]);
 
+  // ─── Public API ────────────────────────────────────────────────
   const updateFilters = useCallback((newParams: Partial<UseInventoryReportsParams>) => {
-    setParams((prev) => ({ ...prev, ...newParams }));
+    setParams((prev) => ({
+      ...prev,
+      ...newParams,
+      movementPage: newParams.movementPage !== undefined ? newParams.movementPage : 1,
+    }));
   }, []);
 
   const refetch = useCallback(() => {
@@ -156,12 +176,19 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
     fetchMovements();
   }, [fetchSummary, fetchMovements]);
 
+  const setMovementPage = useCallback((page: number) => {
+    updateFilters({ movementPage: page });
+  }, [updateFilters]);
+
   return {
     state: {
       summary,
       lowStock,
       outOfStock,
-      movements,
+      movements: paginatedMovements,
+      movementTotal: total,
+      movementTotalPages: totalPages,
+      movementPage: page,
       stats,
       topValueItems,
       categorySummary,
@@ -172,5 +199,6 @@ export const useInventoryReports = (initialParams: UseInventoryReportsParams = {
     },
     updateFilters,
     refetch,
+    setMovementPage,
   };
 };

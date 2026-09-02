@@ -20,6 +20,9 @@ const InventoryReportsPage: React.FC = () => {
       lowStock,
       outOfStock,
       movements,
+      movementTotal,
+      movementTotalPages,
+      movementPage,
       stats,
       topValueItems,
       categorySummary,
@@ -30,11 +33,14 @@ const InventoryReportsPage: React.FC = () => {
     },
     updateFilters: updateReportFilters,
     refetch,
+    setMovementPage,
   } = useInventoryReports({
     categoryId: filters.categoryId,
     supplierId: filters.supplierId,
     startDate: filters.startDate || undefined,
     endDate: filters.endDate || undefined,
+    movementPage: 1,
+    movementLimit: 10,
   });
 
   const handleFilterChange = (newFilters: any) => {
@@ -49,6 +55,10 @@ const InventoryReportsPage: React.FC = () => {
 
   const handleRefresh = () => {
     refetch();
+  };
+
+  const handleMovementPageChange = (page: number) => {
+    setMovementPage(page);
   };
 
   const anyLoading = loadingSummary || loadingMovements;
@@ -121,7 +131,14 @@ const InventoryReportsPage: React.FC = () => {
         supplierSummary={supplierSummary}
       />
 
-      <MovementsTable data={movements} loading={loadingMovements} />
+      <MovementsTable
+        data={movements}
+        loading={loadingMovements}
+        page={movementPage}
+        totalPages={movementTotalPages}
+        total={movementTotal}
+        onPageChange={handleMovementPageChange}
+      />
     </div>
   );
 };

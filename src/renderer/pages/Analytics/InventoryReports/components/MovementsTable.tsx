@@ -1,14 +1,25 @@
 // src/renderer/pages/Analytics/InventoryReports/components/MovementsTable.tsx
 import React from 'react';
-import { ArrowUpRight, ArrowDownRight, RefreshCw, Repeat, Package } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, RefreshCw, Repeat, Package, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { InventoryMovement } from '../../../../api/core/inventoryMovement';
 
 interface Props {
   data: InventoryMovement[];
   loading: boolean;
+  page: number;
+  totalPages: number;
+  total: number;
+  onPageChange: (page: number) => void;
 }
 
-const MovementsTable: React.FC<Props> = ({ data, loading }) => {
+const MovementsTable: React.FC<Props> = ({
+  data,
+  loading,
+  page,
+  totalPages,
+  total,
+  onPageChange,
+}) => {
   const getMovementIcon = (type: string) => {
     switch (type) {
       case 'sale':
@@ -32,6 +43,9 @@ const MovementsTable: React.FC<Props> = ({ data, loading }) => {
     );
   }
 
+  const from = total > 0 ? (page - 1) * 10 + 1 : 0;
+  const to = total > 0 ? Math.min(page * 10, total) : 0;
+
   return (
     <div className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] overflow-hidden shadow-sm hover:border-[var(--accent-gold)] transition-colors">
       <div className="px-5 py-4 border-b border-[var(--border-color)] flex items-center justify-between">
@@ -39,7 +53,7 @@ const MovementsTable: React.FC<Props> = ({ data, loading }) => {
           <span className="text-[var(--accent-gold)]">📋</span>
           Recent Inventory Movements
         </h3>
-        <span className="text-sm text-[var(--text-tertiary)]">{data.length} entries</span>
+        <span className="text-sm text-[var(--text-tertiary)]">{total} entries</span>
       </div>
 
       <div className="overflow-x-auto">
@@ -99,6 +113,34 @@ const MovementsTable: React.FC<Props> = ({ data, loading }) => {
           </tbody>
         </table>
       </div>
+
+      {/* Pagination - only show if there are entries */}
+      {total > 0 && (
+        <div className="px-5 py-3 border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-[var(--text-secondary)]">
+            Showing {from} to {to} of {total} entries
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => onPageChange(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="p-2 rounded-lg bg-[var(--card-secondary-bg)] text-[var(--text-secondary)] hover:bg-[var(--card-hover-bg)] hover:text-[var(--accent-gold)] disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--text-secondary)] transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-sm text-[var(--text-primary)]">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+              className="p-2 rounded-lg bg-[var(--card-secondary-bg)] text-[var(--text-secondary)] hover:bg-[var(--card-hover-bg)] hover:text-[var(--accent-gold)] disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--text-secondary)] transition-colors"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

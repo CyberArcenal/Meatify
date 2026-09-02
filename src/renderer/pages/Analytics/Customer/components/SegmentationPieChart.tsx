@@ -6,7 +6,7 @@ import { PieChart } from 'lucide-react';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
-interface CustomerSegmentation {
+export interface CustomerSegmentation {
   highValue: number;
   mediumValue: number;
   lowValue: number;
@@ -14,11 +14,20 @@ interface CustomerSegmentation {
 }
 
 interface Props {
-  segmentation: CustomerSegmentation;
+  segmentation: CustomerSegmentation | null;
   isLoading?: boolean;
 }
 
+// ✅ Meatify theme colors (hex)
+const COLORS = {
+  highValue: '#22c55e',   // green
+  mediumValue: '#3b82f6', // blue
+  lowValue: '#f97316',    // amber/orange
+  inactive: '#64748b',    // slate gray
+};
+
 const SegmentationPieChart: React.FC<Props> = ({ segmentation, isLoading }) => {
+  // ─── Loading skeleton ──────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] p-5 h-full animate-pulse">
@@ -30,8 +39,39 @@ const SegmentationPieChart: React.FC<Props> = ({ segmentation, isLoading }) => {
     );
   }
 
+  // ─── No data state ────────────────────────────────────────────
+  if (!segmentation) {
+    return (
+      <div className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] p-5 h-full">
+        <div className="flex items-center gap-2 mb-4">
+          <PieChart className="w-5 h-5 text-[var(--accent-gold)]" />
+          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Customer Segmentation</h3>
+        </div>
+        <div className="flex items-center justify-center h-64 text-[var(--text-tertiary)]">
+          No segmentation data available
+        </div>
+      </div>
+    );
+  }
+
   const total = segmentation.highValue + segmentation.mediumValue + segmentation.lowValue + segmentation.inactive;
 
+  // ─── All zeros ────────────────────────────────────────────────
+  if (total === 0) {
+    return (
+      <div className="bg-[var(--card-bg)] rounded-xl border border-[var(--border-color)] p-5 h-full">
+        <div className="flex items-center gap-2 mb-4">
+          <PieChart className="w-5 h-5 text-[var(--accent-gold)]" />
+          <h3 className="text-lg font-semibold text-[var(--text-primary)]">Customer Segmentation</h3>
+        </div>
+        <div className="flex items-center justify-center h-64 text-[var(--text-tertiary)]">
+          No customers to segment
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Chart data ──────────────────────────────────────────────
   const data = {
     labels: ['High Value', 'Medium Value', 'Low Value', 'Inactive'],
     datasets: [
@@ -43,10 +83,10 @@ const SegmentationPieChart: React.FC<Props> = ({ segmentation, isLoading }) => {
           segmentation.inactive,
         ],
         backgroundColor: [
-          '#22c55e',
-          '#3b82f6',
-          '#f97316',
-          '#64748b',
+          COLORS.highValue,
+          COLORS.mediumValue,
+          COLORS.lowValue,
+          COLORS.inactive,
         ],
         borderColor: 'var(--card-bg)',
         borderWidth: 3,
@@ -94,15 +134,9 @@ const SegmentationPieChart: React.FC<Props> = ({ segmentation, isLoading }) => {
         <h3 className="text-lg font-semibold text-[var(--text-primary)]">Customer Segmentation</h3>
       </div>
       <div className="flex-1 flex items-center justify-center">
-        {total === 0 ? (
-          <div className="text-center text-[var(--text-tertiary)] py-8">
-            No segmentation data available
-          </div>
-        ) : (
-          <div className="w-full max-w-xs">
-            <Pie data={data} options={options} />
-          </div>
-        )}
+        <div className="w-full max-w-xs">
+          <Pie data={data} options={options} />
+        </div>
       </div>
     </div>
   );

@@ -58,6 +58,7 @@ export interface CustomerInsightsData {
 }
 
 export interface CustomerInsightsSummaryData {
+  newCustomers: number;
   totalCustomers: number;
   byStatus: {
     regular: number;

@@ -1,8 +1,7 @@
 // src/renderer/pages/Analytics/Customer/index.tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useCustomerInsights } from './hooks/useCustomerInsights';
-import { useCustomerFilters } from './hooks/useCustomerFilters';
 import SummaryCards from './components/SummaryCards';
 import TopSpendersTable from './components/TopSpendersTable';
 import TopLoyaltyTable from './components/TopLoyaltyTable';
@@ -10,7 +9,15 @@ import SegmentationPieChart from './components/SegmentationPieChart';
 import CustomerTable from './components/CustomerTable';
 
 const CustomerInsightsPage: React.FC = () => {
-  const { filters, updateFilters, resetFilters, hasFilters } = useCustomerFilters();
+  // Unified state – filters and page
+  const [filters, setFilters] = useState({
+    search: '',
+    minPoints: undefined as number | undefined,
+    maxPoints: undefined as number | undefined,
+    hasLoyaltyPoints: false,
+    page: 1,
+    limit: 10,
+  });
 
   const {
     state: {
@@ -28,30 +35,19 @@ const CustomerInsightsPage: React.FC = () => {
       error,
       page,
     },
-    updateFilters: updateReportFilters,
+    updateFilters,
     refetch,
-  } = useCustomerInsights({
-    search: filters.search,
-    minPoints: filters.minPoints,
-    maxPoints: filters.maxPoints,
-    hasLoyaltyPoints: filters.hasLoyaltyPoints,
-    page: 1,
-    limit: 10,
-  });
+  } = useCustomerInsights(filters);
 
   const handleFilterChange = (newFilters: any) => {
+    // Merge with existing filters
+    setFilters((prev) => ({ ...prev, ...newFilters, page: newFilters.page ?? 1 }));
+    // The hook's updateFilters will automatically re-fetch
     updateFilters(newFilters);
-    updateReportFilters({
-      search: newFilters.search,
-      minPoints: newFilters.minPoints,
-      maxPoints: newFilters.maxPoints,
-      hasLoyaltyPoints: newFilters.hasLoyaltyPoints,
-      page: 1,
-    });
   };
 
   const handlePageChange = (newPage: number) => {
-    updateReportFilters({ page: newPage });
+    handleFilterChange({ page: newPage });
   };
 
   const handleRefresh = () => {
@@ -86,9 +82,9 @@ const CustomerInsightsPage: React.FC = () => {
       </div>
 
       {error && (
-        <div className="bg-[var(--status-cancelled-bg)] border border-[var(--accent-red)] text-[var(--accent-red)] p-4 rounded-xl">
-          Error: {error}
-          <button onClick={handleRefresh} className="ml-3 underline hover:text-[var(--accent-red)]">
+        <div className="bg-[var(--status-cancelled-bg)] border border-[var(--accent-red)] text-[var(--accent-red)] p-4 rounded-xl flex items-center justify-between">
+          <span>Error: {error}</span>
+          <button onClick={handleRefresh} className="underline hover:text-[var(--accent-red-hover)]">
             Retry
           </button>
         </div>
@@ -114,7 +110,12 @@ const CustomerInsightsPage: React.FC = () => {
         total={total}
         onPageChange={handlePageChange}
         onFilterChange={handleFilterChange}
-        filters={filters}
+        filters={{
+          search: filters.search,
+          minPoints: filters.minPoints,
+          maxPoints: filters.maxPoints,
+          hasLoyaltyPoints: filters.hasLoyaltyPoints,
+        }}
       />
     </div>
   );

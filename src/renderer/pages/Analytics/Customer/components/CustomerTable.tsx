@@ -35,18 +35,18 @@ const CustomerTable: React.FC<Props> = ({
   total,
   onPageChange,
   onFilterChange,
-  filters = defaultFilters, // ✅ Fallback default
+  filters = defaultFilters,
 }) => {
-  // ✅ Safe guard: kung walang filters, gamitin ang default
   const safeFilters = filters || defaultFilters;
 
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     onFilterChange({ search: e.target.value });
   };
 
   const handleFilterChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
-    const val = type === 'checkbox' ? checked : value === '' ? undefined : Number(value);
+    // ✅ Fix: convert empty string to undefined, otherwise Number
+    const val = type === 'checkbox' ? checked : (value === '' ? undefined : Number(value));
     onFilterChange({ [name]: val });
   };
 
@@ -58,6 +58,7 @@ const CustomerTable: React.FC<Props> = ({
       hasLoyaltyPoints: false,
     });
   };
+
 
   const hasActiveFilters =
     safeFilters.search ||
