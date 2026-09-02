@@ -1,4 +1,4 @@
-// src/main/ipc/updater/index.ipc.js
+// src/main/ipc/utils/updater/index.ipc.js
 
 const { ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');

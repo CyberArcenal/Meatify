@@ -74,7 +74,7 @@ class UpdaterAPI {
         method: 'checkForUpdates',
         params: {},
       });
-      // console.log(response)
+      console.log(response)
       if (response.status) return response;
       throw new Error(response.message || 'Failed to check for updates');
     } catch (error: any) {

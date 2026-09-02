@@ -235,13 +235,11 @@ const UpdateNotifier: React.FC = () => {
             <div className="flex gap-3 justify-end mt-6">
               {(state === "available" || state === "downloading") && (
                 <Button
+                  variant="primary"
+                  size="md"
                   onClick={handleDownload}
                   disabled={isDownloading}
-                  className={`
-                    btn-primary btn-sm px-5 py-2.5 flex items-center gap-2 font-medium
-                    transition-all duration-200 hover:scale-105 active:scale-95
-                    disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100
-                  `}
+                  className="px-5 py-2.5 font-medium"
                 >
                   {state === "downloading" ? (
                     <>
@@ -259,13 +257,10 @@ const UpdateNotifier: React.FC = () => {
 
               {state === "downloaded" && (
                 <Button
+                  variant="success"
+                  size="md"
                   onClick={handleInstall}
-                  className="
-                    btn-success btn-sm px-5 py-2.5 flex items-center gap-2 font-medium
-                    transition-all duration-200 hover:scale-105 active:scale-95
-                    bg-gradient-to-r from-green-500 to-emerald-600
-                    hover:from-green-600 hover:to-emerald-700
-                  "
+                  className="px-5 py-2.5 font-medium"
                 >
                   <RefreshCw className="icon-sm" />
                   Install & Restart
@@ -273,11 +268,10 @@ const UpdateNotifier: React.FC = () => {
               )}
 
               <Button
+                variant="secondary"
+                size="md"
                 onClick={() => setShowModal(false)}
-                className="
-                  btn-secondary btn-sm px-5 py-2.5 font-medium
-                  transition-all duration-200 hover:bg-[var(--card-secondary-bg)]
-                "
+                className="px-5 py-2.5 font-medium"
               >
                 Later
               </Button>

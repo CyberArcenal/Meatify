@@ -1,7 +1,7 @@
 {
   "name": "meatify",
   "private": true,
-  "version": "v1.0.1",
+  "version": "v1.0.0",
   "description": "Meatify - Meat Shop POS System with batch inventory, expiry tracking",
   "main": "src/main/index.js",
   "author": {
@@ -10,10 +10,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yourusername/meatify.git"
+    "url": "https://github.com/CyberArcenal/meatify.git"
   },
   "build": {
-    "appId": "com.yourname.meatify.app",
+    "appId": "com.cyberarcenal.meatify.app",
     "productName": "Meatify",
     "directories": {
       "output": "release"
@@ -39,7 +39,7 @@
     "publish": {
       "provider": "github",
       "owner": "CyberArcenal",
-      "repo": "meatify",
+      "repo": "Meatify",
       "releaseType": "release"
     }
   },

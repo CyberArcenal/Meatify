@@ -171,6 +171,15 @@ app.on('activate', async () => {
 
   if (BrowserWindow.getAllWindows().length === 0) {
     await startupSequence();
+    
+    // ✅ Re-set the updater window reference after creating a new window
+    try {
+      const updaterModule = require("../main/ipc/utils/updater/index.ipc");
+      updaterModule.setMainWindow(mainWindow);
+      logger.info("Updater handler re-attached to main window after activate");
+    } catch (e) {
+      logger.warn("Failed to re-attach updater on activate", e);
+    }
   }
 });
 
