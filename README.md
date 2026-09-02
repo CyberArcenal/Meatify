@@ -273,7 +273,21 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE – see the [LICEN
 
 ## 📸 Screenshots
 
-> *Coming soon – screenshots of the Cashier interface, Inventory management, and Reports dashboard.*
+<p align="center">
+  <img src="https://github.com/CyberArcenal/Meatify/blob/main/screenshots/cashier.png?raw=true" width="45%" />
+</p>
+
+---
+
+## 📦 Download
+
+| Platform | Link |
+|----------|------|
+| Windows (NSIS installer) | [Download `.exe`](https://github.com/CyberArcenal/Meatify/releases/latest) |
+| macOS (DMG) | [Download `.dmg`](https://github.com/CyberArcenal/Meatify/releases/latest) |
+| Linux (AppImage) | [Download `.AppImage`](https://github.com/CyberArcenal/Meatify/releases/latest) |
+
+> Auto‑update is supported on all platforms via GitHub releases.
 
 ---
 
@@ -289,6 +303,20 @@ This project is licensed under the GNU GENERAL PUBLIC LICENSE – see the [LICEN
 - Receipt printing
 - Cash drawer support
 - Dark theme
+
+---
+
+## 💖 Support this project
+
+If Meatify has helped your business or you as a developer, you can buy a coffee ☕
+
+[![Sponsor](https://img.shields.io/badge/Sponsor-GitHub-blue)](https://github.com/sponsors/CyberArcenal)
+[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.me/Lugawan677)
+[![Ko-fi](https://img.shields.io/badge/Support-Ko--fi-red)](https://ko-fi.com/cyberarcenal60019)
+
+**GCash / PayMaya** – Scan the QR code below:
+
+<img src="https://github.com/CyberArcenal/Kabisilya-Management/blob/main/screenshots/gcash-qr.JPG?raw=true" width="150" />
 
 ---
 
