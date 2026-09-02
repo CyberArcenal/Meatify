@@ -1,7 +1,7 @@
 {
   "name": "meatify",
   "private": true,
-  "version": "v1.0.0-beta.2",
+  "version": "v1.0.1",
   "description": "Meatify - Meat Shop POS System with batch inventory, expiry tracking",
   "main": "src/main/index.js",
   "author": {
