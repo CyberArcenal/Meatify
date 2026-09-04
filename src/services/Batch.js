@@ -6,15 +6,21 @@ const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
 const { withRetry } = require("../utils/retry");
-const { ConcurrencyError, NotFoundError, ValidationError } = require("../utils/errors");
-
+const {
+  ConcurrencyError,
+  NotFoundError,
+  ValidationError,
+} = require("../utils/errors");
+const { validate } = require("../validation");
 const {
   batchCreateSchema,
   batchUpdateSchema,
   batchStatusSchema,
-  batchRemainingQuantitySchema, // ✅ ADDED
+  batchRemainingQuantitySchema,
 } = require("../validation/schemas/batch.schema");
-const { validate } = require("../validation");
+
+// ✅ Import container instead of directly requiring services
+const { defaultContainer } = require("../main/core/service-container");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -49,6 +55,45 @@ class BatchService {
     this.batchRepository = null;
     this.meatRepository = null;
     this.supplierRepository = null;
+
+    this._inventoryMovementService = null;
+    this._saleService = null;
+  }
+
+  // ✅ Lazy getter for InventoryMovementService
+  get inventoryMovementService() {
+    if (!this._inventoryMovementService) {
+      try {
+        this._inventoryMovementService = defaultContainer.get(
+          "inventoryMovementService",
+        );
+      } catch (err) {
+        logger.warn(
+          "[Batch] InventoryMovementService not available in container:",
+          err.message,
+        );
+        // Fallback: require directly (for backward compatibility)
+        this._inventoryMovementService = require("./InventoryMovement");
+      }
+    }
+    return this._inventoryMovementService;
+  }
+
+  // ✅ Lazy getter for SaleService
+  get saleService() {
+    if (!this._saleService) {
+      try {
+        this._saleService = defaultContainer.get("saleService");
+      } catch (err) {
+        logger.warn(
+          "[Batch] SaleService not available in container:",
+          err.message,
+        );
+        // Fallback: require directly (for backward compatibility)
+        this._saleService = require("./Sale");
+      }
+    }
+    return this._saleService;
   }
 
   async initialize() {

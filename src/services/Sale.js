@@ -3,7 +3,6 @@
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
-const saleItemService = require("./SaleItem");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
 const Batch = require("../entities/Batch");
@@ -13,6 +12,9 @@ const {
   saleUpdateSchema,
 } = require("../validation/schemas/sale.schema");
 
+// ✅ Import container instead of directly requiring services
+const { defaultContainer } = require("../main/core/service-container");
+const { z } = require("zod");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -41,6 +43,60 @@ class SaleService {
     this.meatRepository = null;
     this.customerRepository = null;
     this.batchRepository = null;
+
+    // ✅ Get services from container (lazy loading)
+    this._batchService = null;
+    this._saleItemService = null;
+    this._customerService = null;
+  }
+
+  // ✅ Lazy getter for BatchService
+  get batchService() {
+    if (!this._batchService) {
+      try {
+        this._batchService = defaultContainer.get("batchService");
+      } catch (err) {
+        logger.warn(
+          "[Sale] BatchService not available in container:",
+          err.message,
+        );
+        // Fallback: require directly (for backward compatibility)
+        this._batchService = require("./Batch");
+      }
+    }
+    return this._batchService;
+  }
+
+  // ✅ Lazy getter for SaleItemService
+  get saleItemService() {
+    if (!this._saleItemService) {
+      try {
+        this._saleItemService = defaultContainer.get("saleItemService");
+      } catch (err) {
+        logger.warn(
+          "[Sale] SaleItemService not available in container:",
+          err.message,
+        );
+        this._saleItemService = require("./SaleItem");
+      }
+    }
+    return this._saleItemService;
+  }
+
+  // ✅ Lazy getter for CustomerService
+  get customerService() {
+    if (!this._customerService) {
+      try {
+        this._customerService = defaultContainer.get("customerService");
+      } catch (err) {
+        logger.warn(
+          "[Sale] CustomerService not available in container:",
+          err.message,
+        );
+        this._customerService = require("./Customer");
+      }
+    }
+    return this._customerService;
   }
 
   async initialize() {
@@ -317,6 +373,8 @@ class SaleService {
     const meatRepo = this._getRepo(qr, Meat);
     const customerRepo = this._getRepo(qr, Customer);
     const batchRepo = this._getRepo(qr, Batch);
+
+    const saleItemService = this.saleItemService;
 
     // ✅ Validate input
     const validated = validate(saleCreateSchema, data, "Sale creation");
@@ -1072,7 +1130,7 @@ class SaleService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("Sale", format, filters, user);
+        await auditLogger.logCreate("Sale", format, filters, user);
       }
 
       logger.debug(`Exported ${sales.length} sales in ${format} format`);
