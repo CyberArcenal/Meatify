@@ -6,11 +6,15 @@ const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
 const { withRetry } = require("../utils/retry");
+const { ConcurrencyError, NotFoundError, ValidationError } = require("../utils/errors");
+
 const {
-  ConcurrencyError,
-  ValidationError,
-  NotFoundError,
-} = require("../utils/errors");
+  batchCreateSchema,
+  batchUpdateSchema,
+  batchStatusSchema,
+  batchRemainingQuantitySchema, // ✅ ADDED
+} = require("../validation/schemas/batch.schema");
+const { validate } = require("../validation");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -245,73 +249,88 @@ class BatchService {
     const meatRepo = this._getRepo(qr, Meat);
     const supplierRepo = this._getRepo(qr, Supplier);
 
-    try {
-      if (!data.meatId) throw new ValidationError("meatId is required");
-      if (!data.quantity || data.quantity <= 0) {
-        throw new ValidationError("quantity must be greater than 0");
-      }
-      if (!data.unitCost || data.unitCost < 0) {
-        throw new ValidationError("unitCost must be non-negative");
-      }
-      if (!data.expiryDate) throw new ValidationError("expiryDate is required");
+    // ✅ Validate input using Zod schema
+    const validated = validate(batchCreateSchema, data, "Batch creation");
 
+    try {
+      const {
+        meatId,
+        quantity,
+        unitCost,
+        expiryDate,
+        supplierId,
+        status,
+        note,
+        batchCode,
+      } = validated;
+
+      // ✅ Business validation: Check if meat exists and is active
       const meat = await meatRepo.findOne({
-        where: { id: data.meatId, isActive: true },
+        where: { id: meatId, isActive: true },
       });
       if (!meat) {
         throw new NotFoundError(
-          `Meat with ID ${data.meatId} not found or inactive`,
+          `Meat with ID ${meatId} not found or inactive`,
           "Meat",
         );
       }
 
+      // ✅ Business validation: Check if supplier exists and is active (if provided)
       let supplier = null;
-      if (data.supplierId) {
+      if (supplierId) {
         supplier = await supplierRepo.findOne({
-          where: { id: data.supplierId, isActive: true },
+          where: { id: supplierId, isActive: true },
         });
         if (!supplier) {
           throw new NotFoundError(
-            `Supplier with ID ${data.supplierId} not found or inactive`,
+            `Supplier with ID ${supplierId} not found or inactive`,
             "Supplier",
           );
         }
       }
 
+      // ✅ Check allowed statuses from settings
       const allowedStatuses = await this._getAllowedStatuses(qr);
-      if (data.status && !allowedStatuses.includes(data.status)) {
+      if (status && !allowedStatuses.includes(status)) {
         throw new ValidationError(
-          `Invalid batch status: ${data.status}. Allowed: ${allowedStatuses.join(", ")}`,
+          `Invalid batch status: ${status}. Allowed: ${allowedStatuses.join(", ")}`,
         );
       }
 
-      let batchCode = data.batchCode;
-      if (!batchCode) {
+      // ✅ Generate or validate batch code
+      let finalBatchCode = batchCode;
+      if (!finalBatchCode) {
         const prefix = await this._getCompanyPrefix(qr);
-        batchCode = await this.generateBatchCode(batchRepo, prefix);
+        finalBatchCode = await this.generateBatchCode(batchRepo, prefix);
       } else {
-        const existing = await batchRepo.findOne({ where: { batchCode } });
+        const existing = await batchRepo.findOne({
+          where: { batchCode: finalBatchCode },
+        });
         if (existing) {
-          throw new ValidationError(`Batch code "${batchCode}" already exists`);
+          throw new ValidationError(
+            `Batch code "${finalBatchCode}" already exists`,
+          );
         }
       }
 
-      const expiryDate = new Date(data.expiryDate);
-      if (isNaN(expiryDate.getTime())) {
+      // ✅ Parse expiry date (already validated by Zod, but double-check)
+      const expiryDateObj = new Date(expiryDate);
+      if (isNaN(expiryDateObj.getTime())) {
         throw new ValidationError("Invalid expiryDate format");
       }
 
+      // ✅ Create batch entity
       const batch = batchRepo.create({
-        batchCode,
-        initialQuantity: data.quantity,
-        remainingQuantity: data.quantity,
-        unitCost: data.unitCost,
-        expiryDate,
+        batchCode: finalBatchCode,
+        initialQuantity: quantity,
+        remainingQuantity: quantity,
+        unitCost: unitCost,
+        expiryDate: expiryDateObj,
         receivedDate: new Date(),
-        status: data.status || "active",
-        note: data.note || null,
+        status: status || "active",
+        note: note || null,
         meat: meat,
-        supplier: supplier || null,
+        supplier: supplier,
         version: 1,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -319,6 +338,7 @@ class BatchService {
 
       const saved = await saveDb(batchRepo, batch, { queryRunner: qr });
 
+      // ✅ Audit log
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
         const auditLogger = require("../utils/auditLogger");
@@ -354,48 +374,60 @@ class BatchService {
     const Batch = require("../entities/Batch");
     const batchRepo = this._getRepo(qr, Batch);
 
+    // ✅ Validate input
+    const validated = validate(batchUpdateSchema, data, "Batch update");
+
     try {
       const existing = await batchRepo.findOne({ where: { id } });
       if (!existing) {
         throw new NotFoundError(`Batch with ID ${id} not found`, "Batch");
       }
 
+      // ❌ Prevent direct updates to remainingQuantity and status
       if (data.remainingQuantity !== undefined) {
         throw new ValidationError(
           "Use updateRemainingQuantity to update remainingQuantity",
         );
       }
-
       if (data.status !== undefined && data.status !== existing.status) {
         throw new ValidationError("Use updateStatus to update batch status");
       }
 
       const oldData = { ...existing };
 
-      if (data.batchCode && data.batchCode !== existing.batchCode) {
+      // ✅ Use validated data
+      const { batchCode, unitCost, expiryDate, note } = validated;
+
+      // ✅ Check batchCode uniqueness if changed
+      if (batchCode && batchCode !== existing.batchCode) {
         const duplicate = await batchRepo.findOne({
-          where: { batchCode: data.batchCode },
+          where: { batchCode },
         });
         if (duplicate) {
-          throw new ValidationError(
-            `Batch code "${data.batchCode}" already exists`,
-          );
+          throw new ValidationError(`Batch code "${batchCode}" already exists`);
         }
+        existing.batchCode = batchCode;
       }
 
-      if (data.unitCost !== undefined && data.unitCost < 0) {
-        throw new ValidationError("unitCost must be non-negative");
+      // ✅ Update unitCost
+      if (unitCost !== undefined) {
+        existing.unitCost = unitCost;
       }
 
-      if (data.expiryDate) {
-        const expiryDate = new Date(data.expiryDate);
-        if (isNaN(expiryDate.getTime())) {
+      // ✅ Update expiryDate
+      if (expiryDate) {
+        const expiryDateObj = new Date(expiryDate);
+        if (isNaN(expiryDateObj.getTime())) {
           throw new ValidationError("Invalid expiryDate format");
         }
-        data.expiryDate = expiryDate;
+        existing.expiryDate = expiryDateObj;
       }
 
-      Object.assign(existing, data);
+      // ✅ Update note
+      if (note !== undefined) {
+        existing.note = note;
+      }
+
       existing.updatedAt = new Date();
 
       const saved = await updateDb(batchRepo, existing, { queryRunner: qr });
@@ -428,6 +460,14 @@ class BatchService {
    * @returns {Promise<any>}
    */
   async updateRemainingQuantity(id, newQuantity, user = "system", qr = null) {
+    // ✅ Validate quantity
+    const validated = validate(
+      batchRemainingQuantitySchema,
+      { newQuantity },
+      "Batch remaining quantity",
+    );
+    const { newQuantity: validQuantity } = validated;
+
     const Batch = require("../entities/Batch");
     const batchRepo = this._getRepo(qr, Batch);
 
@@ -440,13 +480,6 @@ class BatchService {
       throw new NotFoundError(`Batch with ID ${id} not found`, "Batch");
     }
 
-    if (newQuantity < 0) {
-      throw new ValidationError(
-        `Remaining quantity cannot be negative: ${newQuantity}`,
-        { id, newQuantity },
-      );
-    }
-
     const oldData = {
       remainingQuantity: existing.remainingQuantity,
       status: existing.status,
@@ -455,9 +488,9 @@ class BatchService {
     const currentVersion = existing.version;
 
     let newStatus = existing.status;
-    if (newQuantity === 0 && existing.status !== "expired") {
+    if (validQuantity === 0 && existing.status !== "expired") {
       newStatus = "depleted";
-    } else if (newQuantity > 0 && existing.status === "depleted") {
+    } else if (validQuantity > 0 && existing.status === "depleted") {
       newStatus = "active";
     }
 
@@ -466,7 +499,7 @@ class BatchService {
       .createQueryBuilder()
       .update(Batch)
       .set({
-        remainingQuantity: newQuantity,
+        remainingQuantity: validQuantity,
         status: newStatus,
         updatedAt: new Date(),
         version: () => "version + 1",
@@ -495,7 +528,7 @@ class BatchService {
     }
 
     logger.debug(
-      `Batch #${id} remainingQuantity updated: ${oldData.remainingQuantity} → ${newQuantity} (version: ${saved.version})`,
+      `Batch #${id} remainingQuantity updated: ${oldData.remainingQuantity} → ${validQuantity} (version: ${saved.version})`,
     );
 
     return saved;
@@ -510,13 +543,21 @@ class BatchService {
    * @returns {Promise<any>}
    */
   async updateStatus(id, newStatus, user = "system", qr = null) {
+    // ✅ Validate status
+    const validated = validate(
+      batchStatusSchema,
+      { status: newStatus },
+      "Batch status",
+    );
+    const { status: validStatus } = validated;
+
     const Batch = require("../entities/Batch");
     const batchRepo = this._getRepo(qr, Batch);
 
     const allowedStatuses = await this._getAllowedStatuses(qr);
-    if (!allowedStatuses.includes(newStatus)) {
+    if (!allowedStatuses.includes(validStatus)) {
       throw new ValidationError(
-        `Invalid batch status: ${newStatus}. Allowed: ${allowedStatuses.join(", ")}`,
+        `Invalid batch status: ${validStatus}. Allowed: ${allowedStatuses.join(", ")}`,
         { newStatus, allowed: allowedStatuses },
       );
     }
@@ -526,20 +567,20 @@ class BatchService {
       throw new NotFoundError(`Batch with ID ${id} not found`, "Batch");
     }
 
-    if (existing.status === newStatus) {
-      logger.debug(`Batch #${id} already has status ${newStatus}`);
+    if (existing.status === validStatus) {
+      logger.debug(`Batch #${id} already has status ${validStatus}`);
       return existing;
     }
 
     // Validate status transition
     const allowedTransitions = STATUS_TRANSITIONS[existing.status] || [];
-    if (!allowedTransitions.includes(newStatus)) {
+    if (!allowedTransitions.includes(validStatus)) {
       throw new ValidationError(
-        `Cannot transition from "${existing.status}" to "${newStatus}". ` +
+        `Cannot transition from "${existing.status}" to "${validStatus}". ` +
           `Allowed transitions: ${allowedTransitions.join(", ") || "none"}`,
         {
           currentStatus: existing.status,
-          requestedStatus: newStatus,
+          requestedStatus: validStatus,
           allowedTransitions,
         },
       );
@@ -552,7 +593,7 @@ class BatchService {
       .createQueryBuilder()
       .update(Batch)
       .set({
-        status: newStatus,
+        status: validStatus,
         updatedAt: new Date(),
         version: () => "version + 1",
       })
@@ -577,7 +618,7 @@ class BatchService {
     }
 
     logger.debug(
-      `Batch #${id} status updated: ${oldData.status} → ${newStatus} (version: ${saved.version})`,
+      `Batch #${id} status updated: ${oldData.status} → ${validStatus} (version: ${saved.version})`,
     );
 
     return saved;
@@ -771,8 +812,8 @@ class BatchService {
       movementType: reason,
       qtyChange: -weightToDeduct,
       notes: `Deducted from batch #${batchId}. ${metadata.notes || ""}`,
-      meatId: updatedBatch.meatId, // ✅ Use the ID directly
-      batchId: batchId, // ✅ Use the ID directly
+      meatId: updatedBatch.meatId,
+      batchId: batchId,
       sale: metadata.saleId ? { id: metadata.saleId } : null,
       timestamp: new Date(),
       createdAt: new Date(),
@@ -884,8 +925,8 @@ class BatchService {
       movementType: reason,
       qtyChange: weightToAdd,
       notes: `Added to batch #${batchId}. ${metadata.notes || ""}`,
-     meatId: updatedBatch.meatId,
-    batchId: batchId,
+      meatId: updatedBatch.meatId,
+      batchId: batchId,
       sale: metadata.saleId ? { id: metadata.saleId } : null,
       timestamp: new Date(),
       createdAt: new Date(),

@@ -7,6 +7,12 @@ const saleItemService = require("./SaleItem");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
 const Batch = require("../entities/Batch"); // ✅ Import Batch entity
+const { validate } = require("../validation/validate");
+const {
+  saleCreateSchema,
+  saleUpdateSchema,
+  saleStatusSchema,
+} = require("../validation/schemas/sale.schema");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -303,79 +309,73 @@ class SaleService {
     const Sale = require("../entities/Sale");
     const Meat = require("../entities/Meat");
     const Customer = require("../entities/Customer");
+    const Batch = require("../entities/Batch");
+    const saleItemService = require("./SaleItem");
 
     const saleRepo = this._getRepo(qr, Sale);
     const meatRepo = this._getRepo(qr, Meat);
     const customerRepo = this._getRepo(qr, Customer);
     const batchRepo = this._getRepo(qr, Batch);
 
-    try {
-      // Validate required fields
-      if (
-        !data.items ||
-        !Array.isArray(data.items) ||
-        data.items.length === 0
-      ) {
-        throw new Error("At least one item is required");
-      }
+    // ✅ Validate input
+    const validated = validate(saleCreateSchema, data, "Sale creation");
 
-      // Validate each item has batchId
-      for (const item of data.items) {
-        if (!item.batchId) {
-          throw new Error("A batch must be selected for each item");
-        }
-      }
+    try {
+      const {
+        items,
+        customerId,
+        paymentMethod,
+        notes,
+        loyaltyRedeemed,
+        voucherCode,
+      } = validated;
 
       // ✅ Get settings
       const enabledPaymentMethods = await this._getEnabledPaymentMethods(qr);
       const defaultPaymentMethod = await this._getDefaultPaymentMethod(qr);
       const maxDiscountPercent = await this._getMaxDiscountPercent(qr);
       const discountsEnabled = await this._isDiscountsEnabled(qr);
-      const taxRate = await this._getTaxRate(qr);
       const maxNotesLength = await this._getMaxNotesLength(qr);
       const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
 
       // ✅ Validate payment method
-      let paymentMethod = data.paymentMethod || defaultPaymentMethod;
-      if (!enabledPaymentMethods.includes(paymentMethod)) {
+      let finalPaymentMethod = paymentMethod || defaultPaymentMethod;
+      if (!enabledPaymentMethods.includes(finalPaymentMethod)) {
         throw new Error(
-          `Payment method "${paymentMethod}" is not enabled. Enabled: ${enabledPaymentMethods.join(", ")}`,
+          `Payment method "${finalPaymentMethod}" is not enabled. Enabled: ${enabledPaymentMethods.join(", ")}`,
         );
       }
 
       // ✅ Validate notes length
-      if (data.notes && data.notes.length > maxNotesLength) {
+      if (notes && notes.length > maxNotesLength) {
         throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
       }
 
       // ✅ Validate customer if provided
       let customer = null;
-      if (data.customerId) {
+      if (customerId) {
         customer = await customerRepo.findOne({
-          where: { id: data.customerId },
+          where: { id: customerId },
         });
         if (!customer) {
-          throw new Error(`Customer with ID ${data.customerId} not found`);
+          throw new Error(`Customer with ID ${customerId} not found`);
         }
       }
 
-      // Validate items, prepare sale items, and validate batches
+      // ✅ Validate loyalty redemption
+      const finalLoyaltyRedeemed = loyaltyRedeemed || 0;
+      if (finalLoyaltyRedeemed > 0 && !loyaltyEnabled) {
+        throw new Error("Loyalty points are disabled in system settings");
+      }
+
+      // ✅ Process items (business logic)
       const saleItemsData = [];
       let subtotal = 0;
       let totalDiscount = 0;
       let totalTax = 0;
 
-      for (const itemData of data.items) {
-        if (!itemData.meatId)
-          throw new Error("meatId is required for each item");
-        if (!itemData.weightKg || itemData.weightKg <= 0) {
-          throw new Error("weightKg must be greater than 0");
-        }
-        if (!itemData.batchId) {
-          throw new Error("batchId is required for each item");
-        }
-
-        // Validate meat exists and is active
+      for (const itemData of items) {
+        // Validate meat exists
         const meat = await meatRepo.findOne({
           where: { id: itemData.meatId, isActive: true },
         });
@@ -385,7 +385,7 @@ class SaleService {
           );
         }
 
-        // ✅ Validate batch
+        // ✅ Validate batch (critical business logic)
         const batch = await batchRepo.findOne({
           where: { id: itemData.batchId },
           relations: ["meat"],
@@ -393,22 +393,9 @@ class SaleService {
         if (!batch) {
           throw new Error(`Batch with ID ${itemData.batchId} not found`);
         }
-
-        // ✅ Gamitin ang batch.meat.id (hindi batch.meatId)
-        const batchMeatId = batch.meat?.id;
-        const batchMeatName = batch.meat?.name || "Unknown";
-
-        logger.debug(`[DEBUG] Batch #${itemData.batchId}:`, {
-          batchCode: batch.batchCode,
-          batchMeatId: batchMeatId,
-          itemMeatId: itemData.meatId,
-          batchMeatName: batchMeatName,
-          itemMeatName: meat.name,
-        });
-
-        if (batchMeatId !== itemData.meatId) {
+        if (batch.meat.id !== itemData.meatId) {
           throw new Error(
-            `Batch #${itemData.batchId} (${batch.batchCode}) belongs to meat #${batchMeatId} (${batchMeatName}), but item expects meat #${itemData.meatId} (${meat.name})`,
+            `Batch #${itemData.batchId} (${batch.batchCode}) belongs to meat #${batch.meat.id}, but item expects meat #${itemData.meatId}`,
           );
         }
         if (batch.status !== "active") {
@@ -429,8 +416,9 @@ class SaleService {
 
         const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
         const discount = itemData.discount ?? 0;
+        const tax = itemData.tax ?? 0;
 
-        // ✅ Validate discount if discounts are enabled
+        // ✅ Validate discount
         if (discount > 0) {
           if (!discountsEnabled) {
             throw new Error("Discounts are disabled in system settings");
@@ -444,9 +432,7 @@ class SaleService {
           }
         }
 
-        const tax = itemData.tax ?? 0;
         const lineTotal = unitPrice * itemData.weightKg - discount + tax;
-
         subtotal += unitPrice * itemData.weightKg;
         totalDiscount += discount;
         totalTax += tax;
@@ -458,34 +444,30 @@ class SaleService {
           tax,
           lineTotal,
           meatId: meat.id,
-          batchId: batch.id, // ✅ always a valid batch
+          batchId: batch.id,
         });
       }
 
-      // Determine loyalty usage
-      const loyaltyRedeemed = data.loyaltyRedeemed ?? 0;
-      const usedLoyalty = loyaltyRedeemed > 0;
-      if (usedLoyalty && !loyaltyEnabled) {
-        throw new Error("Loyalty points are disabled in system settings");
-      }
-
+      // ✅ Calculate totals
+      const totalAmount =
+        subtotal - totalDiscount + totalTax - finalLoyaltyRedeemed;
+      const usedLoyalty = finalLoyaltyRedeemed > 0;
       const usedDiscount = totalDiscount > 0;
-      const totalAmount = subtotal - totalDiscount + totalTax - loyaltyRedeemed;
 
-      // Create sale (initiated)
+      // ✅ Create sale
       const sale = saleRepo.create({
         timestamp: new Date(),
         status: "initiated",
-        paymentMethod,
+        paymentMethod: finalPaymentMethod,
         totalAmount: Math.round(totalAmount * 100) / 100,
-        notes: data.notes || null,
-        customer: customer || null,
+        notes: notes || null,
+        customer: customer,
         usedLoyalty,
-        loyaltyRedeemed,
+        loyaltyRedeemed: finalLoyaltyRedeemed,
         usedDiscount,
         totalDiscount,
-        usedVoucher: !!data.voucherCode,
-        voucherCode: data.voucherCode || null,
+        usedVoucher: !!voucherCode,
+        voucherCode: voucherCode || null,
         pointsEarn: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -493,7 +475,7 @@ class SaleService {
 
       const savedSale = await saveDb(saleRepo, sale, { queryRunner: qr });
 
-      // ✅ Create sale items using SaleItemService
+      // ✅ Create sale items
       for (const itemData of saleItemsData) {
         await saleItemService.create(
           {
@@ -504,25 +486,26 @@ class SaleService {
             discount: itemData.discount,
             tax: itemData.tax,
             lineTotal: itemData.lineTotal,
-            batchId: itemData.batchId, // ✅ always valid
+            batchId: itemData.batchId,
           },
           user,
           qr,
         );
       }
 
-      // ✅ Automatically mark as paid after linking items
+      // ✅ Mark as paid
       const paidSale = await this.markAsPaid(savedSale.id, user, qr);
 
-      // ✅ Audit log for creation
+      // ✅ Audit log
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
+        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logCreate("Sale", paidSale.id, paidSale, user);
       }
 
       logger.debug(`Sale created and paid: #${paidSale.id}`);
 
-      // Reload with relations
+      // ✅ Reload with relations
       const fullSale = await saleRepo.findOne({
         where: { id: paidSale.id },
         relations: ["saleItems", "saleItems.meat", "customer"],
@@ -562,6 +545,9 @@ class SaleService {
     const meatRepo = this._getRepo(qr, Meat);
     const customerRepo = this._getRepo(qr, Customer);
 
+    // ✅ Validate input
+    const validated = validate(saleUpdateSchema, data, "Sale update");
+
     try {
       const existing = await saleRepo.findOne({
         where: { id },
@@ -571,7 +557,6 @@ class SaleService {
         throw new Error(`Sale with ID ${id} not found`);
       }
 
-      // Only allow updates for initiated status
       if (existing.status !== "initiated") {
         throw new Error(
           `Cannot update a sale with status "${existing.status}"`,
@@ -587,39 +572,46 @@ class SaleService {
       const maxNotesLength = await this._getMaxNotesLength(qr);
       const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
 
+      // ✅ Use validated data
+      const {
+        paymentMethod,
+        notes,
+        customerId,
+        items,
+        voucherCode,
+        loyaltyRedeemed,
+      } = validated;
+
       // ✅ Validate payment method if provided
-      if (data.paymentMethod) {
-        if (!enabledPaymentMethods.includes(data.paymentMethod)) {
-          throw new Error(
-            `Payment method "${data.paymentMethod}" is not enabled. Enabled: ${enabledPaymentMethods.join(", ")}`,
-          );
-        }
+      if (paymentMethod && !enabledPaymentMethods.includes(paymentMethod)) {
+        throw new Error(
+          `Payment method "${paymentMethod}" is not enabled. Enabled: ${enabledPaymentMethods.join(", ")}`,
+        );
       }
 
-      // ✅ Validate notes length if provided
-      if (data.notes !== undefined && data.notes.length > maxNotesLength) {
+      // ✅ Validate notes
+      if (notes !== undefined && notes.length > maxNotesLength) {
         throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
       }
 
-      // Handle customer change
-      if (data.customerId !== undefined) {
-        if (data.customerId === null || data.customerId === "") {
+      // ✅ Handle customer change
+      if (customerId !== undefined) {
+        if (customerId === null || customerId === "") {
           existing.customer = null;
         } else {
           const customer = await customerRepo.findOne({
-            where: { id: data.customerId },
+            where: { id: customerId },
           });
           if (!customer) {
-            throw new Error(`Customer with ID ${data.customerId} not found`);
+            throw new Error(`Customer with ID ${customerId} not found`);
           }
           existing.customer = customer;
         }
-        delete data.customerId;
       }
 
-      // Handle items update (replace all items)
-      if (data.items) {
-        if (!Array.isArray(data.items) || data.items.length === 0) {
+      // ✅ Handle items update (replace all items)
+      if (items) {
+        if (!Array.isArray(items) || items.length === 0) {
           throw new Error("At least one item is required");
         }
 
@@ -628,19 +620,13 @@ class SaleService {
           await removeDb(saleItemRepo, oldItem, { queryRunner: qr });
         }
 
-        // Create new items (batch validation can be added here if needed)
+        // Create new items
         const newItems = [];
         let subtotal = 0;
         let totalDiscount = 0;
         let totalTax = 0;
 
-        for (const itemData of data.items) {
-          if (!itemData.meatId)
-            throw new Error("meatId is required for each item");
-          if (!itemData.weightKg || itemData.weightKg <= 0) {
-            throw new Error("weightKg must be greater than 0");
-          }
-
+        for (const itemData of items) {
           const meat = await meatRepo.findOne({
             where: { id: itemData.meatId, isActive: true },
           });
@@ -652,8 +638,9 @@ class SaleService {
 
           const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
           const discount = itemData.discount ?? 0;
+          const tax = itemData.tax ?? 0;
 
-          // ✅ Validate discount if discounts are enabled
+          // ✅ Validate discount
           if (discount > 0) {
             if (!discountsEnabled) {
               throw new Error("Discounts are disabled in system settings");
@@ -667,9 +654,7 @@ class SaleService {
             }
           }
 
-          const tax = itemData.tax ?? 0;
           const lineTotal = unitPrice * itemData.weightKg - discount + tax;
-
           subtotal += unitPrice * itemData.weightKg;
           totalDiscount += discount;
           totalTax += tax;
@@ -685,19 +670,20 @@ class SaleService {
           });
         }
 
-        // Update sale totals
-        const loyaltyRedeemed =
-          data.loyaltyRedeemed ?? existing.loyaltyRedeemed ?? 0;
-
-        if (loyaltyRedeemed > 0 && !loyaltyEnabled) {
+        // ✅ Handle loyalty
+        const finalLoyaltyRedeemed =
+          loyaltyRedeemed ?? existing.loyaltyRedeemed ?? 0;
+        if (finalLoyaltyRedeemed > 0 && !loyaltyEnabled) {
           throw new Error("Loyalty points are disabled in system settings");
         }
 
         const totalAmount =
-          subtotal - totalDiscount + totalTax - loyaltyRedeemed;
+          subtotal - totalDiscount + totalTax - finalLoyaltyRedeemed;
         existing.totalAmount = Math.round(totalAmount * 100) / 100;
         existing.totalDiscount = totalDiscount;
         existing.usedDiscount = totalDiscount > 0;
+        existing.loyaltyRedeemed = finalLoyaltyRedeemed;
+        existing.usedLoyalty = finalLoyaltyRedeemed > 0;
 
         // Save new items
         for (const itemData of newItems) {
@@ -708,18 +694,14 @@ class SaleService {
           });
           await saveDb(saleItemRepo, saleItem, { queryRunner: qr });
         }
-
-        delete data.items;
-        delete data.loyaltyRedeemed;
       }
 
-      // Update other fields
-      if (data.paymentMethod !== undefined)
-        existing.paymentMethod = data.paymentMethod;
-      if (data.notes !== undefined) existing.notes = data.notes;
-      if (data.voucherCode !== undefined) {
-        existing.voucherCode = data.voucherCode;
-        existing.usedVoucher = !!data.voucherCode;
+      // ✅ Update other fields
+      if (paymentMethod !== undefined) existing.paymentMethod = paymentMethod;
+      if (notes !== undefined) existing.notes = notes;
+      if (voucherCode !== undefined) {
+        existing.voucherCode = voucherCode;
+        existing.usedVoucher = !!voucherCode;
       }
 
       existing.updatedAt = new Date();
@@ -728,12 +710,12 @@ class SaleService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
+        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logUpdate("Sale", id, oldData, saved, user);
       }
 
       logger.debug(`Sale updated: #${id}`);
 
-      // Reload with relations
       const fullSale = await saleRepo.findOne({
         where: { id: saved.id },
         relations: ["saleItems", "saleItems.meat", "customer"],
@@ -1320,20 +1302,19 @@ class SaleService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
+        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
       }
 
       logger.info(
         `Sale #${id} marked as paid (subscriber will trigger side effects)`,
       );
-
       return updatedSale;
     } catch (error) {
       console.error("Failed to mark sale as paid:", error.message);
       throw error;
     }
   }
-
   // ============================================================
   // ✅ DAILY SALES SUMMARY
   // ============================================================
@@ -1413,10 +1394,18 @@ class SaleService {
    * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
    * @returns {Promise<Sale>} Updated sale entity
    */
+
   async voidSale(id, reason = "", user = "system", qr = null) {
     const { updateDb } = require("../utils/dbUtils/dbActions");
     const Sale = require("../entities/Sale");
     const saleRepo = this._getRepo(qr, Sale);
+
+    // ✅ Validate reason (optional)
+    const validated = validate(
+      { reason: z.string().max(500).optional() },
+      { reason },
+      "Void reason",
+    );
 
     try {
       const sale = await saleRepo.findOne({ where: { id } });
@@ -1431,14 +1420,15 @@ class SaleService {
       const oldData = { ...sale };
       sale.status = "voided";
       sale.notes = sale.notes
-        ? `${sale.notes}\nVoided: ${reason}`
-        : `Voided: ${reason}`;
+        ? `${sale.notes}\nVoided: ${validated.reason}`
+        : `Voided: ${validated.reason}`;
       sale.updatedAt = new Date();
 
       const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
+        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
       }
 
@@ -1466,6 +1456,7 @@ class SaleService {
    * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
    * @returns {Promise<Sale>} Updated sale entity
    */
+
   async refundSale(
     id,
     reason = "",
@@ -1477,6 +1468,22 @@ class SaleService {
     const { updateDb } = require("../utils/dbUtils/dbActions");
     const Sale = require("../entities/Sale");
     const saleRepo = this._getRepo(qr, Sale);
+
+    // ✅ Validate reason and restockItems
+    const validated = validate(
+      {
+        reason: z.string().max(500).optional(),
+        restock: z.boolean(),
+        restockItems: z.array(
+          z.object({
+            itemIndex: z.number().int().min(0),
+            restock: z.boolean(),
+          }),
+        ),
+      },
+      { reason, restock, restockItems },
+      "Refund data",
+    );
 
     try {
       const sale = await saleRepo.findOne({
@@ -1498,9 +1505,8 @@ class SaleService {
 
       const oldData = { ...sale };
 
-      // Store refund metadata in notes
-      const restockInfo = `Restock: ${restock}`;
-      const itemsInfo = restockItems
+      const restockInfo = `Restock: ${validated.restock}`;
+      const itemsInfo = validated.restockItems
         .map(
           (ri) => `Item ${ri.itemIndex}: ${ri.restock ? "restock" : "waste"}`,
         )
@@ -1508,10 +1514,10 @@ class SaleService {
 
       sale.status = "refunded";
       sale.notes = sale.notes
-        ? `${sale.notes}\nRefunded: ${reason || "No reason"} (${restockInfo})`
-        : `Refunded: ${reason || "No reason"} (${restockInfo})`;
+        ? `${sale.notes}\nRefunded: ${validated.reason || "No reason"} (${restockInfo})`
+        : `Refunded: ${validated.reason || "No reason"} (${restockInfo})`;
 
-      if (restockItems.length > 0) {
+      if (validated.restockItems.length > 0) {
         sale.notes = `${sale.notes}\nItem status: ${itemsInfo}`;
       }
 
@@ -1519,19 +1525,20 @@ class SaleService {
 
       const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
 
-      // ✅ Store restock options in metadata for the state service
+      // Store refund metadata for state service
       updatedSale._refundMeta = {
-        restock,
-        restockItems,
-        reason,
+        restock: validated.restock,
+        restockItems: validated.restockItems,
+        reason: validated.reason,
       };
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
+        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
       }
 
-      logger.debug(`Sale #${id} refunded (restock: ${restock})`);
+      logger.debug(`Sale #${id} refunded (restock: ${validated.restock})`);
       return updatedSale;
     } catch (error) {
       console.error("Failed to refund sale:", error.message);

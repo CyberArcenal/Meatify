@@ -5,6 +5,13 @@ const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
+const { validate } = require("../validation");
+const {
+  purchaseCreateSchema,
+  purchaseUpdateSchema,
+  purchaseStatusSchema,
+} = require("../validation/schemas/purchase.schema");
+const { z } = require("zod");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -494,7 +501,7 @@ class PurchaseService {
   }
 
   // ============================================================
-  // ✏️ WRITE OPERATIONS (CRUD)
+  // ✏️ WRITE OPERATIONS (CRUD) - WITH VALIDATION
   // ============================================================
 
   /**
@@ -515,75 +522,55 @@ class PurchaseService {
     const meatRepo = this._getRepo(qr, Meat);
     const supplierRepo = this._getRepo(qr, Supplier);
 
-    try {
-      if (!data.supplierId) throw new Error("supplierId is required");
-      if (
-        !data.items ||
-        !Array.isArray(data.items) ||
-        data.items.length === 0
-      ) {
-        throw new Error("At least one item is required");
-      }
+    // ✅ Validate input
+    const validated = validate(purchaseCreateSchema, data, "Purchase creation");
 
-      if (data.notes) {
+    try {
+      const { supplierId, items, referenceNo, orderDate, status, notes } =
+        validated;
+
+      // ✅ Validate notes length (business rule, though already in schema)
+      if (notes) {
         const maxNotesLength = await this._getMaxNotesLength(qr);
-        if (data.notes.length > maxNotesLength) {
+        if (notes.length > maxNotesLength) {
           throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
         }
       }
 
-      if (data.status) {
-        const allowedStatuses = await this._getAllowedStatuses(qr);
-        if (!allowedStatuses.includes(data.status)) {
-          throw new Error(
-            `Invalid purchase status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
-          );
-        }
-      }
-
+      // ✅ Validate supplier
       const supplier = await supplierRepo.findOne({
-        where: { id: data.supplierId, isActive: true },
+        where: { id: supplierId, isActive: true },
       });
       if (!supplier) {
-        throw new Error(
-          `Supplier with ID ${data.supplierId} not found or inactive`,
-        );
+        throw new Error(`Supplier with ID ${supplierId} not found or inactive`);
       }
 
+      // ✅ Process items
       const maxQuantity = await this._getMaxQuantity(qr);
       const maxUnitPrice = await this._getMaxUnitPrice(qr);
 
       const purchaseItems = [];
       let totalAmount = 0;
 
-      for (const itemData of data.items) {
-        if (!itemData.meatId)
-          throw new Error("meatId is required for each item");
-        if (!itemData.quantity || itemData.quantity <= 0) {
-          throw new Error("quantity must be greater than 0");
-        }
-        if (itemData.quantity > maxQuantity) {
-          throw new Error(
-            `Quantity ${itemData.quantity} exceeds maximum allowed of ${maxQuantity}`,
-          );
-        }
-        if (itemData.unitPrice === undefined || itemData.unitPrice < 0) {
-          throw new Error("unitPrice must be non-negative");
-        }
-        if (itemData.unitPrice > maxUnitPrice) {
-          throw new Error(
-            `Unit price ₱${itemData.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
-          );
-        }
-        if (!itemData.expiryDate)
-          throw new Error("expiryDate is required for each item");
-
+      for (const itemData of items) {
         const meat = await meatRepo.findOne({
           where: { id: itemData.meatId, isActive: true },
         });
         if (!meat) {
           throw new Error(
             `Meat with ID ${itemData.meatId} not found or inactive`,
+          );
+        }
+
+        // ✅ Validate quantity and unit price (already validated by Zod, but double-check)
+        if (itemData.quantity > maxQuantity) {
+          throw new Error(
+            `Quantity ${itemData.quantity} exceeds maximum allowed of ${maxQuantity}`,
+          );
+        }
+        if (itemData.unitPrice > maxUnitPrice) {
+          throw new Error(
+            `Unit price ₱${itemData.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
           );
         }
 
@@ -604,23 +591,27 @@ class PurchaseService {
         });
       }
 
-      let referenceNo = data.referenceNo;
-      if (!referenceNo) {
+      // ✅ Generate reference number
+      let finalReferenceNo = referenceNo;
+      if (!finalReferenceNo) {
         const prefix = await this._getReferencePrefix(qr);
-        referenceNo = await this.generateReferenceNo(purchaseRepo, prefix);
+        finalReferenceNo = await this.generateReferenceNo(purchaseRepo, prefix);
       } else {
-        const existing = await purchaseRepo.findOne({ where: { referenceNo } });
+        const existing = await purchaseRepo.findOne({
+          where: { referenceNo: finalReferenceNo },
+        });
         if (existing) {
-          throw new Error(`Reference "${referenceNo}" already exists`);
+          throw new Error(`Reference "${finalReferenceNo}" already exists`);
         }
       }
 
+      // ✅ Create purchase
       const purchase = purchaseRepo.create({
-        referenceNo,
-        orderDate: data.orderDate ? new Date(data.orderDate) : new Date(),
-        status: data.status || "pending",
+        referenceNo: finalReferenceNo,
+        orderDate: orderDate ? new Date(orderDate) : new Date(),
+        status: status || "pending",
         totalAmount: Math.round(totalAmount * 100) / 100,
-        notes: data.notes || null,
+        notes: notes || null,
         supplier: supplier,
         createdAt: new Date(),
         updatedAt: new Date(),
@@ -630,6 +621,7 @@ class PurchaseService {
         queryRunner: qr,
       });
 
+      // ✅ Create purchase items
       for (const itemData of purchaseItems) {
         const purchaseItem = purchaseItemRepo.create({
           ...itemData,
@@ -641,6 +633,7 @@ class PurchaseService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
+        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logCreate(
           "Purchase",
           savedPurchase.id,
@@ -688,6 +681,9 @@ class PurchaseService {
     const meatRepo = this._getRepo(qr, Meat);
     const supplierRepo = this._getRepo(qr, Supplier);
 
+    // ✅ Validate input
+    const validated = validate(purchaseUpdateSchema, data, "Purchase update");
+
     try {
       const existing = await purchaseRepo.findOne({
         where: { id },
@@ -705,49 +701,56 @@ class PurchaseService {
 
       const oldData = { ...existing };
 
-      if (data.notes !== undefined) {
+      // Use validated data
+      const { supplierId, items, referenceNo, orderDate, notes } = validated;
+
+      // ✅ Validate notes length if provided
+      if (notes !== undefined) {
         const maxNotesLength = await this._getMaxNotesLength(qr);
-        if (data.notes.length > maxNotesLength) {
+        if (notes.length > maxNotesLength) {
           throw new Error(`Notes cannot exceed ${maxNotesLength} characters`);
         }
+        existing.notes = notes;
       }
 
-      if (data.supplierId !== undefined) {
+      // ✅ Handle supplier change
+      if (supplierId !== undefined) {
         const supplier = await supplierRepo.findOne({
-          where: { id: data.supplierId, isActive: true },
+          where: { id: supplierId, isActive: true },
         });
         if (!supplier) {
           throw new Error(
-            `Supplier with ID ${data.supplierId} not found or inactive`,
+            `Supplier with ID ${supplierId} not found or inactive`,
           );
         }
         existing.supplier = supplier;
-        delete data.supplierId;
       }
 
-      if (data.referenceNo && data.referenceNo !== existing.referenceNo) {
+      // ✅ Handle reference number change
+      if (referenceNo && referenceNo !== existing.referenceNo) {
         const duplicate = await purchaseRepo.findOne({
-          where: { referenceNo: data.referenceNo },
+          where: { referenceNo: referenceNo },
         });
         if (duplicate) {
-          throw new Error(`Reference "${data.referenceNo}" already exists`);
+          throw new Error(`Reference "${referenceNo}" already exists`);
         }
-        existing.referenceNo = data.referenceNo;
-        delete data.referenceNo;
+        existing.referenceNo = referenceNo;
       }
 
-      if (data.items) {
+      // ✅ Handle items update (replace all items)
+      if (items) {
         if (existing.status !== "pending") {
           throw new Error("Can only update items for pending purchases");
         }
 
-        if (!Array.isArray(data.items) || data.items.length === 0) {
+        if (!Array.isArray(items) || items.length === 0) {
           throw new Error("At least one item is required");
         }
 
         const maxQuantity = await this._getMaxQuantity(qr);
         const maxUnitPrice = await this._getMaxUnitPrice(qr);
 
+        // Remove old items
         for (const oldItem of existing.purchaseItems) {
           await removeDb(purchaseItemRepo, oldItem, { queryRunner: qr });
         }
@@ -755,7 +758,8 @@ class PurchaseService {
         const newItems = [];
         let totalAmount = 0;
 
-        for (const itemData of data.items) {
+        for (const itemData of items) {
+          // Validate required fields
           if (!itemData.meatId)
             throw new Error("meatId is required for each item");
           if (!itemData.quantity || itemData.quantity <= 0) {
@@ -774,8 +778,9 @@ class PurchaseService {
               `Unit price ₱${itemData.unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
             );
           }
-          if (!itemData.expiryDate)
+          if (!itemData.expiryDate) {
             throw new Error("expiryDate is required for each item");
+          }
 
           const meat = await meatRepo.findOne({
             where: { id: itemData.meatId, isActive: true },
@@ -806,6 +811,7 @@ class PurchaseService {
 
         existing.totalAmount = Math.round(totalAmount * 100) / 100;
 
+        // Save new items
         for (const itemData of newItems) {
           const purchaseItem = purchaseItemRepo.create({
             ...itemData,
@@ -813,15 +819,11 @@ class PurchaseService {
           });
           await saveDb(purchaseItemRepo, purchaseItem, { queryRunner: qr });
         }
-
-        delete data.items;
       }
 
-      if (data.orderDate !== undefined) {
-        existing.orderDate = new Date(data.orderDate);
-      }
-      if (data.notes !== undefined) {
-        existing.notes = data.notes;
+      // ✅ Handle order date
+      if (orderDate !== undefined) {
+        existing.orderDate = new Date(orderDate);
       }
 
       existing.updatedAt = new Date();
@@ -1060,6 +1062,13 @@ class PurchaseService {
     const Purchase = require("../entities/Purchase");
     const purchaseRepo = this._getRepo(qr, Purchase);
 
+    // ✅ Validate reason
+    const validated = validate(
+      z.object({ reason: z.string().max(500).optional() }),
+      { reason },
+      "Cancel reason",
+    );
+
     const purchase = await purchaseRepo.findOne({
       where: { id: purchaseId },
       relations: ["supplier", "purchaseItems", "purchaseItems.meat"],
@@ -1084,8 +1093,8 @@ class PurchaseService {
 
     purchase.status = "cancelled";
     purchase.notes = purchase.notes
-      ? `${purchase.notes}\nCancelled: ${reason}`
-      : `Cancelled: ${reason}`;
+      ? `${purchase.notes}\nCancelled: ${validated.reason}`
+      : `Cancelled: ${validated.reason}`;
     purchase.updatedAt = new Date();
 
     const cancelledPurchase = await updateDb(purchaseRepo, purchase, {
@@ -1094,6 +1103,7 @@ class PurchaseService {
 
     const auditEnabled = await this._isAuditEnabled(qr);
     if (auditEnabled) {
+      const auditLogger = require("../utils/auditLogger");
       await auditLogger.logUpdate(
         "Purchase",
         purchaseId,
@@ -1103,9 +1113,7 @@ class PurchaseService {
       );
     }
 
-    logger.info(
-      `[Purchase] Purchase #${purchaseId} cancelled (subscriber will handle side effects)`,
-    );
+    logger.info(`[Purchase] Purchase #${purchaseId} cancelled`);
     return cancelledPurchase;
   }
 
@@ -1127,6 +1135,41 @@ class PurchaseService {
         results.created.push(saved);
       } catch (err) {
         results.errors.push({ purchase: data, error: err.message });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Bulk update purchases
+   * @param {Array<{ id: number, updates: Object }>} updatesArray
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async bulkUpdate(updatesArray, user = "system", qr = null) {
+    const results = { updated: [], errors: [] };
+    for (const { id, updates } of updatesArray) {
+      try {
+        if (updates.status) {
+          switch (updates.status) {
+            case "approved":
+              await this.approve(id, user, qr);
+              break;
+            case "completed":
+              await this.complete(id, user, qr);
+              break;
+            case "cancelled":
+              await this.cancel(id, updates.reason || "", user, qr);
+              break;
+            default:
+              await this.update(id, updates, user, qr);
+          }
+        } else {
+          await this.update(id, updates, user, qr);
+        }
+        results.updated.push({ id, status: "success" });
+      } catch (err) {
+        results.errors.push({ id, error: err.message });
       }
     }
     return results;
@@ -1339,36 +1382,6 @@ class PurchaseService {
       allowedStatuses,
       auditEnabled,
     };
-  }
-
-  // Sa src/services/Purchase.js
-  async bulkUpdate(updatesArray, user = "system", qr = null) {
-    const results = { updated: [], errors: [] };
-    for (const { id, updates } of updatesArray) {
-      try {
-        if (updates.status) {
-          switch (updates.status) {
-            case "approved":
-              await this.approve(id, user, qr);
-              break;
-            case "completed":
-              await this.complete(id, user, qr);
-              break;
-            case "cancelled":
-              await this.cancel(id, updates.reason || "", user, qr);
-              break;
-            default:
-              await this.update(id, updates, user, qr);
-          }
-        } else {
-          await this.update(id, updates, user, qr);
-        }
-        results.updated.push({ id, status: "success" });
-      } catch (err) {
-        results.errors.push({ id, error: err.message });
-      }
-    }
-    return results;
   }
 }
 

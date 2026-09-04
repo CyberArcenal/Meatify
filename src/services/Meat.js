@@ -5,6 +5,12 @@ const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
+const { validate } = require("../validation");
+const {
+  meatCreateSchema,
+  meatUpdateSchema,
+  meatPriceSchema,
+} = require("../validation/schemas/meat.schema");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -429,7 +435,7 @@ class MeatService {
   }
 
   // ============================================================
-  // ✏️ WRITE OPERATIONS (CRUD)
+  // ✏️ WRITE OPERATIONS (CRUD) - WITH VALIDATION
   // ============================================================
 
   /**
@@ -448,109 +454,90 @@ class MeatService {
     const categoryRepo = this._getRepo(qr, Category);
     const supplierRepo = this._getRepo(qr, Supplier);
 
+    // ✅ Validate input
+    const validated = validate(meatCreateSchema, data, "Meat creation");
+
     try {
-      // Validate required fields
-      if (!data.name) throw new Error("name is required");
-      if (
-        data.pricePerKg === undefined ||
-        data.pricePerKg === null ||
-        data.pricePerKg < 0
-      ) {
-        throw new Error("pricePerKg must be a non-negative number");
-      }
+      const {
+        sku,
+        name,
+        barcode,
+        description,
+        pricePerKg,
+        isActive,
+        categoryId,
+        supplierId,
+        image,
+      } = validated;
 
-      // Validate name length
-      const maxNameLength = await this._getMaxNameLength(qr);
-      if (data.name.length > maxNameLength) {
-        throw new Error(`Meat name cannot exceed ${maxNameLength} characters`);
-      }
-
-      // Validate description length
-      if (data.description) {
-        const maxDescLength = await this._getMaxDescriptionLength(qr);
-        if (data.description.length > maxDescLength) {
-          throw new Error(
-            `Description cannot exceed ${maxDescLength} characters`,
-          );
-        }
-      }
-
-      // Validate max price
+      // ✅ Validate max price (business rule, not covered by schema)
       const maxPrice = await this._getMaxPrice(qr);
-      if (data.pricePerKg > maxPrice) {
+      if (pricePerKg > maxPrice) {
         throw new Error(
-          `Price ₱${data.pricePerKg} exceeds maximum allowed of ₱${maxPrice}`,
+          `Price ₱${pricePerKg} exceeds maximum allowed of ₱${maxPrice}`,
         );
       }
 
-      // Validate barcode format
-      if (data.barcode && !this._isValidBarcode(data.barcode)) {
-        throw new Error(`Invalid barcode format: "${data.barcode}"`);
-      }
-
-      // Auto-generate SKU if not provided
-      let sku = data.sku;
-      if (!sku) {
+      // ✅ Auto-generate SKU if not provided
+      let finalSku = sku;
+      if (!finalSku) {
         const prefix = await this._getSkuPrefix(qr);
-        sku = await this.generateSku(meatRepo, prefix);
+        finalSku = await this.generateSku(meatRepo, prefix);
       } else {
-        const existing = await meatRepo.findOne({ where: { sku } });
+        const existing = await meatRepo.findOne({ where: { sku: finalSku } });
         if (existing) {
-          throw new Error(`SKU "${sku}" already exists`);
+          throw new Error(`SKU "${finalSku}" already exists`);
         }
       }
 
-      // Validate barcode uniqueness if provided
-      if (data.barcode) {
+      // ✅ Validate barcode uniqueness if provided
+      if (barcode) {
         const existing = await meatRepo.findOne({
-          where: { barcode: data.barcode },
+          where: { barcode: barcode },
         });
         if (existing) {
-          throw new Error(`Barcode "${data.barcode}" already exists`);
+          throw new Error(`Barcode "${barcode}" already exists`);
         }
       }
 
-      // Validate category if provided
+      // ✅ Validate category if provided
       let category = null;
-      if (data.categoryId) {
+      if (categoryId) {
         category = await categoryRepo.findOne({
-          where: { id: data.categoryId, isActive: true },
+          where: { id: categoryId, isActive: true },
         });
         if (!category) {
           throw new Error(
-            `Category with ID ${data.categoryId} not found or inactive`,
+            `Category with ID ${categoryId} not found or inactive`,
           );
         }
       }
 
-      // Validate supplier if provided
+      // ✅ Validate supplier if provided
       let supplier = null;
-      if (data.supplierId) {
+      if (supplierId) {
         supplier = await supplierRepo.findOne({
-          where: { id: data.supplierId, isActive: true },
+          where: { id: supplierId, isActive: true },
         });
         if (!supplier) {
           throw new Error(
-            `Supplier with ID ${data.supplierId} not found or inactive`,
+            `Supplier with ID ${supplierId} not found or inactive`,
           );
         }
       }
 
-      // Use system setting for default active status
+      // ✅ Use system setting for default active status
       const defaultActive = await this._getDefaultActiveStatus(qr);
-      const isActive =
-        data.isActive !== undefined ? data.isActive : defaultActive;
-
-      let imagePath = data.image || null;
+      const finalIsActive = isActive !== undefined ? isActive : defaultActive;
 
       const meat = meatRepo.create({
-        sku,
-        name: data.name,
-        barcode: data.barcode || null,
-        description: data.description || null,
-        pricePerKg: data.pricePerKg,
-        isActive: isActive,
-        image: imagePath,
+        sku: finalSku,
+        name: name,
+        barcode: barcode || null,
+        description: description || null,
+        pricePerKg: pricePerKg,
+        isActive: finalIsActive,
+        image: image || null,
         category: category,
         supplier: supplier,
         createdAt: new Date(),
@@ -593,6 +580,9 @@ class MeatService {
     const categoryRepo = this._getRepo(qr, Category);
     const supplierRepo = this._getRepo(qr, Supplier);
 
+    // ✅ Validate input
+    const validated = validate(meatUpdateSchema, data, "Meat update");
+
     try {
       const existing = await meatRepo.findOne({ where: { id } });
       if (!existing) {
@@ -601,102 +591,111 @@ class MeatService {
 
       const oldData = { ...existing };
 
-      // Prevent direct update of isActive or pricePerKg – use dedicated methods
-      if (data.isActive !== undefined && data.isActive !== existing.isActive) {
-        throw new Error("Use MeatStateService to update isActive status");
+      // Use validated data
+      const {
+        sku,
+        name,
+        barcode,
+        description,
+        pricePerKg,
+        isActive,
+        categoryId,
+        supplierId,
+        image,
+      } = validated;
+
+      // ❌ Prevent direct update of isActive or pricePerKg – use dedicated methods
+      if (isActive !== undefined && isActive !== existing.isActive) {
+        throw new Error("Use updateIsActive method to update isActive status");
       }
-      if (
-        data.pricePerKg !== undefined &&
-        data.pricePerKg !== existing.pricePerKg
-      ) {
+      if (pricePerKg !== undefined && pricePerKg !== existing.pricePerKg) {
         throw new Error("Use updatePrice method to update pricePerKg");
       }
 
-      // Validate name length if changed
-      if (data.name) {
+      // ✅ Validate name length if changed
+      if (name) {
         const maxNameLength = await this._getMaxNameLength(qr);
-        if (data.name.length > maxNameLength) {
+        if (name.length > maxNameLength) {
           throw new Error(
             `Meat name cannot exceed ${maxNameLength} characters`,
           );
         }
+        existing.name = name;
       }
 
-      // Validate description length if changed
-      if (data.description) {
+      // ✅ Validate description length if changed
+      if (description) {
         const maxDescLength = await this._getMaxDescriptionLength(qr);
-        if (data.description.length > maxDescLength) {
+        if (description.length > maxDescLength) {
           throw new Error(
             `Description cannot exceed ${maxDescLength} characters`,
           );
         }
+        existing.description = description;
       }
 
-      // SKU uniqueness (if changed)
-      if (data.sku && data.sku !== existing.sku) {
-        const duplicate = await meatRepo.findOne({ where: { sku: data.sku } });
+      // ✅ SKU uniqueness (if changed)
+      if (sku && sku !== existing.sku) {
+        const duplicate = await meatRepo.findOne({ where: { sku: sku } });
         if (duplicate) {
-          throw new Error(`SKU "${data.sku}" already exists`);
+          throw new Error(`SKU "${sku}" already exists`);
         }
+        existing.sku = sku;
       }
 
-      // Barcode uniqueness (if changed)
-      if (data.barcode && data.barcode !== existing.barcode) {
-        if (!this._isValidBarcode(data.barcode)) {
-          throw new Error(`Invalid barcode format: "${data.barcode}"`);
+      // ✅ Barcode uniqueness (if changed)
+      if (barcode && barcode !== existing.barcode) {
+        if (!this._isValidBarcode(barcode)) {
+          throw new Error(`Invalid barcode format: "${barcode}"`);
         }
         const duplicate = await meatRepo.findOne({
-          where: { barcode: data.barcode },
+          where: { barcode: barcode },
         });
         if (duplicate) {
-          throw new Error(`Barcode "${data.barcode}" already exists`);
+          throw new Error(`Barcode "${barcode}" already exists`);
         }
+        existing.barcode = barcode;
       }
 
-      // Handle category update
-      if (data.categoryId !== undefined) {
-        if (data.categoryId === null || data.categoryId === "") {
+      // ✅ Handle category update
+      if (categoryId !== undefined) {
+        if (categoryId === null || categoryId === "") {
           existing.category = null;
         } else {
           const category = await categoryRepo.findOne({
-            where: { id: data.categoryId, isActive: true },
+            where: { id: categoryId, isActive: true },
           });
           if (!category) {
             throw new Error(
-              `Category with ID ${data.categoryId} not found or inactive`,
+              `Category with ID ${categoryId} not found or inactive`,
             );
           }
           existing.category = category;
         }
-        delete data.categoryId;
       }
 
-      // Handle supplier update
-      if (data.supplierId !== undefined) {
-        if (data.supplierId === null || data.supplierId === "") {
+      // ✅ Handle supplier update
+      if (supplierId !== undefined) {
+        if (supplierId === null || supplierId === "") {
           existing.supplier = null;
         } else {
           const supplier = await supplierRepo.findOne({
-            where: { id: data.supplierId, isActive: true },
+            where: { id: supplierId, isActive: true },
           });
           if (!supplier) {
             throw new Error(
-              `Supplier with ID ${data.supplierId} not found or inactive`,
+              `Supplier with ID ${supplierId} not found or inactive`,
             );
           }
           existing.supplier = supplier;
         }
-        delete data.supplierId;
       }
 
-      // Handle image
-      if (data.image !== undefined) {
-        existing.image = data.image;
-        delete data.image;
+      // ✅ Handle image
+      if (image !== undefined) {
+        existing.image = image;
       }
 
-      // Apply other fields
-      Object.assign(existing, data);
       existing.updatedAt = new Date();
 
       const saved = await updateDb(meatRepo, existing, { queryRunner: qr });
@@ -726,6 +725,11 @@ class MeatService {
     const { updateDb } = require("../utils/dbUtils/dbActions");
     const Meat = require("../entities/Meat");
     const meatRepo = this._getRepo(qr, Meat);
+
+    // ✅ Validate isActive is boolean (simple validation)
+    if (typeof isActive !== "boolean") {
+      throw new Error("isActive must be a boolean");
+    }
 
     const existing = await meatRepo.findOne({ where: { id } });
     if (!existing) {
@@ -790,7 +794,7 @@ class MeatService {
   }
 
   /**
-   * ✅ DEDICATED SETTER: Update price
+   * ✅ DEDICATED SETTER: Update price with validation
    * @param {number} id
    * @param {number} newPrice
    * @param {string} user
@@ -801,14 +805,13 @@ class MeatService {
     const Meat = require("../entities/Meat");
     const meatRepo = this._getRepo(qr, Meat);
 
-    if (newPrice < 0) {
-      throw new Error("Price cannot be negative");
-    }
+    // ✅ Validate price using schema
+    const validated = validate(meatPriceSchema, { newPrice }, "Meat price");
 
     const maxPrice = await this._getMaxPrice(qr);
-    if (newPrice > maxPrice) {
+    if (validated.newPrice > maxPrice) {
       throw new Error(
-        `Price ₱${newPrice} exceeds maximum allowed of ₱${maxPrice}`,
+        `Price ₱${validated.newPrice} exceeds maximum allowed of ₱${maxPrice}`,
       );
     }
 
@@ -818,7 +821,7 @@ class MeatService {
     }
 
     const oldData = { pricePerKg: existing.pricePerKg };
-    existing.pricePerKg = newPrice;
+    existing.pricePerKg = validated.newPrice;
     existing.updatedAt = new Date();
 
     const saved = await updateDb(meatRepo, existing, { queryRunner: qr });
@@ -830,7 +833,7 @@ class MeatService {
     }
 
     logger.debug(
-      `Meat #${id} price updated: ${oldData.pricePerKg} → ${newPrice}`,
+      `Meat #${id} price updated: ${oldData.pricePerKg} → ${validated.newPrice}`,
     );
     return saved;
   }
@@ -847,16 +850,20 @@ class MeatService {
 
     for (const { id, price } of updates) {
       try {
-        if (price < 0) {
-          throw new Error("Price cannot be negative");
-        }
-        if (price > maxPrice) {
+        // Validate each price using the schema
+        const validated = validate(
+          meatPriceSchema,
+          { newPrice: price },
+          "Bulk meat price",
+        );
+
+        if (validated.newPrice > maxPrice) {
           throw new Error(
-            `Price ₱${price} exceeds maximum allowed of ₱${maxPrice}`,
+            `Price ₱${validated.newPrice} exceeds maximum allowed of ₱${maxPrice}`,
           );
         }
 
-        const saved = await this.updatePrice(id, price, user, qr);
+        const saved = await this.updatePrice(id, validated.newPrice, user, qr);
         results.updated.push(saved);
       } catch (err) {
         results.errors.push({ id, price, error: err.message });
@@ -988,6 +995,7 @@ class MeatService {
     const results = { imported: [], errors: [] };
     for (const record of records) {
       try {
+        // Validate each row before creating
         const data = {
           sku: record.sku || null,
           name: record.name,
@@ -1002,9 +1010,12 @@ class MeatService {
             ? parseInt(record.supplierId, 10)
             : null,
         };
+
         if (!data.name || isNaN(data.pricePerKg)) {
           throw new Error("name and pricePerKg are required");
         }
+
+        // The create method already validates using the schema
         const saved = await this.create(data, user, qr);
         results.imported.push(saved);
       } catch (err) {

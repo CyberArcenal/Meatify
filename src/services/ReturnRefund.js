@@ -6,6 +6,12 @@ const { logger } = require("../utils/logger");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
 const batchService = require("./Batch"); // ✅ Import BatchService
+const { z } = require("zod"); // ✅ Fixed import
+const {
+  returnRefundCreateSchema,
+  returnRefundUpdateSchema, // ✅ Added missing import
+} = require("../validation/schemas/returnRefund.schema");
+const { validate } = require("../validation/validate");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -614,73 +620,53 @@ class ReturnRefundService {
     const meatRepo = this._getRepo(qr, Meat);
     const batchRepo = this._getRepo(qr, Batch);
 
+    // ✅ Validate input
+    const validated = validate(returnRefundCreateSchema, data, 'Return creation');
+
     try {
+      const { saleId, customerId, reason, refundMethod, items, referenceNo, status } = validated;
+
+      // ✅ Check if refunds are enabled
       const refundsEnabled = await this._isRefundsEnabled(qr);
       if (!refundsEnabled) {
         throw new Error("Refunds are disabled in system settings");
       }
 
-      if (!data.saleId) throw new Error("saleId is required");
-      if (!data.customerId) throw new Error("customerId is required");
-      if (!data.refundMethod) throw new Error("refundMethod is required");
-      if (
-        !data.items ||
-        !Array.isArray(data.items) ||
-        data.items.length === 0
-      ) {
-        throw new Error("At least one return item is required");
-      }
-
-      if (data.reason) {
+      // ✅ Validate reason length
+      if (reason) {
         const maxReasonLength = await this._getMaxReasonLength(qr);
-        if (data.reason.length > maxReasonLength) {
+        if (reason.length > maxReasonLength) {
           throw new Error(`Reason cannot exceed ${maxReasonLength} characters`);
         }
       }
 
-      if (data.status) {
-        const allowedStatuses = await this._getAllowedStatuses(qr);
-        if (!allowedStatuses.includes(data.status)) {
-          throw new Error(
-            `Invalid return status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
-          );
-        }
-      }
-
-      const sale = await saleRepo.findOne({ where: { id: data.saleId } });
+      // ✅ Validate sale
+      const sale = await saleRepo.findOne({ where: { id: saleId } });
       if (!sale) {
-        throw new Error(`Sale with ID ${data.saleId} not found`);
+        throw new Error(`Sale with ID ${saleId} not found`);
       }
       if (sale.status !== "paid") {
-        throw new Error(
-          `Cannot return from a sale with status "${sale.status}"`,
-        );
+        throw new Error(`Cannot return from a sale with status "${sale.status}"`);
       }
 
+      // ✅ Validate refund window
       const windowDays = await this._getRefundWindowDays(qr);
       const saleDate = new Date(sale.timestamp);
       const now = new Date();
       const daysDiff = (now - saleDate) / (1000 * 60 * 60 * 24);
       if (daysDiff > windowDays) {
-        throw new Error(
-          `Refund window of ${windowDays} days has passed (sale was ${Math.floor(daysDiff)} days ago)`,
-        );
+        throw new Error(`Refund window of ${windowDays} days has passed (sale was ${Math.floor(daysDiff)} days ago)`);
       }
 
-      const receiptRequired = await this._isReceiptRequired(qr);
-      if (receiptRequired) {
-        logger.warn(
-          "[ReturnRefund] Receipt validation not implemented, but receipt is required by settings",
-        );
-      }
-
+      // ✅ Validate customer
       const customer = await customerRepo.findOne({
-        where: { id: data.customerId },
+        where: { id: customerId },
       });
       if (!customer) {
-        throw new Error(`Customer with ID ${data.customerId} not found`);
+        throw new Error(`Customer with ID ${customerId} not found`);
       }
 
+      // ✅ Process items
       const maxWeight = await this._getMaxWeightKg(qr);
       const maxUnitPrice = await this._getMaxUnitPrice(qr);
       const maxTotalAmount = await this._getMaxTotalAmount(qr);
@@ -688,27 +674,12 @@ class ReturnRefundService {
       const returnItems = [];
       let totalAmount = 0;
 
-      for (const itemData of data.items) {
-        if (!itemData.meatId)
-          throw new Error("meatId is required for each item");
-        if (!itemData.batchId)
-          throw new Error("batchId is required for each item");
-        if (!itemData.weightKg || itemData.weightKg <= 0) {
-          throw new Error("weightKg must be greater than 0");
-        }
-        if (itemData.weightKg > maxWeight) {
-          throw new Error(
-            `Weight ${itemData.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`,
-          );
-        }
-
+      for (const itemData of items) {
         const meat = await meatRepo.findOne({
           where: { id: itemData.meatId, isActive: true },
         });
         if (!meat) {
-          throw new Error(
-            `Meat with ID ${itemData.meatId} not found or inactive`,
-          );
+          throw new Error(`Meat with ID ${itemData.meatId} not found or inactive`);
         }
 
         const batch = await batchRepo.findOne({
@@ -718,25 +689,24 @@ class ReturnRefundService {
           throw new Error(`Batch with ID ${itemData.batchId} not found`);
         }
         if (batch.meatId !== itemData.meatId) {
-          throw new Error(
-            `Batch #${itemData.batchId} does not belong to meat #${itemData.meatId}`,
-          );
+          throw new Error(`Batch #${itemData.batchId} does not belong to meat #${itemData.meatId}`);
+        }
+
+        // ✅ Validate weight and price
+        if (itemData.weightKg > maxWeight) {
+          throw new Error(`Weight ${itemData.weightKg}kg exceeds maximum allowed of ${maxWeight}kg`);
         }
 
         const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
         if (unitPrice > maxUnitPrice) {
-          throw new Error(
-            `Unit price ₱${unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`,
-          );
+          throw new Error(`Unit price ₱${unitPrice} exceeds maximum allowed of ₱${maxUnitPrice}`);
         }
 
         const subtotal = unitPrice * itemData.weightKg;
         totalAmount += subtotal;
 
         if (totalAmount > maxTotalAmount) {
-          throw new Error(
-            `Total amount ₱${totalAmount} exceeds maximum allowed of ₱${maxTotalAmount}`,
-          );
+          throw new Error(`Total amount ₱${totalAmount} exceeds maximum allowed of ₱${maxTotalAmount}`);
         }
 
         returnItems.push({
@@ -749,23 +719,25 @@ class ReturnRefundService {
         });
       }
 
-      let referenceNo = data.referenceNo;
-      if (!referenceNo) {
+      // ✅ Generate reference number
+      let finalReferenceNo = referenceNo;
+      if (!finalReferenceNo) {
         const prefix = await this._getReferencePrefix(qr);
-        referenceNo = await this.generateReference(returnRepo, prefix);
+        finalReferenceNo = await this.generateReference(returnRepo, prefix);
       } else {
-        const existing = await returnRepo.findOne({ where: { referenceNo } });
+        const existing = await returnRepo.findOne({ where: { referenceNo: finalReferenceNo } });
         if (existing) {
-          throw new Error(`Reference "${referenceNo}" already exists`);
+          throw new Error(`Reference "${finalReferenceNo}" already exists`);
         }
       }
 
+      // ✅ Create return
       const returnRefund = returnRepo.create({
-        referenceNo,
-        reason: data.reason || null,
-        refundMethod: data.refundMethod,
+        referenceNo: finalReferenceNo,
+        reason: reason || null,
+        refundMethod: refundMethod,
         totalAmount: Math.round(totalAmount * 100) / 100,
-        status: data.status || "pending",
+        status: status || "pending",
         sale: sale,
         customer: customer,
         createdAt: new Date(),
@@ -776,6 +748,7 @@ class ReturnRefundService {
         queryRunner: qr,
       });
 
+      // ✅ Create return items
       for (const itemData of returnItems) {
         const returnItem = returnItemRepo.create({
           ...itemData,
@@ -788,17 +761,11 @@ class ReturnRefundService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.logCreate(
-          "ReturnRefund",
-          savedReturn.id,
-          savedReturn,
-          user,
-        );
+        const auditLogger = require("../utils/auditLogger");
+        await auditLogger.logCreate("ReturnRefund", savedReturn.id, savedReturn, user);
       }
 
-      logger.debug(
-        `ReturnRefund created: #${savedReturn.id} - ${savedReturn.referenceNo}`,
-      );
+      logger.debug(`ReturnRefund created: #${savedReturn.id} - ${savedReturn.referenceNo}`);
 
       const fullReturn = await returnRepo.findOne({
         where: { id: savedReturn.id },
@@ -839,6 +806,9 @@ class ReturnRefundService {
     const meatRepo = this._getRepo(qr, Meat);
     const batchRepo = this._getRepo(qr, Batch);
 
+    // ✅ Validate input
+    const validated = validate(returnRefundUpdateSchema, data, 'Return update');
+
     try {
       const existing = await returnRepo.findOne({
         where: { id },
@@ -856,35 +826,37 @@ class ReturnRefundService {
 
       const oldData = { ...existing };
 
-      if (data.reason !== undefined) {
-        const maxReasonLength = await this._getMaxReasonLength(qr);
-        if (data.reason.length > maxReasonLength) {
-          throw new Error(`Reason cannot exceed ${maxReasonLength} characters`);
-        }
+      // Use validated data
+      const { reason, refundMethod, items, customerId, saleId } = validated;
+
+      // ✅ Validate reason length
+      if (reason !== undefined && reason.length > (await this._getMaxReasonLength(qr))) {
+        throw new Error(`Reason cannot exceed ${await this._getMaxReasonLength(qr)} characters`);
       }
 
-      if (data.saleId && data.saleId !== existing.sale.id) {
-        const sale = await saleRepo.findOne({ where: { id: data.saleId } });
+      // ✅ Handle sale change
+      if (saleId && saleId !== existing.sale.id) {
+        const sale = await saleRepo.findOne({ where: { id: saleId } });
         if (!sale) {
-          throw new Error(`Sale with ID ${data.saleId} not found`);
+          throw new Error(`Sale with ID ${saleId} not found`);
         }
         existing.sale = sale;
-        delete data.saleId;
       }
 
-      if (data.customerId && data.customerId !== existing.customer.id) {
+      // ✅ Handle customer change
+      if (customerId && customerId !== existing.customer.id) {
         const customer = await customerRepo.findOne({
-          where: { id: data.customerId },
+          where: { id: customerId },
         });
         if (!customer) {
-          throw new Error(`Customer with ID ${data.customerId} not found`);
+          throw new Error(`Customer with ID ${customerId} not found`);
         }
         existing.customer = customer;
-        delete data.customerId;
       }
 
-      if (data.items) {
-        if (!Array.isArray(data.items) || data.items.length === 0) {
+      // ✅ Handle items update (replace all items)
+      if (items) {
+        if (!Array.isArray(items) || items.length === 0) {
           throw new Error("At least one return item is required");
         }
 
@@ -892,6 +864,7 @@ class ReturnRefundService {
         const maxUnitPrice = await this._getMaxUnitPrice(qr);
         const maxTotalAmount = await this._getMaxTotalAmount(qr);
 
+        // Remove old items
         for (const oldItem of existing.items) {
           await removeDb(returnItemRepo, oldItem, { queryRunner: qr });
         }
@@ -899,11 +872,9 @@ class ReturnRefundService {
         const newItems = [];
         let totalAmount = 0;
 
-        for (const itemData of data.items) {
-          if (!itemData.meatId)
-            throw new Error("meatId is required for each item");
-          if (!itemData.batchId)
-            throw new Error("batchId is required for each item");
+        for (const itemData of items) {
+          if (!itemData.meatId) throw new Error("meatId is required for each item");
+          if (!itemData.batchId) throw new Error("batchId is required for each item");
           if (!itemData.weightKg || itemData.weightKg <= 0) {
             throw new Error("weightKg must be greater than 0");
           }
@@ -963,6 +934,7 @@ class ReturnRefundService {
 
         existing.totalAmount = Math.round(totalAmount * 100) / 100;
 
+        // Save new items
         for (const itemData of newItems) {
           const returnItem = returnItemRepo.create({
             ...itemData,
@@ -971,13 +943,11 @@ class ReturnRefundService {
           });
           await saveDb(returnItemRepo, returnItem, { queryRunner: qr });
         }
-
-        delete data.items;
       }
 
-      if (data.reason !== undefined) existing.reason = data.reason;
-      if (data.refundMethod !== undefined)
-        existing.refundMethod = data.refundMethod;
+      // ✅ Update other fields
+      if (reason !== undefined) existing.reason = reason;
+      if (refundMethod !== undefined) existing.refundMethod = refundMethod;
 
       existing.updatedAt = new Date();
 
@@ -1274,25 +1244,23 @@ class ReturnRefundService {
   async cancelReturn(returnId, reason = "", user = "system", qr = null) {
     const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
     const ReturnRefund = require("../entities/ReturnRefund");
-    const ReturnRefundItem = require("../entities/ReturnRefundItem");
     const Customer = require("../entities/Customer");
     const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 
     const returnRepo = this._getRepo(qr, ReturnRefund);
-    const returnItemRepo = this._getRepo(qr, ReturnRefundItem);
     const customerRepo = this._getRepo(qr, Customer);
     const loyaltyRepo = this._getRepo(qr, LoyaltyTransaction);
 
+    // ✅ Validate reason
+    const validated = validate(
+      z.object({ reason: z.string().max(500).optional() }),
+      { reason },
+      'Cancel reason'
+    );
+
     const returnRefund = await returnRepo.findOne({
       where: { id: returnId },
-      relations: [
-        "sale",
-        "sale.customer",
-        "items",
-        "items.meat",
-        "items.batch",
-        "customer",
-      ],
+      relations: ["sale", "sale.customer", "items", "items.meat", "items.batch", "customer"],
     });
     if (!returnRefund) {
       throw new Error(`Return #${returnId} not found`);
@@ -1307,11 +1275,10 @@ class ReturnRefundService {
     let pointsRestored = 0;
 
     if (returnRefund.status === "pending") {
-      // ─── Simple cancellation – just update status ───
       returnRefund.status = "cancelled";
       returnRefund.notes = returnRefund.notes
-        ? `${returnRefund.notes}\nCancelled: ${reason}`
-        : `Cancelled: ${reason}`;
+        ? `${returnRefund.notes}\nCancelled: ${validated.reason}`
+        : `Cancelled: ${validated.reason}`;
       returnRefund.updatedAt = new Date();
 
       const cancelled = await updateDb(returnRepo, returnRefund, {
@@ -1320,13 +1287,7 @@ class ReturnRefundService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.logUpdate(
-          "ReturnRefund",
-          returnId,
-          { status: "pending" },
-          { status: "cancelled" },
-          user,
-        );
+        await auditLogger.logUpdate("ReturnRefund", returnId, { status: "pending" }, { status: "cancelled" }, user);
       }
 
       logger.info(`[ReturnRefund] Return #${returnId} cancelled (was pending)`);
@@ -1423,8 +1384,8 @@ class ReturnRefundService {
       // ─── Update status to cancelled ───
       returnRefund.status = "cancelled";
       returnRefund.notes = returnRefund.notes
-        ? `${returnRefund.notes}\nCancelled: ${reason} (was processed)`
-        : `Cancelled: ${reason} (was processed)`;
+        ? `${returnRefund.notes}\nCancelled: ${validated.reason} (was processed)`
+        : `Cancelled: ${validated.reason} (was processed)`;
       returnRefund.updatedAt = new Date();
 
       const cancelled = await updateDb(returnRepo, returnRefund, {
@@ -1718,7 +1679,6 @@ class ReturnRefundService {
     return summary;
   }
 
-  // Sa src/services/ReturnRefund.js
   /**
    * Bulk update returns
    * @param {Array<{ id: number, updates: Object }>} updatesArray

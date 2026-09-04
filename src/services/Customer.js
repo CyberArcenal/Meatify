@@ -6,6 +6,12 @@ const { logger } = require("../utils/logger");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
 
+const {
+  customerCreateSchema,
+  customerUpdateSchema,
+} = require("../validation/schemas/customer.schema");
+const { z } = require("zod");
+const { validate } = require("../validation/validate");
 /**
  * Allowed columns for sorting (prevents SQL injection)
  */
@@ -515,72 +521,52 @@ class CustomerService {
     const Customer = require("../entities/Customer");
     const repo = this._getRepo(qr, Customer);
 
+    // ✅ Validate input
+    const validated = validate(customerCreateSchema, data, 'Customer creation');
+
     try {
-      // Validate required fields
-      if (!data.name) throw new Error("name is required");
+      const { name, email, phone, address, notes, status, isActive } = validated;
 
-      // Validate email format if provided
-      if (data.email && !this._isValidEmail(data.email)) {
-        throw new Error(`Invalid email format: "${data.email}"`);
-      }
-
-      // Validate phone format if provided
-      if (data.phone && !this._isValidPhone(data.phone)) {
-        throw new Error(`Invalid phone format: "${data.phone}"`);
-      }
-
-      // Check email uniqueness if provided
-      if (data.email) {
-        const existing = await repo.findOne({ where: { email: data.email } });
+      // ✅ Check email uniqueness if provided
+      if (email) {
+        const existing = await repo.findOne({ where: { email } });
         if (existing) {
-          throw new Error(`Email "${data.email}" already exists`);
+          throw new Error(`Email "${email}" already exists`);
         }
       }
 
-      // Check phone uniqueness if provided
-      if (data.phone) {
-        const existing = await repo.findOne({ where: { phone: data.phone } });
+      // ✅ Check phone uniqueness if provided
+      if (phone) {
+        const existing = await repo.findOne({ where: { phone } });
         if (existing) {
-          throw new Error(`Phone "${data.phone}" already exists`);
+          throw new Error(`Phone "${phone}" already exists`);
         }
       }
 
-      // Validate status if provided
-      if (data.status) {
-        const allowedStatuses = await this._getAllowedStatuses(qr);
-        if (!allowedStatuses.includes(data.status)) {
-          throw new Error(
-            `Invalid customer status: "${data.status}". Allowed: ${allowedStatuses.join(", ")}`,
-          );
-        }
-      }
-
-      // Use system settings for defaults
+      // ✅ Use system settings for defaults
       const defaultActive = await this._getDefaultActiveStatus(qr);
       const defaultStatus = await this._getDefaultCustomerStatus(qr);
-
       const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
-      const initialPoints = loyaltyEnabled ? 0 : 0; // Always start at 0
 
       const customer = repo.create({
-        name: data.name,
-        email: data.email || null,
-        phone: data.phone || null,
-        address: data.address || null,
-        notes: data.notes || null,
-        loyaltyPointsBalance: initialPoints,
+        name,
+        email: email || null,
+        phone: phone || null,
+        address: address || null,
+        notes: notes || null,
+        loyaltyPointsBalance: 0,
         lifetimePointsEarned: 0,
-        status: data.status || defaultStatus,
-        isActive: data.isActive !== undefined ? data.isActive : defaultActive,
+        status: status || defaultStatus,
+        isActive: isActive !== undefined ? isActive : defaultActive,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
 
       const saved = await saveDb(repo, customer, { queryRunner: qr });
 
-      // Audit log for creation
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
+        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logCreate("Customer", saved.id, saved, user);
       }
 
@@ -591,6 +577,7 @@ class CustomerService {
       throw error;
     }
   }
+
 
   /**
    * Update an existing customer (basic fields only – not status or points)
@@ -604,6 +591,9 @@ class CustomerService {
     const Customer = require("../entities/Customer");
     const repo = this._getRepo(qr, Customer);
 
+    // ✅ Validate input
+    const validated = validate(customerUpdateSchema, data, 'Customer update');
+
     try {
       const existing = await repo.findOne({ where: { id } });
       if (!existing) {
@@ -611,49 +601,47 @@ class CustomerService {
       }
 
       const oldData = { ...existing };
+      const { name, email, phone, address, notes, isActive } = validated;
 
-      // Validate email format if changed
-      if (data.email && data.email !== existing.email) {
-        if (!this._isValidEmail(data.email)) {
-          throw new Error(`Invalid email format: "${data.email}"`);
-        }
-        const duplicate = await repo.findOne({ where: { email: data.email } });
+      // ✅ Validate email uniqueness if changed
+      if (email && email !== existing.email) {
+        const duplicate = await repo.findOne({ where: { email } });
         if (duplicate && duplicate.id !== id) {
-          throw new Error(`Email "${data.email}" already exists`);
+          throw new Error(`Email "${email}" already exists`);
         }
+        existing.email = email;
       }
 
-      // Validate phone format if changed
-      if (data.phone && data.phone !== existing.phone) {
-        if (!this._isValidPhone(data.phone)) {
-          throw new Error(`Invalid phone format: "${data.phone}"`);
-        }
-        const duplicate = await repo.findOne({ where: { phone: data.phone } });
+      // ✅ Validate phone uniqueness if changed
+      if (phone && phone !== existing.phone) {
+        const duplicate = await repo.findOne({ where: { phone } });
         if (duplicate && duplicate.id !== id) {
-          throw new Error(`Phone "${data.phone}" already exists`);
+          throw new Error(`Phone "${phone}" already exists`);
         }
+        existing.phone = phone;
       }
 
-      // Prevent direct update of status or loyalty points – these should go through state service / subscriber
+      // ❌ Prevent direct status/points updates
       if (data.status !== undefined) {
         throw new Error("Use CustomerStateService to update customer status");
       }
-      if (
-        data.loyaltyPointsBalance !== undefined ||
-        data.lifetimePointsEarned !== undefined
-      ) {
+      if (data.loyaltyPointsBalance !== undefined || data.lifetimePointsEarned !== undefined) {
         throw new Error("Use CustomerStateService to update loyalty points");
       }
 
-      // Apply changes
-      Object.assign(existing, data);
+      // ✅ Apply updates
+      if (name !== undefined) existing.name = name;
+      if (address !== undefined) existing.address = address;
+      if (notes !== undefined) existing.notes = notes;
+      if (isActive !== undefined) existing.isActive = isActive;
+
       existing.updatedAt = new Date();
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
 
-      // Audit log for update
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
+        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logUpdate("Customer", id, oldData, saved, user);
       }
 

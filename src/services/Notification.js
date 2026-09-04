@@ -5,6 +5,13 @@ const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
 const { logger } = require("../utils/logger");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
+const { validate } = require("../validation");
+const {
+  notificationCreateSchema,
+  notificationUpdateSchema,
+  notificationMarkReadSchema,
+} = require("../validation/schemas/notification.schema");
+const { z } = require("zod");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -301,13 +308,20 @@ class NotificationService {
   }
 
   // ============================================================
-  // ✏️ WRITE OPERATIONS (CRUD)
+  // ✏️ WRITE OPERATIONS (CRUD) - WITH VALIDATION
   // ============================================================
 
   async create(data, user = "system", qr = null) {
     const { saveDb } = require("../utils/dbUtils/dbActions");
     const Notification = require("../entities/Notification");
     const repo = this._getRepo(qr, Notification);
+
+    // ✅ Validate input
+    const validated = validate(
+      notificationCreateSchema,
+      data,
+      "Notification creation",
+    );
 
     try {
       const inAppEnabled = await this._isInAppNotificationsEnabled(qr);
@@ -318,23 +332,12 @@ class NotificationService {
         return null;
       }
 
-      if (!data.title) throw new Error("title is required");
-      if (!data.message) throw new Error("message is required");
-      if (!data.userId) throw new Error("userId is required");
+      const { userId, title, message, type, metadata } = validated;
 
-      const maxTitleLength = await this._getMaxTitleLength(qr);
-      if (data.title.length > maxTitleLength) {
-        throw new Error(`Title cannot exceed ${maxTitleLength} characters`);
-      }
-
-      const maxMessageLength = await this._getMaxMessageLength(qr);
-      if (data.message.length > maxMessageLength) {
-        throw new Error(`Message cannot exceed ${maxMessageLength} characters`);
-      }
-
+      // ✅ Validate notification type against allowed types
       const allowedTypes = await this._getAllowedNotificationTypes(qr);
       let notificationType =
-        data.type || (await this._getDefaultNotificationType(qr));
+        type || (await this._getDefaultNotificationType(qr));
       if (!allowedTypes.includes(notificationType)) {
         logger.warn(
           `[Notification] Invalid type "${notificationType}", defaulting to "info"`,
@@ -342,25 +345,26 @@ class NotificationService {
         notificationType = "info";
       }
 
-      let metadata = data.metadata || null;
-      if (metadata && typeof metadata === "object") {
+      // ✅ Handle metadata
+      let metadataStr = metadata || null;
+      if (metadataStr && typeof metadataStr === "object") {
         try {
-          metadata = JSON.stringify(metadata);
+          metadataStr = JSON.stringify(metadataStr);
         } catch {
           logger.warn(
             "[Notification] Failed to stringify metadata, using null",
           );
-          metadata = null;
+          metadataStr = null;
         }
       }
 
       const notification = repo.create({
-        userId: data.userId,
-        title: data.title,
-        message: data.message,
+        userId: userId,
+        title: title,
+        message: message,
         type: notificationType,
         isRead: false,
-        metadata: metadata,
+        metadata: metadataStr,
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -385,6 +389,13 @@ class NotificationService {
     const Notification = require("../entities/Notification");
     const repo = this._getRepo(qr, Notification);
 
+    // ✅ Validate input
+    const validated = validate(
+      notificationUpdateSchema,
+      data,
+      "Notification update",
+    );
+
     try {
       const existing = await repo.findOne({ where: { id } });
       if (!existing) {
@@ -393,52 +404,55 @@ class NotificationService {
 
       const oldData = { ...existing };
 
+      // ✅ Use validated data
+      const { title, message, type, metadata } = validated;
+
+      // ❌ Prevent direct isRead updates – use markAsRead/markAsUnread
       if (data.isRead !== undefined) {
         throw new Error("Use markAsRead/markAsUnread to update isRead status");
       }
+      // ❌ Prevent userId updates
       if (data.userId !== undefined) {
         throw new Error("Cannot update userId");
       }
 
-      if (data.title) {
-        const maxTitleLength = await this._getMaxTitleLength(qr);
-        if (data.title.length > maxTitleLength) {
-          throw new Error(`Title cannot exceed ${maxTitleLength} characters`);
-        }
+      // ✅ Update title if provided
+      if (title !== undefined) {
+        existing.title = title;
       }
 
-      if (data.message) {
-        const maxMessageLength = await this._getMaxMessageLength(qr);
-        if (data.message.length > maxMessageLength) {
-          throw new Error(
-            `Message cannot exceed ${maxMessageLength} characters`,
-          );
-        }
+      // ✅ Update message if provided
+      if (message !== undefined) {
+        existing.message = message;
       }
 
-      if (data.type) {
+      // ✅ Update type if provided
+      if (type !== undefined) {
         const allowedTypes = await this._getAllowedNotificationTypes(qr);
-        if (!allowedTypes.includes(data.type)) {
+        if (!allowedTypes.includes(type)) {
           throw new Error(
-            `Invalid notification type: "${data.type}". Allowed: ${allowedTypes.join(", ")}`,
+            `Invalid notification type: "${type}". Allowed: ${allowedTypes.join(", ")}`,
           );
         }
+        existing.type = type;
       }
 
-      if (data.metadata !== undefined) {
-        if (data.metadata && typeof data.metadata === "object") {
+      // ✅ Update metadata if provided
+      if (metadata !== undefined) {
+        if (metadata && typeof metadata === "object") {
           try {
-            data.metadata = JSON.stringify(data.metadata);
+            existing.metadata = JSON.stringify(metadata);
           } catch {
             logger.warn(
               "[Notification] Failed to stringify metadata, setting to null",
             );
-            data.metadata = null;
+            existing.metadata = null;
           }
+        } else {
+          existing.metadata = metadata;
         }
       }
 
-      Object.assign(existing, data);
       existing.updatedAt = new Date();
 
       const saved = await updateDb(repo, existing, { queryRunner: qr });
@@ -686,8 +700,15 @@ class NotificationService {
       daysOld = await this._getNotificationRetentionDays(qr);
     }
 
+    // ✅ Validate daysOld
+    const validated = validate(
+      z.object({ daysOld: z.number().int().positive() }),
+      { daysOld },
+      "Clean old notifications",
+    );
+
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+    cutoffDate.setDate(cutoffDate.getDate() - validated.daysOld);
 
     const oldNotifications = await repo
       .createQueryBuilder("notification")
@@ -698,7 +719,7 @@ class NotificationService {
 
     if (oldNotifications.length === 0) {
       logger.info(
-        `[Notification] No old notifications to clean up (threshold: ${daysOld} days)`,
+        `[Notification] No old notifications to clean up (threshold: ${validated.daysOld} days)`,
       );
       return { count: 0 };
     }
@@ -726,7 +747,7 @@ class NotificationService {
 
         updatedCount++;
         logger.debug(
-          `[Notification] Soft deleted notification #${notification.id} (older than ${daysOld} days)`,
+          `[Notification] Soft deleted notification #${notification.id} (older than ${validated.daysOld} days)`,
         );
       } catch (err) {
         logger.error(
@@ -737,7 +758,7 @@ class NotificationService {
     }
 
     logger.info(
-      `[Notification] Cleaned up ${updatedCount} old notifications (older than ${daysOld} days)`,
+      `[Notification] Cleaned up ${updatedCount} old notifications (older than ${validated.daysOld} days)`,
     );
     return { count: updatedCount };
   }
@@ -752,14 +773,25 @@ class NotificationService {
     const Notification = require("../entities/Notification");
     const repo = this._getRepo(qr, Notification);
 
-    const notification = await repo.findOne({ where: { id: notificationId } });
+    // ✅ Validate notificationId
+    const validated = validate(
+      z.object({ notificationId: z.number().int().positive() }),
+      { notificationId },
+      "Mark as read",
+    );
+
+    const notification = await repo.findOne({
+      where: { id: validated.notificationId },
+    });
     if (!notification) {
-      throw new Error(`Notification with ID ${notificationId} not found`);
+      throw new Error(
+        `Notification with ID ${validated.notificationId} not found`,
+      );
     }
 
     if (notification.isRead) {
       logger.warn(
-        `[Notification] Notification #${notificationId} is already read`,
+        `[Notification] Notification #${validated.notificationId} is already read`,
       );
       return notification;
     }
@@ -776,7 +808,7 @@ class NotificationService {
     if (auditEnabled) {
       await auditLogger.logUpdate(
         "Notification",
-        notificationId,
+        validated.notificationId,
         { isRead: false },
         { isRead: true },
         user,
@@ -784,7 +816,7 @@ class NotificationService {
     }
 
     logger.debug(
-      `[Notification] Notification #${notificationId} marked as read (subscriber will trigger side effects)`,
+      `[Notification] Notification #${validated.notificationId} marked as read (subscriber will trigger side effects)`,
     );
     return updated;
   }
@@ -794,14 +826,25 @@ class NotificationService {
     const Notification = require("../entities/Notification");
     const repo = this._getRepo(qr, Notification);
 
-    const notification = await repo.findOne({ where: { id: notificationId } });
+    // ✅ Validate notificationId
+    const validated = validate(
+      z.object({ notificationId: z.number().int().positive() }),
+      { notificationId },
+      "Mark as unread",
+    );
+
+    const notification = await repo.findOne({
+      where: { id: validated.notificationId },
+    });
     if (!notification) {
-      throw new Error(`Notification with ID ${notificationId} not found`);
+      throw new Error(
+        `Notification with ID ${validated.notificationId} not found`,
+      );
     }
 
     if (!notification.isRead) {
       logger.warn(
-        `[Notification] Notification #${notificationId} is already unread`,
+        `[Notification] Notification #${validated.notificationId} is already unread`,
       );
       return notification;
     }
@@ -818,7 +861,7 @@ class NotificationService {
     if (auditEnabled) {
       await auditLogger.logUpdate(
         "Notification",
-        notificationId,
+        validated.notificationId,
         { isRead: true },
         { isRead: false },
         user,
@@ -826,7 +869,7 @@ class NotificationService {
     }
 
     logger.debug(
-      `[Notification] Notification #${notificationId} marked as unread (subscriber will trigger side effects)`,
+      `[Notification] Notification #${validated.notificationId} marked as unread (subscriber will trigger side effects)`,
     );
     return updated;
   }
@@ -836,15 +879,24 @@ class NotificationService {
     const Notification = require("../entities/Notification");
     const repo = this._getRepo(qr, Notification);
 
+    // ✅ Validate userId
+    const validated = validate(
+      z.object({ userId: z.number().int().positive() }),
+      { userId },
+      "Mark all as read",
+    );
+
     const unreadNotifications = await repo
       .createQueryBuilder("notification")
-      .where("notification.userId = :userId", { userId })
+      .where("notification.userId = :userId", { userId: validated.userId })
       .andWhere("notification.isRead = false")
       .andWhere("notification.deletedAt IS NULL")
       .getMany();
 
     if (unreadNotifications.length === 0) {
-      logger.info(`[Notification] No unread notifications for user #${userId}`);
+      logger.info(
+        `[Notification] No unread notifications for user #${validated.userId}`,
+      );
       return { count: 0, notifications: [] };
     }
 
@@ -871,7 +923,7 @@ class NotificationService {
     }
 
     logger.debug(
-      `[Notification] Marked ${updatedNotifications.length} notifications as read for user #${userId} (subscriber will trigger side effects)`,
+      `[Notification] Marked ${updatedNotifications.length} notifications as read for user #${validated.userId} (subscriber will trigger side effects)`,
     );
     return {
       count: updatedNotifications.length,
@@ -884,15 +936,24 @@ class NotificationService {
     const Notification = require("../entities/Notification");
     const repo = this._getRepo(qr, Notification);
 
+    // ✅ Validate userId
+    const validated = validate(
+      z.object({ userId: z.number().int().positive() }),
+      { userId },
+      "Mark all as unread",
+    );
+
     const readNotifications = await repo
       .createQueryBuilder("notification")
-      .where("notification.userId = :userId", { userId })
+      .where("notification.userId = :userId", { userId: validated.userId })
       .andWhere("notification.isRead = true")
       .andWhere("notification.deletedAt IS NULL")
       .getMany();
 
     if (readNotifications.length === 0) {
-      logger.info(`[Notification] No read notifications for user #${userId}`);
+      logger.info(
+        `[Notification] No read notifications for user #${validated.userId}`,
+      );
       return { count: 0, notifications: [] };
     }
 
@@ -919,7 +980,7 @@ class NotificationService {
     }
 
     logger.debug(
-      `[Notification] Marked ${updatedNotifications.length} notifications as unread for user #${userId} (subscriber will trigger side effects)`,
+      `[Notification] Marked ${updatedNotifications.length} notifications as unread for user #${validated.userId} (subscriber will trigger side effects)`,
     );
     return {
       count: updatedNotifications.length,
@@ -938,6 +999,97 @@ class NotificationService {
       return null;
     }
     return this.create(data, user, qr);
+  }
+
+  // ============================================================
+  // ✅ DELETE ALL READ NOTIFICATIONS (system-wide or per user)
+  // ============================================================
+
+  /**
+   * Soft delete read notifications.
+   * - If userId is provided: delete read notifications for that specific user.
+   * - If userId is null/undefined: delete ALL read notifications system-wide.
+   *
+   * @param {number | null} userId - User ID (null for system-wide deletion)
+   * @param {string} user - User performing the action (for audit)
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<{ count: number, notificationIds: number[] }>}
+   */
+  async deleteAllRead(userId = null, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Notification = require("../entities/Notification");
+    const repo = this._getRepo(qr, Notification);
+
+    // ✅ Validate userId if provided
+    if (userId !== null && userId !== undefined) {
+      validate(
+        z.object({ userId: z.number().int().positive() }),
+        { userId },
+        "Delete all read notifications",
+      );
+    }
+
+    try {
+      // Build query for read notifications not yet soft-deleted
+      const qb = repo
+        .createQueryBuilder("notification")
+        .where("notification.isRead = true")
+        .andWhere("notification.deletedAt IS NULL");
+
+      // Apply userId filter only if provided
+      if (
+        userId !== null &&
+        userId !== undefined &&
+        typeof userId === "number"
+      ) {
+        qb.andWhere("notification.userId = :userId", { userId });
+      }
+
+      const notifications = await qb.getMany();
+
+      if (notifications.length === 0) {
+        const scope = userId ? `for user #${userId}` : "system-wide";
+        logger.info(`[Notification] No read notifications to delete ${scope}`);
+        return { count: 0, notificationIds: [] };
+      }
+
+      const deletedIds = [];
+      for (const notification of notifications) {
+        const oldData = { ...notification };
+        notification.deletedAt = new Date();
+        notification.updatedAt = new Date();
+
+        // updateDb triggers the subscriber (afterUpdate) → state service
+        await updateDb(repo, notification, {
+          queryRunner: qr,
+          skipSignal: false,
+        });
+        deletedIds.push(notification.id);
+
+        const auditEnabled = await this._isAuditEnabled(qr);
+        if (auditEnabled) {
+          await auditLogger.logCreate(
+            "Notification",
+            notification.id,
+            oldData,
+            user,
+          );
+        }
+      }
+
+      const scope = userId ? `user #${userId}` : "system";
+      logger.debug(
+        `[Notification] Soft-deleted ${deletedIds.length} read notifications ${scope}`,
+      );
+
+      return {
+        count: deletedIds.length,
+        notificationIds: deletedIds,
+      };
+    } catch (error) {
+      console.error("Failed to delete all read notifications:", error.message);
+      throw error;
+    }
   }
 
   // ============================================================
@@ -1046,88 +1198,6 @@ class NotificationService {
         `[Notification] Failed to get notification retention days: ${error.message}, defaulting to 90`,
       );
       return 90;
-    }
-  }
-
-  // ============================================================
-  // ✅ DELETE ALL READ NOTIFICATIONS (system-wide or per user)
-  // ============================================================
-
-  /**
-   * Soft delete read notifications.
-   * - If userId is provided: delete read notifications for that specific user.
-   * - If userId is null/undefined: delete ALL read notifications system-wide.
-   *
-   * @param {number | null} userId - User ID (null for system-wide deletion)
-   * @param {string} user - User performing the action (for audit)
-   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
-   * @returns {Promise<{ count: number, notificationIds: number[] }>}
-   */
-  async deleteAllRead(userId = null, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const Notification = require("../entities/Notification");
-    const repo = this._getRepo(qr, Notification);
-
-    try {
-      // Build query for read notifications not yet soft-deleted
-      const qb = repo
-        .createQueryBuilder("notification")
-        .where("notification.isRead = true")
-        .andWhere("notification.deletedAt IS NULL");
-
-      // Apply userId filter only if provided
-      if (
-        userId !== null &&
-        userId !== undefined &&
-        typeof userId === "number"
-      ) {
-        qb.andWhere("notification.userId = :userId", { userId });
-      }
-
-      const notifications = await qb.getMany();
-
-      if (notifications.length === 0) {
-        const scope = userId ? `for user #${userId}` : "system-wide";
-        logger.info(`[Notification] No read notifications to delete ${scope}`);
-        return { count: 0, notificationIds: [] };
-      }
-
-      const deletedIds = [];
-      for (const notification of notifications) {
-        const oldData = { ...notification };
-        notification.deletedAt = new Date();
-        notification.updatedAt = new Date();
-
-        // updateDb triggers the subscriber (afterUpdate) → state service
-        await updateDb(repo, notification, {
-          queryRunner: qr,
-          skipSignal: false,
-        });
-        deletedIds.push(notification.id);
-
-        const auditEnabled = await this._isAuditEnabled(qr);
-        if (auditEnabled) {
-          await auditLogger.logCreate(
-            "Notification",
-            notification.id,
-            oldData,
-            user,
-          );
-        }
-      }
-
-      const scope = userId ? `user #${userId}` : "system";
-      logger.debug(
-        `[Notification] Soft-deleted ${deletedIds.length} read notifications ${scope}`,
-      );
-
-      return {
-        count: deletedIds.length,
-        notificationIds: deletedIds,
-      };
-    } catch (error) {
-      console.error("Failed to delete all read notifications:", error.message);
-      throw error;
     }
   }
 }

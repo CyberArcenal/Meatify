@@ -52,12 +52,11 @@ const IconTemplates = {
   `,
 };
 
-// Icon Colors using Meatify theme variables
 const IconColors: Record<ConfirmIconType, string> = {
   question: "text-[var(--info-color)] bg-[var(--status-processing-bg)]",
   warning: "text-[var(--warning-color)] bg-[var(--status-pending-bg)]",
   danger: "text-[var(--danger-color)] bg-[var(--status-cancelled-bg)]",
-  info: "text-[var(--accent-blue)] bg-[var(--status-processing-bg)]",
+  info: "text-[var(--info-color)] bg-[var(--status-processing-bg)]",
   success: "text-[var(--success-color)] bg-[var(--status-completed-bg)]",
 };
 
@@ -84,32 +83,31 @@ class DialogManager {
     styles.id = "dialog-styles";
     styles.textContent = `
       .dialog-backdrop {
-        background-color: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(4px);
-        -webkit-backdrop-filter: blur(4px);
+        background-color: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
         transition: opacity 150ms ease-out;
       }
       
       .dialog-enter {
         opacity: 0;
-        transform: scale(0.95) translateY(-10px);
+        transform: scale(0.9);
       }
       
       .dialog-enter-active {
         opacity: 1;
-        transform: scale(1) translateY(0);
+        transform: scale(1);
         transition: opacity 200ms cubic-bezier(0.16, 1, 0.3, 1), 
                     transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
       }
       
       .dialog-exit {
         opacity: 1;
-        transform: scale(1) translateY(0);
+        transform: scale(1);
       }
       
       .dialog-exit-active {
         opacity: 0;
-        transform: scale(0.95) translateY(-10px);
+        transform: scale(0.9);
         transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1), 
                     transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
       }
@@ -131,15 +129,6 @@ class DialogManager {
         opacity: 0;
         transition: opacity 150ms ease-in;
       }
-
-      /* Meatify Gold Glow Effect */
-      .dialog-glow {
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(212, 175, 55, 0.1);
-      }
-
-      .dialog-glow:hover {
-        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(212, 175, 55, 0.2);
-      }
     `;
     document.head.appendChild(styles);
   }
@@ -157,7 +146,7 @@ class DialogManager {
   private createBackdrop(): HTMLDivElement {
     const backdrop = document.createElement("div");
     backdrop.className =
-      "fixed inset-0 bg-black/60 dialog-backdrop backdrop-enter pointer-events-auto";
+      "fixed inset-0 bg-black/50 dialog-backdrop backdrop-enter pointer-events-auto";
     return backdrop;
   }
 
@@ -170,7 +159,6 @@ class DialogManager {
       transform transition-all duration-200
       pointer-events-auto
       border border-[var(--border-color)]
-      dialog-glow
       dialog-enter
     `;
     return dialog;
@@ -201,6 +189,15 @@ class DialogManager {
     `;
   }
 
+  private escapeHtml(str: string): string {
+    return str.replace(/[&<>]/g, function (m) {
+      if (m === "&") return "&amp;";
+      if (m === "<") return "&lt;";
+      if (m === ">") return "&gt;";
+      return m;
+    });
+  }
+
   public showConfirm(options: ConfirmOptions = {}): Promise<boolean> {
     this.createContainer();
 
@@ -223,78 +220,66 @@ class DialogManager {
           ${this.getIconMarkup(icon)}
           <div class="flex-1 min-w-0">
             <h3 class="text-lg font-semibold text-[var(--text-primary)] leading-6">
-              ${title}
+              ${this.escapeHtml(title)}
             </h3>
             <p class="mt-2 text-sm text-[var(--text-secondary)] leading-5">
-              ${message}
+              ${this.escapeHtml(message)}
             </p>
           </div>
           ${
             showCloseButton
               ? `
-            <button type="button" class="close-btn flex-shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors duration-200">
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            <button type="button" class="close-btn flex-shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
           `
               : ""
           }
         </div>
-        <div class="px-6 py-4 bg-[var(--card-secondary-bg)] flex justify-end gap-3 border-t border-[var(--border-color)]">
+        <div class="px-6 py-4 flex justify-end gap-3">
           <button type="button" class="
             cancel-btn
             px-4 py-2 text-sm font-medium
             text-[var(--text-secondary)] hover:text-[var(--text-primary)] 
-            bg-[var(--card-bg)] hover:bg-[var(--card-hover-bg)]
-            rounded-lg transition-all duration-200
-            border border-[var(--border-color)]
-            focus:outline-none focus:ring-2 focus:ring-[var(--border-color)] focus:ring-offset-2 focus:ring-offset-[var(--card-secondary-bg)]
+            bg-transparent hover:bg-[var(--card-hover-bg)]
+            rounded-lg transition-colors duration-200
           ">
-            ${cancelText}
+            ${this.escapeHtml(cancelText)}
           </button>
           <button type="button" class="
             confirm-btn
             px-4 py-2 text-sm font-medium
-            bg-[var(--btn-primary-bg)] hover:bg-[var(--btn-primary-hover)]
-            text-[var(--btn-primary-text)]
-            rounded-lg transition-all duration-200
-            focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)] focus:ring-offset-2 focus:ring-offset-[var(--card-secondary-bg)]
-            shadow-sm hover:shadow-md
+            bg-[var(--btn-success-bg)] hover:bg-[var(--btn-success-hover)]
+            text-[var(--btn-success-text)]
+            rounded-lg transition-colors duration-200
+            focus:outline-none focus:ring-2 focus:ring-[var(--success-color)] focus:ring-offset-2
           ">
-            ${confirmText}
+            ${this.escapeHtml(confirmText)}
           </button>
         </div>
       `;
 
-      // Append to container
       this.container!.appendChild(backdrop);
       this.container!.appendChild(dialog);
       this.activeDialogs.add(dialog);
 
-      // Animate in backdrop first
       requestAnimationFrame(() => {
         backdrop.classList.remove("backdrop-enter");
         backdrop.classList.add("backdrop-enter-active");
       });
-
-      // Animate in dialog
       setTimeout(() => {
         this.animateIn(dialog);
       }, 50);
 
-      // Event handlers
       const cleanup = () => {
-        // Animate out backdrop
         backdrop.classList.remove("backdrop-enter-active");
         backdrop.classList.add("backdrop-exit-active");
-
-        // Animate out dialog
         this.animateOut(dialog, () => {
           dialog.remove();
           backdrop.remove();
           this.activeDialogs.delete(dialog);
-
           if (this.container && this.activeDialogs.size === 0) {
             this.container.remove();
             this.container = null;
@@ -303,45 +288,33 @@ class DialogManager {
       };
 
       const onConfirm = () => {
-        if (!persistent) {
-          cleanup();
-        }
+        if (!persistent) cleanup();
         resolve(true);
       };
-
       const onCancel = () => {
-        if (!persistent) {
-          cleanup();
-        }
+        if (!persistent) cleanup();
         resolve(false);
       };
 
       const onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape" && !persistent) {
-          onCancel();
-        } else if (e.key === "Enter") {
-          onConfirm();
-        }
+        if (e.key === "Escape" && !persistent) onCancel();
+        else if (e.key === "Enter") onConfirm();
       };
 
-      // Add event listeners
       dialog
         .querySelector<HTMLButtonElement>(".confirm-btn")!
         .addEventListener("click", onConfirm);
       dialog
         .querySelector<HTMLButtonElement>(".cancel-btn")!
         .addEventListener("click", onCancel);
-
       if (showCloseButton) {
         dialog
           .querySelector<HTMLButtonElement>(".close-btn")!
           .addEventListener("click", onCancel);
       }
-
       backdrop.addEventListener("click", onCancel);
       document.addEventListener("keydown", onKeyDown);
 
-      // Focus the confirm button for accessibility
       setTimeout(() => {
         dialog.querySelector<HTMLButtonElement>(".confirm-btn")?.focus();
       }, 200);
@@ -367,56 +340,46 @@ class DialogManager {
           ${this.getIconMarkup(icon)}
           <div class="flex-1 min-w-0">
             <h3 class="text-lg font-semibold text-[var(--text-primary)] leading-6">
-              ${title}
+              ${this.escapeHtml(title)}
             </h3>
             <p class="mt-2 text-sm text-[var(--text-secondary)] leading-5">
-              ${message}
+              ${this.escapeHtml(message)}
             </p>
           </div>
         </div>
-        <div class="px-6 py-4 bg-[var(--card-secondary-bg)] flex justify-end border-t border-[var(--border-color)]">
+        <div class="px-6 py-4 flex justify-end">
           <button type="button" class="
             alert-btn
-            px-6 py-2 text-sm font-medium
+            px-4 py-2 text-sm font-medium
             bg-[var(--btn-primary-bg)] hover:bg-[var(--btn-primary-hover)]
             text-[var(--btn-primary-text)]
-            rounded-lg transition-all duration-200
-            focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)] focus:ring-offset-2 focus:ring-offset-[var(--card-secondary-bg)]
-            shadow-sm hover:shadow-md
+            rounded-lg transition-colors duration-200
+            focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)] focus:ring-offset-2
           ">
-            ${buttonText}
+            ${this.escapeHtml(buttonText)}
           </button>
         </div>
       `;
 
-      // Append to container
       this.container!.appendChild(backdrop);
       this.container!.appendChild(dialog);
       this.activeDialogs.add(dialog);
 
-      // Animate in backdrop first
       requestAnimationFrame(() => {
         backdrop.classList.remove("backdrop-enter");
         backdrop.classList.add("backdrop-enter-active");
       });
-
-      // Animate in dialog
       setTimeout(() => {
         this.animateIn(dialog);
       }, 50);
 
-      // Event handlers
       const cleanup = () => {
-        // Animate out backdrop
         backdrop.classList.remove("backdrop-enter-active");
         backdrop.classList.add("backdrop-exit-active");
-
-        // Animate out dialog
         this.animateOut(dialog, () => {
           dialog.remove();
           backdrop.remove();
           this.activeDialogs.delete(dialog);
-
           if (this.container && this.activeDialogs.size === 0) {
             this.container.remove();
             this.container = null;
@@ -430,19 +393,15 @@ class DialogManager {
       };
 
       const onKeyDown = (e: KeyboardEvent) => {
-        if (e.key === "Escape" || e.key === "Enter") {
-          onConfirm();
-        }
+        if (e.key === "Escape" || e.key === "Enter") onConfirm();
       };
 
-      // Add event listeners
       dialog
         .querySelector<HTMLButtonElement>(".alert-btn")!
         .addEventListener("click", onConfirm);
       backdrop.addEventListener("click", onConfirm);
       document.addEventListener("keydown", onKeyDown);
 
-      // Focus the button for accessibility
       setTimeout(() => {
         dialog.querySelector<HTMLButtonElement>(".alert-btn")?.focus();
       }, 200);
@@ -454,7 +413,6 @@ class DialogManager {
       dialog.remove();
     });
     this.activeDialogs.clear();
-
     if (this.container) {
       this.container.remove();
       this.container = null;
@@ -462,29 +420,28 @@ class DialogManager {
   }
 }
 
-// Create singleton instance
 const dialogManager = DialogManager.getInstance();
 
-// Export public API
-export const showConfirm = (options?: ConfirmOptions): Promise<boolean> => {
-  return dialogManager.showConfirm(options);
-};
+export const showConfirm = (options?: ConfirmOptions): Promise<boolean> =>
+  dialogManager.showConfirm(options);
+export const showAlert = (options: AlertOptions): Promise<void> =>
+  dialogManager.showAlert(options);
+export const closeAllDialogs = (): void => dialogManager.closeAllDialogs();
 
-export const showAlert = (options: AlertOptions): Promise<void> => {
-  return dialogManager.showAlert(options);
-};
-
-export const closeAllDialogs = (): void => {
-  dialogManager.closeAllDialogs();
-};
-
-// Convenience functions for common dialog types
 export const dialogs = {
   confirm: showConfirm,
+  prompt: (options: {
+    title: string;
+    message: string;
+    defaultValue?: string;
+  }): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const result = window.prompt(options.message, options.defaultValue);
+      resolve(result);
+    });
+  },
   alert: showAlert,
   closeAll: closeAllDialogs,
-
-  // Pre-configured dialogs
   delete: (itemName?: string) =>
     showConfirm({
       title: "Delete Confirmation",
@@ -495,32 +452,12 @@ export const dialogs = {
       cancelText: "Cancel",
       icon: "danger",
     }),
-
   success: (message: string, title: string = "Success!") =>
-    showAlert({
-      title,
-      message,
-      icon: "success",
-    }),
-
+    showAlert({ title, message, icon: "success" }),
   error: (message: string, title: string = "Error") =>
-    showAlert({
-      title,
-      message,
-      icon: "danger",
-    }),
-
+    showAlert({ title, message, icon: "danger" }),
   warning: (message: string, title: string = "Warning") =>
-    showAlert({
-      title,
-      message,
-      icon: "warning",
-    }),
-
+    showAlert({ title, message, icon: "warning" }),
   info: (message: string, title: string = "Information") =>
-    showAlert({
-      title,
-      message,
-      icon: "info",
-    }),
+    showAlert({ title, message, icon: "info" }),
 };
