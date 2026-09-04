@@ -23,7 +23,7 @@ export interface AlertOptions {
   icon?: ConfirmIconType;
 }
 
-// Icon component definitions (unchanged)
+// Icon component definitions
 const IconTemplates = {
   question: `
     <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -52,12 +52,12 @@ const IconTemplates = {
   `,
 };
 
-// Updated IconColors to use Tillify dark theme variables
+// Icon Colors using Meatify theme variables
 const IconColors: Record<ConfirmIconType, string> = {
   question: "text-[var(--info-color)] bg-[var(--status-processing-bg)]",
   warning: "text-[var(--warning-color)] bg-[var(--status-pending-bg)]",
   danger: "text-[var(--danger-color)] bg-[var(--status-cancelled-bg)]",
-  info: "text-[var(--info-color)] bg-[var(--status-processing-bg)]",
+  info: "text-[var(--accent-blue)] bg-[var(--status-processing-bg)]",
   success: "text-[var(--success-color)] bg-[var(--status-completed-bg)]",
 };
 
@@ -84,31 +84,32 @@ class DialogManager {
     styles.id = "dialog-styles";
     styles.textContent = `
       .dialog-backdrop {
-        background-color: rgba(0, 0, 0, 0.5);
-        backdrop-filter: blur(2px);
+        background-color: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
         transition: opacity 150ms ease-out;
       }
       
       .dialog-enter {
         opacity: 0;
-        transform: scale(0.9);
+        transform: scale(0.95) translateY(-10px);
       }
       
       .dialog-enter-active {
         opacity: 1;
-        transform: scale(1);
+        transform: scale(1) translateY(0);
         transition: opacity 200ms cubic-bezier(0.16, 1, 0.3, 1), 
                     transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
       }
       
       .dialog-exit {
         opacity: 1;
-        transform: scale(1);
+        transform: scale(1) translateY(0);
       }
       
       .dialog-exit-active {
         opacity: 0;
-        transform: scale(0.9);
+        transform: scale(0.95) translateY(-10px);
         transition: opacity 150ms cubic-bezier(0.4, 0, 0.2, 1), 
                     transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
       }
@@ -130,6 +131,15 @@ class DialogManager {
         opacity: 0;
         transition: opacity 150ms ease-in;
       }
+
+      /* Meatify Gold Glow Effect */
+      .dialog-glow {
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(212, 175, 55, 0.1);
+      }
+
+      .dialog-glow:hover {
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(212, 175, 55, 0.2);
+      }
     `;
     document.head.appendChild(styles);
   }
@@ -147,7 +157,7 @@ class DialogManager {
   private createBackdrop(): HTMLDivElement {
     const backdrop = document.createElement("div");
     backdrop.className =
-      "fixed inset-0 bg-black/50 dialog-backdrop backdrop-enter pointer-events-auto";
+      "fixed inset-0 bg-black/60 dialog-backdrop backdrop-enter pointer-events-auto";
     return backdrop;
   }
 
@@ -160,6 +170,7 @@ class DialogManager {
       transform transition-all duration-200
       pointer-events-auto
       border border-[var(--border-color)]
+      dialog-glow
       dialog-enter
     `;
     return dialog;
@@ -221,9 +232,9 @@ class DialogManager {
           ${
             showCloseButton
               ? `
-            <button type="button" class="close-btn flex-shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors">
-              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            <button type="button" class="close-btn flex-shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors duration-200">
+              <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
               </svg>
             </button>
           `
@@ -236,18 +247,20 @@ class DialogManager {
             px-4 py-2 text-sm font-medium
             text-[var(--text-secondary)] hover:text-[var(--text-primary)] 
             bg-[var(--card-bg)] hover:bg-[var(--card-hover-bg)]
-            rounded-lg transition-colors duration-200
+            rounded-lg transition-all duration-200
             border border-[var(--border-color)]
+            focus:outline-none focus:ring-2 focus:ring-[var(--border-color)] focus:ring-offset-2 focus:ring-offset-[var(--card-secondary-bg)]
           ">
             ${cancelText}
           </button>
           <button type="button" class="
             confirm-btn
             px-4 py-2 text-sm font-medium
-            bg-[var(--btn-success-bg)] hover:bg-[var(--btn-success-hover)]
-            text-[var(--btn-success-text)]
-            rounded-lg transition-colors duration-200
-            focus:outline-none focus:ring-2 focus:ring-[var(--success-color)] focus:ring-offset-2
+            bg-[var(--btn-primary-bg)] hover:bg-[var(--btn-primary-hover)]
+            text-[var(--btn-primary-text)]
+            rounded-lg transition-all duration-200
+            focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)] focus:ring-offset-2 focus:ring-offset-[var(--card-secondary-bg)]
+            shadow-sm hover:shadow-md
           ">
             ${confirmText}
           </button>
@@ -364,11 +377,12 @@ class DialogManager {
         <div class="px-6 py-4 bg-[var(--card-secondary-bg)] flex justify-end border-t border-[var(--border-color)]">
           <button type="button" class="
             alert-btn
-            px-4 py-2 text-sm font-medium
+            px-6 py-2 text-sm font-medium
             bg-[var(--btn-primary-bg)] hover:bg-[var(--btn-primary-hover)]
             text-[var(--btn-primary-text)]
-            rounded-lg transition-colors duration-200
-            focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)] focus:ring-offset-2
+            rounded-lg transition-all duration-200
+            focus:outline-none focus:ring-2 focus:ring-[var(--primary-color)] focus:ring-offset-2 focus:ring-offset-[var(--card-secondary-bg)]
+            shadow-sm hover:shadow-md
           ">
             ${buttonText}
           </button>

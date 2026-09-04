@@ -33,29 +33,26 @@ class NotificationManager {
   }
 
   private initContainers(): void {
-    // Remove existing containers if they exist
     if (this.toastContainer) this.toastContainer.remove();
     if (this.bannerContainer) this.bannerContainer.remove();
     if (this.loadingOverlay) this.loadingOverlay.remove();
 
-    // Create toast container at bottom-right
+    // ✅ Left-side toast container with dark theme
     this.toastContainer = document.createElement("div");
     this.toastContainer.id = "toast-container";
     this.toastContainer.className =
-      "fixed bottom-4 right-4 z-[9999] flex flex-col items-end space-y-3 pointer-events-none";
+      "fixed bottom-4 left-4 z-[9999] flex flex-col items-start space-y-3 pointer-events-none";
     document.body.appendChild(this.toastContainer);
 
-    // Create banner container (below navigation)
     this.bannerContainer = document.createElement("div");
     this.bannerContainer.id = "banner-container";
     this.bannerContainer.className = "fixed top-16 left-0 right-0 z-[9998]";
     document.body.appendChild(this.bannerContainer);
 
-    // Create loading overlay
     this.loadingOverlay = document.createElement("div");
     this.loadingOverlay.id = "loading-overlay";
     this.loadingOverlay.className =
-      "fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center hidden";
+      "fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center hidden backdrop-blur-sm";
     this.loadingOverlay.innerHTML = `
       <div class="bg-[var(--card-bg)] rounded-xl p-6 w-64 text-center shadow-2xl border border-[var(--border-color)]">
         <div class="spinner mx-auto mb-4"></div>
@@ -98,29 +95,35 @@ class NotificationManager {
   }
 
   private getToastClasses(type: NotificationType): string {
+    // Base classes using theme variables
     const baseClasses = `
       w-80 max-w-sm rounded-xl shadow-lg p-3 flex items-start pointer-events-auto
-      bg-[var(--card-bg)] border-l-4 animate-slideInRight
+      bg-[var(--card-bg)] border-l-4 border-[var(--border-color)]
+      text-[var(--text-primary)] animate-slideInLeft
     `;
-    const typeClasses = {
+    const borderColors = {
       success: "border-[var(--success-color)]",
       error: "border-[var(--danger-color)]",
       warning: "border-[var(--warning-color)]",
       info: "border-[var(--accent-blue)]",
       critical: "border-[var(--danger-color)]",
     };
-    return `${baseClasses} ${typeClasses[type]}`;
+    return `${baseClasses} ${borderColors[type]}`;
   }
 
   private getBannerClasses(type: NotificationType): string {
     const baseClasses =
       "w-full py-3 px-4 shadow-md border-b-2 animate-slideInTop";
     const typeClasses = {
-      success: "bg-[var(--status-completed-bg)] border-[var(--success-color)] text-[var(--text-primary)]",
-      error: "bg-[var(--status-cancelled-bg)] border-[var(--danger-color)] text-[var(--text-primary)]",
-      warning: "bg-[var(--status-pending-bg)] border-[var(--warning-color)] text-[var(--text-primary)]",
+      success:
+        "bg-[var(--status-completed-bg)] border-[var(--success-color)] text-[var(--text-primary)]",
+      error:
+        "bg-[var(--status-cancelled-bg)] border-[var(--danger-color)] text-[var(--text-primary)]",
+      warning:
+        "bg-[var(--status-pending-bg)] border-[var(--warning-color)] text-[var(--text-primary)]",
       info: "bg-[var(--status-processing-bg)] border-[var(--accent-blue)] text-[var(--text-primary)]",
-      critical: "bg-[var(--status-cancelled-bg)] border-[var(--danger-color)] text-[var(--text-primary)]",
+      critical:
+        "bg-[var(--status-cancelled-bg)] border-[var(--danger-color)] text-[var(--text-primary)]",
     };
     return `${baseClasses} ${typeClasses[type]}`;
   }
@@ -128,7 +131,7 @@ class NotificationManager {
   public showToast(
     message: string,
     type: NotificationType = "info",
-    options: NotificationOptions = {}
+    options: NotificationOptions = {},
   ): HTMLElement {
     const toastId = `toast-${this.nextToastId++}`;
     const defaultOptions: NotificationOptions = {
@@ -149,7 +152,7 @@ class NotificationManager {
       <div class="flex-shrink-0 mr-3">
         ${this.getIcon(type)}
       </div>
-      <div class="flex-1 text-sm font-medium text-[var(--text-primary)] break-words">
+      <div class="flex-1 text-sm font-medium break-words">
         ${this.escapeHtml(message)}
       </div>
       <button class="ml-2 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors duration-200 flex-shrink-0">
@@ -161,16 +164,17 @@ class NotificationManager {
 
     this.toastContainer?.appendChild(toast);
 
-    // Add close button handler
     const closeBtn = toast.querySelector("button");
     closeBtn?.addEventListener("click", () => this.removeToast(toast));
 
-    // Auto-close if enabled
-    if (defaultOptions.autoClose && defaultOptions.duration && defaultOptions.duration > 0) {
+    if (
+      defaultOptions.autoClose &&
+      defaultOptions.duration &&
+      defaultOptions.duration > 0
+    ) {
       setTimeout(() => this.removeToast(toast), defaultOptions.duration);
     }
 
-    // Swipe close if enabled
     if (defaultOptions.swipeClose) {
       this.addSwipeClose(toast);
     }
@@ -179,18 +183,18 @@ class NotificationManager {
   }
 
   private escapeHtml(str: string): string {
-    return str.replace(/[&<>]/g, function(m) {
-      if (m === '&') return '&amp;';
-      if (m === '<') return '&lt;';
-      if (m === '>') return '&gt;';
+    return str.replace(/[&<>]/g, function (m) {
+      if (m === "&") return "&amp;";
+      if (m === "<") return "&lt;";
+      if (m === ">") return "&gt;";
       return m;
     });
   }
 
   public removeToast(toastElement: HTMLElement): void {
     if (toastElement) {
-      toastElement.classList.remove("animate-slideInRight");
-      toastElement.classList.add("animate-slideOutRight");
+      toastElement.classList.remove("animate-slideInLeft");
+      toastElement.classList.add("animate-slideOutLeft");
       setTimeout(() => {
         if (toastElement.parentNode) {
           toastElement.parentNode.removeChild(toastElement);
@@ -214,9 +218,9 @@ class NotificationManager {
       if (!isDragging) return;
       currentX = e.touches[0].clientX;
       const diff = currentX - startX;
-      if (diff > 0) {
+      if (diff < 0) {
         toast.style.transform = `translateX(${diff}px)`;
-        toast.style.opacity = `${1 - diff / toast.offsetWidth}`;
+        toast.style.opacity = `${1 + diff / toast.offsetWidth}`;
       }
     };
 
@@ -224,7 +228,7 @@ class NotificationManager {
       isDragging = false;
       toast.style.transition = "transform 0.3s ease, opacity 0.3s ease";
       const diff = currentX - startX;
-      if (diff > toast.offsetWidth / 2) {
+      if (diff < -toast.offsetWidth / 2) {
         this.removeToast(toast);
       } else {
         toast.style.transform = "";
@@ -250,7 +254,7 @@ class NotificationManager {
   public createBanner(
     message: string,
     type: NotificationType = "info",
-    options: NotificationOptions = {}
+    options: NotificationOptions = {},
   ): HTMLElement {
     const existingBanner = this.bannerContainer?.querySelector(".banner");
     if (existingBanner) existingBanner.remove();
@@ -294,7 +298,11 @@ class NotificationManager {
       closeBtn?.addEventListener("click", () => this.removeBanner(banner));
     }
 
-    if (defaultOptions.autoClose && defaultOptions.duration && defaultOptions.duration > 0) {
+    if (
+      defaultOptions.autoClose &&
+      defaultOptions.duration &&
+      defaultOptions.duration > 0
+    ) {
       setTimeout(() => this.removeBanner(banner), defaultOptions.duration);
     }
 
@@ -320,13 +328,13 @@ const notificationManager = new NotificationManager();
 // Add global styles for animations
 const style = document.createElement("style");
 style.textContent = `
-  @keyframes slideInRight {
-    from { transform: translateX(100%); opacity: 0; }
+  @keyframes slideInLeft {
+    from { transform: translateX(-100%); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
   }
-  @keyframes slideOutRight {
+  @keyframes slideOutLeft {
     from { transform: translateX(0); opacity: 1; }
-    to { transform: translateX(100%); opacity: 0; }
+    to { transform: translateX(-100%); opacity: 0; }
   }
   @keyframes slideInTop {
     from { transform: translateY(-100%); opacity: 0; }
@@ -336,11 +344,11 @@ style.textContent = `
     from { transform: translateY(0); opacity: 1; }
     to { transform: translateY(-100%); opacity: 0; }
   }
-  .animate-slideInRight {
-    animation: slideInRight 0.3s forwards;
+  .animate-slideInLeft {
+    animation: slideInLeft 0.3s forwards;
   }
-  .animate-slideOutRight {
-    animation: slideOutRight 0.3s forwards;
+  .animate-slideOutLeft {
+    animation: slideOutLeft 0.3s forwards;
   }
   .animate-slideInTop {
     animation: slideInTop 0.3s forwards;
@@ -353,7 +361,7 @@ style.textContent = `
     height: 24px;
     border: 3px solid var(--border-color);
     border-radius: 50%;
-    border-top: 3px solid var(--success-color);
+    border-top: 3px solid var(--accent-gold, #d4af37);
     animation: spin 1s linear infinite;
     margin: 0 auto;
   }
@@ -364,67 +372,93 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
-// Export functions (unchanged)
+// Export functions
 export const showToast = (
   message: string,
   type: NotificationType = "info",
-  options: NotificationOptions = {}
+  options: NotificationOptions = {},
 ): HTMLElement => notificationManager.showToast(message, type, options);
 
-export const showSuccess = (message: string, options?: NotificationOptions): HTMLElement =>
-  showToast(message, "success", options);
+export const showSuccess = (
+  message: string,
+  options?: NotificationOptions,
+): HTMLElement => showToast(message, "success", options);
 
-export const showError = (message: string, options?: NotificationOptions): HTMLElement =>
-  showToast(message, "error", options);
+export const showError = (
+  message: string,
+  options?: NotificationOptions,
+): HTMLElement => showToast(message, "error", options);
 
-export const showWarning = (message: string, options?: NotificationOptions): HTMLElement =>
-  showToast(message, "warning", options);
+export const showWarning = (
+  message: string,
+  options?: NotificationOptions,
+): HTMLElement => showToast(message, "warning", options);
 
-export const showInfo = (message: string, options?: NotificationOptions): HTMLElement =>
-  showToast(message, "info", options);
+export const showInfo = (
+  message: string,
+  options?: NotificationOptions,
+): HTMLElement => showToast(message, "info", options);
 
-export const showCritical = (message: string, options?: NotificationOptions): HTMLElement =>
-  showToast(message, "critical", options);
+export const showCritical = (
+  message: string,
+  options?: NotificationOptions,
+): HTMLElement => showToast(message, "critical", options);
 
-export const showLoading = (message?: string): void => notificationManager.showLoading(message);
+export const showLoading = (message?: string): void =>
+  notificationManager.showLoading(message);
 export const hideLoading = (): void => notificationManager.hideLoading();
 
 export const showBanner = (
   message: string,
   type: NotificationType = "info",
-  options: NotificationOptions = {}
+  options: NotificationOptions = {},
 ): HTMLElement => notificationManager.createBanner(message, type, options);
 
-export const showCriticalBanner = (message: string, options?: NotificationOptions): HTMLElement =>
-  showBanner(message, "critical", options);
+export const showCriticalBanner = (
+  message: string,
+  options?: NotificationOptions,
+): HTMLElement => showBanner(message, "critical", options);
 
-// Error handling functions remain unchanged
 export const extractErrorMessage = (error: ApiError): string => {
   if (!error.response) return "Network error. Please check your connection.";
   const response = error.response;
   const data = response.data;
   if (typeof data === "string") return data;
   if (Array.isArray(data)) {
-    return data.map((item) => (typeof item === "string" ? item : item.string || JSON.stringify(item))).join(". ");
+    return data
+      .map((item) =>
+        typeof item === "string" ? item : item.string || JSON.stringify(item),
+      )
+      .join(". ");
   }
   if (typeof data === "object" && data !== null) {
-    if (data.detail) return typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail);
+    if (data.detail)
+      return typeof data.detail === "string"
+        ? data.detail
+        : JSON.stringify(data.detail);
     if (data.error) {
       const err = data.error;
-      return typeof err === "string" ? err : Array.isArray(err) ? err.map((e) => e.string || e).join(". ") : JSON.stringify(err);
+      return typeof err === "string"
+        ? err
+        : Array.isArray(err)
+          ? err.map((e) => e.string || e).join(". ")
+          : JSON.stringify(err);
     }
     if (data.message) return data.message;
-    if (data.errors && Array.isArray(data.errors)) return data.errors.join(". ");
+    if (data.errors && Array.isArray(data.errors))
+      return data.errors.join(". ");
     const messages: string[] = [];
     Object.values(data).forEach((value) => {
       if (Array.isArray(value)) {
         value.forEach((item) => {
-          if (typeof item === "object" && item !== null && "string" in item) messages.push(item.string);
+          if (typeof item === "object" && item !== null && "string" in item)
+            messages.push(item.string);
           else if (typeof item === "string") messages.push(item);
           else messages.push(JSON.stringify(item));
         });
       } else if (typeof value === "string") messages.push(value);
-      else if (typeof value === "object" && value !== null && "string" in value) messages.push((value as any).string);
+      else if (typeof value === "object" && value !== null && "string" in value)
+        messages.push((value as any).string);
       else messages.push(JSON.stringify(value));
     });
     if (messages.length > 0) return messages.join(". ");
@@ -435,7 +469,7 @@ export const extractErrorMessage = (error: ApiError): string => {
 export const showApiError = (
   error: unknown,
   fallback: string = "",
-  options: NotificationOptions = {}
+  options: NotificationOptions = {},
 ): void => {
   let message = "An unexpected error occurred";
   let status: number | undefined;
@@ -446,29 +480,47 @@ export const showApiError = (
       message = extractErrorMessage(err as ApiError);
     } else if (err.status) {
       status = err.status;
-      if (err.data) message = extractErrorMessage({ response: { data: err.data, status: err.status } } as ApiError);
+      if (err.data)
+        message = extractErrorMessage({
+          response: { data: err.data, status: err.status },
+        } as ApiError);
       else message = err.message || fallback;
     } else if (err.message) message = err.message;
-    else if (err.detail || err.error || err.message) message = extractErrorMessage({ response: { data: error } } as ApiError);
+    else if (err.detail || err.error || err.message)
+      message = extractErrorMessage({ response: { data: error } } as ApiError);
   } else if (typeof error === "string") message = error;
   let type: NotificationType = "error";
-  if (status === 401 || status === 403 || (status && status >= 500)) type = "critical";
+  if (status === 401 || status === 403 || (status && status >= 500))
+    type = "critical";
   if (status === 404) type = "warning";
   showToast(message, type, { duration: 7000, autoClose: true, ...options });
 };
 
 export const inventoryNotifications = {
-  productCreated: (productName: string) => showSuccess(`Product "${productName}" created successfully`),
-  productUpdated: (productName: string) => showSuccess(`Product "${productName}" updated successfully`),
-  productDeleted: (productName: string) => showSuccess(`Product "${productName}" deleted successfully`),
-  lowStockWarning: (productName: string, quantity: number) => showWarning(`Low stock alert: "${productName}" has only ${quantity} units left`),
-  outOfStock: (productName: string) => showError(`Out of stock: "${productName}" is no longer available`),
-  orderCreated: (orderId: string) => showSuccess(`Order #${orderId} created successfully`),
-  orderUpdated: (orderId: string) => showSuccess(`Order #${orderId} updated successfully`),
-  orderCompleted: (orderId: string) => showSuccess(`Order #${orderId} marked as completed`),
-  purchaseCreated: (purchaseId: string) => showSuccess(`Purchase order #${purchaseId} created successfully`),
-  purchaseReceived: (purchaseId: string) => showSuccess(`Purchase order #${purchaseId} received and stock updated`),
-  dataExported: (format: string) => showSuccess(`${format.toUpperCase()} export completed successfully`),
+  productCreated: (productName: string) =>
+    showSuccess(`Product "${productName}" created successfully`),
+  productUpdated: (productName: string) =>
+    showSuccess(`Product "${productName}" updated successfully`),
+  productDeleted: (productName: string) =>
+    showSuccess(`Product "${productName}" deleted successfully`),
+  lowStockWarning: (productName: string, quantity: number) =>
+    showWarning(
+      `Low stock alert: "${productName}" has only ${quantity} units left`,
+    ),
+  outOfStock: (productName: string) =>
+    showError(`Out of stock: "${productName}" is no longer available`),
+  orderCreated: (orderId: string) =>
+    showSuccess(`Order #${orderId} created successfully`),
+  orderUpdated: (orderId: string) =>
+    showSuccess(`Order #${orderId} updated successfully`),
+  orderCompleted: (orderId: string) =>
+    showSuccess(`Order #${orderId} marked as completed`),
+  purchaseCreated: (purchaseId: string) =>
+    showSuccess(`Purchase order #${purchaseId} created successfully`),
+  purchaseReceived: (purchaseId: string) =>
+    showSuccess(`Purchase order #${purchaseId} received and stock updated`),
+  dataExported: (format: string) =>
+    showSuccess(`${format.toUpperCase()} export completed successfully`),
   backupCreated: () => showSuccess("Database backup created successfully"),
   settingsUpdated: () => showSuccess("Settings updated successfully"),
 };
