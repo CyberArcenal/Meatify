@@ -9,8 +9,9 @@
  * @description Modular Electron main process with DI container
  */
 
+// ✅ We still require loadEnv at the top for reference,
+// but we defer the actual loading to startupSequence.
 const { loadEnv } = require("./core/load-env");
-loadEnv(); // Before anything else
 
 // ===================== CORE IMPORTS =====================
 const { app, dialog, BrowserWindow } = require("electron");
@@ -61,6 +62,12 @@ async function startupSequence() {
     logger.info(`🚀 Starting ${APP_CONFIG.appName} v${APP_CONFIG.version}...`);
     logger.info(`Environment: ${getEnvironmentName()}`);
     logger.info(`User Data Path: ${APP_CONFIG.userDataPath}`);
+
+    // ✅ FIX: Load environment variables FIRST thing in startup
+    // Even though loadEnv is sync, we call it here to ensure
+    // it runs after app is ready (for potential future async operations)
+    loadEnv(); // or await loadEnv() if it becomes async
+    logger.info(`✅ Environment loaded`);
 
     // 1. Register custom protocols (no window needed)
     registerCustomProtocolHandlers();
