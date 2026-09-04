@@ -1,4 +1,4 @@
-// src/services/SaleService.js
+// src/services/Sale.js
 //@ts-check
 const auditLogger = require("../utils/auditLogger");
 const { paginateQueryBuilder } = require("../utils/dbUtils/pagination");
@@ -6,12 +6,11 @@ const { logger } = require("../utils/logger");
 const saleItemService = require("./SaleItem");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
-const Batch = require("../entities/Batch"); // ✅ Import Batch entity
-const { validate } = require("../validation/validate");
+const Batch = require("../entities/Batch");
+const { validate } = require("../validation");
 const {
   saleCreateSchema,
   saleUpdateSchema,
-  saleStatusSchema,
 } = require("../validation/schemas/sale.schema");
 
 /**
@@ -41,7 +40,7 @@ class SaleService {
     this.saleItemRepository = null;
     this.meatRepository = null;
     this.customerRepository = null;
-    this.batchRepository = null; // ✅ Store batch repository
+    this.batchRepository = null;
   }
 
   async initialize() {
@@ -58,7 +57,7 @@ class SaleService {
     this.saleItemRepository = AppDataSource.getRepository(SaleItem);
     this.meatRepository = AppDataSource.getRepository(Meat);
     this.customerRepository = AppDataSource.getRepository(Customer);
-    this.batchRepository = AppDataSource.getRepository(Batch); // ✅ Initialize batch repo
+    this.batchRepository = AppDataSource.getRepository(Batch);
     logger.debug("SaleService initialized");
   }
 
@@ -295,11 +294,14 @@ class SaleService {
   }
 
   // ============================================================
-  // ✅ CREATE SALE (with batch validation)
+  // ✅ CREATE SALE - OPTIMIZED (N+1 FIXED)
   // ============================================================
 
   /**
-   * Create a new sale (initiated status), then auto‑mark as paid after items are linked.
+   * Create a new sale (initiated status), then auto‑mark as paid.
+   *
+   * ✅ OPTIMIZED: Uses batch loading (findByIds) instead of individual queries
+   *
    * @param {Object} data - { items, customerId?, paymentMethod?, notes?, loyaltyRedeemed?, voucherCode? }
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
@@ -310,7 +312,6 @@ class SaleService {
     const Meat = require("../entities/Meat");
     const Customer = require("../entities/Customer");
     const Batch = require("../entities/Batch");
-    const saleItemService = require("./SaleItem");
 
     const saleRepo = this._getRepo(qr, Sale);
     const meatRepo = this._getRepo(qr, Meat);
@@ -368,36 +369,65 @@ class SaleService {
         throw new Error("Loyalty points are disabled in system settings");
       }
 
-      // ✅ Process items (business logic)
+      // ────────────────────────────────────────────────────────────────
+      // ✅ OPTIMIZATION: Batch load ALL meats and batches in ONE query each
+      // ────────────────────────────────────────────────────────────────
+
+      // Collect all meat IDs and batch IDs from items
+      const meatIds = [...new Set(items.map((item) => item.meatId))];
+      const batchIds = [...new Set(items.map((item) => item.batchId))];
+
+      // ✅ Query 1: Get all meats in one go (instead of N queries)
+      const meatsMap = new Map();
+      if (meatIds.length > 0) {
+        const meats = await meatRepo
+          .createQueryBuilder("meat")
+          .where("meat.id IN (:...meatIds)", { meatIds })
+          .andWhere("meat.isActive = true")
+          .getMany();
+        meats.forEach((meat) => meatsMap.set(meat.id, meat));
+      }
+
+      // ✅ Query 2: Get all batches in one go (instead of N queries)
+      const batchesMap = new Map();
+      if (batchIds.length > 0) {
+        const batches = await batchRepo
+          .createQueryBuilder("batch")
+          .leftJoinAndSelect("batch.meat", "meat")
+          .where("batch.id IN (:...batchIds)", { batchIds })
+          .getMany();
+        batches.forEach((batch) => batchesMap.set(batch.id, batch));
+      }
+
+      // ✅ Process items using the pre-loaded data
       const saleItemsData = [];
       let subtotal = 0;
       let totalDiscount = 0;
       let totalTax = 0;
 
       for (const itemData of items) {
-        // Validate meat exists
-        const meat = await meatRepo.findOne({
-          where: { id: itemData.meatId, isActive: true },
-        });
+        // ✅ Get meat from map (no DB query)
+        const meat = meatsMap.get(itemData.meatId);
         if (!meat) {
           throw new Error(
             `Meat with ID ${itemData.meatId} not found or inactive`,
           );
         }
 
-        // ✅ Validate batch (critical business logic)
-        const batch = await batchRepo.findOne({
-          where: { id: itemData.batchId },
-          relations: ["meat"],
-        });
+        // ✅ Get batch from map (no DB query)
+        const batch = batchesMap.get(itemData.batchId);
         if (!batch) {
           throw new Error(`Batch with ID ${itemData.batchId} not found`);
         }
+
+        // ✅ Validate batch belongs to meat (using pre-loaded data)
         if (batch.meat.id !== itemData.meatId) {
           throw new Error(
             `Batch #${itemData.batchId} (${batch.batchCode}) belongs to meat #${batch.meat.id}, but item expects meat #${itemData.meatId}`,
           );
         }
+
+        // ✅ Validate batch status and expiry (using pre-loaded data)
         if (batch.status !== "active") {
           throw new Error(
             `Batch #${itemData.batchId} is not active (status: ${batch.status})`,
@@ -475,7 +505,7 @@ class SaleService {
 
       const savedSale = await saveDb(saleRepo, sale, { queryRunner: qr });
 
-      // ✅ Create sale items
+      // ✅ Create sale items (using pre-loaded batch data)
       for (const itemData of saleItemsData) {
         await saleItemService.create(
           {
@@ -499,7 +529,6 @@ class SaleService {
       // ✅ Audit log
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logCreate("Sale", paidSale.id, paidSale, user);
       }
 
@@ -519,11 +548,14 @@ class SaleService {
   }
 
   // ============================================================
-  // ✅ UPDATE SALE (initiated only)
+  // ✅ UPDATE SALE - OPTIMIZED (N+1 FIXED)
   // ============================================================
 
   /**
    * Update an existing sale (only allowed for initiated status)
+   *
+   * ✅ OPTIMIZED: Uses batch loading (findByIds) instead of individual queries
+   *
    * @param {number} id
    * @param {Object} data - { paymentMethod?, notes?, customerId?, items? }
    * @param {string} user
@@ -544,6 +576,7 @@ class SaleService {
     const saleItemRepo = this._getRepo(qr, SaleItem);
     const meatRepo = this._getRepo(qr, Meat);
     const customerRepo = this._getRepo(qr, Customer);
+    const batchRepo = this._getRepo(qr, Batch);
 
     // ✅ Validate input
     const validated = validate(saleUpdateSchema, data, "Sale update");
@@ -615,21 +648,38 @@ class SaleService {
           throw new Error("At least one item is required");
         }
 
+        // ────────────────────────────────────────────────────────────────
+        // ✅ OPTIMIZATION: Batch load ALL meats in ONE query
+        // ────────────────────────────────────────────────────────────────
+
         // Remove old items
         for (const oldItem of existing.saleItems) {
           await removeDb(saleItemRepo, oldItem, { queryRunner: qr });
         }
 
-        // Create new items
+        // Collect all meat IDs from items
+        const meatIds = [...new Set(items.map((item) => item.meatId))];
+
+        // ✅ Query 1: Get all meats in one go (instead of N queries)
+        const meatsMap = new Map();
+        if (meatIds.length > 0) {
+          const meats = await meatRepo
+            .createQueryBuilder("meat")
+            .where("meat.id IN (:...meatIds)", { meatIds })
+            .andWhere("meat.isActive = true")
+            .getMany();
+          meats.forEach((meat) => meatsMap.set(meat.id, meat));
+        }
+
+        // ✅ Create new items using pre-loaded meats
         const newItems = [];
         let subtotal = 0;
         let totalDiscount = 0;
         let totalTax = 0;
 
         for (const itemData of items) {
-          const meat = await meatRepo.findOne({
-            where: { id: itemData.meatId, isActive: true },
-          });
+          // ✅ Get meat from map (no DB query)
+          const meat = meatsMap.get(itemData.meatId);
           if (!meat) {
             throw new Error(
               `Meat with ID ${itemData.meatId} not found or inactive`,
@@ -710,7 +760,6 @@ class SaleService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        const auditLogger = require("../utils/auditLogger");
         await auditLogger.logUpdate("Sale", id, oldData, saved, user);
       }
 
@@ -728,53 +777,7 @@ class SaleService {
   }
 
   // ============================================================
-  // ✅ DELETE (hard) – only for initiated or voided
-  // ============================================================
-
-  /**
-   * Permanently delete a sale (hard delete) – only allowed for initiated or voided status
-   * @param {number} id
-   * @param {string} user
-   * @param {import("typeorm").QueryRunner | null} qr
-   */
-  async permanentlyDelete(id, user = "system", qr = null) {
-    const { removeDb } = require("../utils/dbUtils/dbActions");
-    const Sale = require("../entities/Sale");
-    const SaleItem = require("../entities/SaleItem");
-
-    const saleRepo = this._getRepo(qr, Sale);
-    const saleItemRepo = this._getRepo(qr, SaleItem);
-
-    const sale = await saleRepo.findOne({
-      where: { id },
-      relations: ["saleItems"],
-    });
-    if (!sale) {
-      throw new Error(`Sale with ID ${id} not found`);
-    }
-
-    // Only allow deletion for initiated or voided sales
-    if (sale.status !== "initiated" && sale.status !== "voided") {
-      throw new Error(`Cannot delete a sale with status "${sale.status}"`);
-    }
-
-    // Remove sale items first
-    for (const item of sale.saleItems) {
-      await removeDb(saleItemRepo, item, { queryRunner: qr });
-    }
-
-    await removeDb(saleRepo, sale, { queryRunner: qr });
-
-    const auditEnabled = await this._isAuditEnabled(qr);
-    if (auditEnabled) {
-      await auditLogger.logCreate("Sale", id, sale, user);
-    }
-
-    logger.debug(`Sale #${id} permanently deleted`);
-  }
-
-  // ============================================================
-  // ✅ FIND METHODS
+  // 📊 READ METHODS
   // ============================================================
 
   /**
@@ -903,11 +906,11 @@ class SaleService {
     });
 
     await logger.debug("Sale", null, "system");
-    return result; // { data: [], pagination: {} }
+    return result;
   }
 
   // ============================================================
-  // ✅ STATISTICS
+  // 📊 STATISTICS & EXPORT
   // ============================================================
 
   /**
@@ -998,10 +1001,6 @@ class SaleService {
     };
   }
 
-  // ============================================================
-  // ✅ EXPORT
-  // ============================================================
-
   /**
    * Export sales to CSV or JSON
    * @param {string} format
@@ -1085,7 +1084,182 @@ class SaleService {
   }
 
   // ============================================================
-  // ✅ BULK & IMPORT
+  // ✏️ STATUS SETTERS
+  // ============================================================
+
+  /**
+   * Mark a sale as paid (status change only – subscriber triggers state service)
+   * @param {number} id - Sale ID
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async markAsPaid(id, user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Sale = require("../entities/Sale");
+
+    const saleRepo = this._getRepo(qr, Sale);
+
+    try {
+      const sale = await saleRepo.findOne({ where: { id } });
+      if (!sale) {
+        throw new Error(`Sale with ID ${id} not found`);
+      }
+
+      if (sale.status !== "initiated") {
+        throw new Error(`Cannot mark a ${sale.status} sale as paid`);
+      }
+
+      const oldData = { ...sale };
+      sale.status = "paid";
+      sale.updatedAt = new Date();
+
+      const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
+      }
+
+      logger.info(
+        `Sale #${id} marked as paid (subscriber will trigger side effects)`,
+      );
+      return updatedSale;
+    } catch (error) {
+      console.error("Failed to mark sale as paid:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Void an initiated sale (status → 'voided')
+   * @param {number} id - Sale ID
+   * @param {string} reason - Reason for voiding (stored in notes)
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<Sale>} Updated sale entity
+   */
+  async voidSale(id, reason = "", user = "system", qr = null) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Sale = require("../entities/Sale");
+    const saleRepo = this._getRepo(qr, Sale);
+
+    try {
+      const sale = await saleRepo.findOne({ where: { id } });
+      if (!sale) {
+        throw new Error(`Sale with ID ${id} not found`);
+      }
+
+      if (sale.status !== "initiated") {
+        throw new Error(`Cannot void a sale with status "${sale.status}"`);
+      }
+
+      const oldData = { ...sale };
+      sale.status = "voided";
+      sale.notes = sale.notes
+        ? `${sale.notes}\nVoided: ${reason}`
+        : `Voided: ${reason}`;
+      sale.updatedAt = new Date();
+
+      const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
+      }
+
+      logger.debug(`Sale #${id} voided`);
+      return updatedSale;
+    } catch (error) {
+      console.error("Failed to void sale:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Refund a paid sale (status → 'refunded')
+   * @param {number} id - Sale ID
+   * @param {string} reason - Reason for refund (stored in notes)
+   * @param {boolean} restock - Whether to restock items (default: true)
+   * @param {Array<{ itemIndex: number; restock: boolean }>} restockItems - Per-item restock options
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
+   * @returns {Promise<Sale>} Updated sale entity
+   */
+  async refundSale(
+    id,
+    reason = "",
+    restock = true,
+    restockItems = [],
+    user = "system",
+    qr = null,
+  ) {
+    const { updateDb } = require("../utils/dbUtils/dbActions");
+    const Sale = require("../entities/Sale");
+    const saleRepo = this._getRepo(qr, Sale);
+
+    try {
+      const sale = await saleRepo.findOne({
+        where: { id },
+        relations: [
+          "saleItems",
+          "saleItems.meat",
+          "saleItems.batch",
+          "customer",
+        ],
+      });
+      if (!sale) {
+        throw new Error(`Sale with ID ${id} not found`);
+      }
+
+      if (sale.status !== "paid") {
+        throw new Error(`Cannot refund a sale with status "${sale.status}"`);
+      }
+
+      const oldData = { ...sale };
+
+      // Store refund metadata in notes
+      const restockInfo = `Restock: ${restock}`;
+      const itemsInfo = restockItems
+        .map(
+          (ri) => `Item ${ri.itemIndex}: ${ri.restock ? "restock" : "waste"}`,
+        )
+        .join("; ");
+
+      sale.status = "refunded";
+      sale.notes = sale.notes
+        ? `${sale.notes}\nRefunded: ${reason || "No reason"} (${restockInfo})`
+        : `Refunded: ${reason || "No reason"} (${restockInfo})`;
+
+      if (restockItems.length > 0) {
+        sale.notes = `${sale.notes}\nItem status: ${itemsInfo}`;
+      }
+
+      sale.updatedAt = new Date();
+
+      const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
+
+      // ✅ Store restock options in metadata for the state service
+      updatedSale._refundMeta = {
+        restock,
+        restockItems,
+        reason,
+      };
+
+      const auditEnabled = await this._isAuditEnabled(qr);
+      if (auditEnabled) {
+        await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
+      }
+
+      logger.debug(`Sale #${id} refunded (restock: ${restock})`);
+      return updatedSale;
+    } catch (error) {
+      console.error("Failed to refund sale:", error.message);
+      throw error;
+    }
+  }
+
+  // ============================================================
+  // 📤 BULK & IMPORT OPERATIONS
   // ============================================================
 
   /**
@@ -1102,6 +1276,25 @@ class SaleService {
         results.created.push(saved);
       } catch (err) {
         results.errors.push({ sale: data, error: err.message });
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Bulk update sales
+   * @param {Array<{ id: number, updates: Object }>} updatesArray
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
+   */
+  async bulkUpdate(updatesArray, user = "system", qr = null) {
+    const results = { updated: [], errors: [] };
+    for (const { id, updates } of updatesArray) {
+      try {
+        const saved = await this.update(id, updates, user, qr);
+        results.updated.push(saved);
+      } catch (err) {
+        results.errors.push({ id, updates, error: err.message });
       }
     }
     return results;
@@ -1155,19 +1348,55 @@ class SaleService {
   }
 
   // ============================================================
-  // ✅ CLEANUP & HEALTH
+  // 🧹 CLEANUP & HELPERS
   // ============================================================
 
   /**
-   * Clean up old paid sales (soft delete via void status) – placeholder
-   * @param {number} daysOld
-   * @param {string} user
+   * Get daily sales summary
+   * @param {string} date - Date in YYYY-MM-DD format (defaults to today)
    * @param {import("typeorm").QueryRunner | null} qr
    */
-  async cleanOldSales(daysOld = null, user = "system", qr = null) {
-    // Placeholder – you can implement actual archiving logic if needed.
-    logger.info(`[Sale] cleanOldSales called with ${daysOld} days`);
-    return { count: 0 };
+  async getDailySalesSummary(date = null, qr = null) {
+    const Sale = require("../entities/Sale");
+    const saleRepo = this._getRepo(qr, Sale);
+
+    const targetDate = date ? new Date(date) : new Date();
+    const dateStr = targetDate.toISOString().split("T")[0];
+
+    const sales = await saleRepo
+      .createQueryBuilder("sale")
+      .leftJoinAndSelect("sale.saleItems", "saleItems")
+      .where("DATE(sale.timestamp) = :date", { date: dateStr })
+      .andWhere("sale.status = 'paid'")
+      .getMany();
+
+    let totalAmount = 0;
+    let totalWeight = 0;
+    let totalItems = 0;
+    const byPaymentMethod = {};
+
+    for (const sale of sales) {
+      totalAmount += sale.totalAmount;
+      totalItems += sale.saleItems?.length || 0;
+      const weight =
+        sale.saleItems?.reduce((sum, item) => sum + item.weightKg, 0) || 0;
+      totalWeight += weight;
+
+      const method = sale.paymentMethod || "unknown";
+      byPaymentMethod[method] =
+        (byPaymentMethod[method] || 0) + sale.totalAmount;
+    }
+
+    return {
+      date: dateStr,
+      totalSales: sales.length,
+      totalAmount,
+      averageAmount: sales.length > 0 ? totalAmount / sales.length : 0,
+      totalItems,
+      totalWeight,
+      byPaymentMethod,
+      sales,
+    };
   }
 
   /**
@@ -1268,282 +1497,58 @@ class SaleService {
     };
   }
 
-  // ============================================================
-  // ✅ MARK AS PAID (status change only – subscriber triggers side effects)
-  // ============================================================
-
   /**
-   * Mark a sale as paid (status change only – subscriber triggers state service)
-   * @param {number} id - Sale ID
+   * Clean up old paid sales (placeholder)
+   * @param {number} daysOld
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
-  async markAsPaid(id, user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const Sale = require("../entities/Sale");
-
-    const saleRepo = this._getRepo(qr, Sale);
-
-    try {
-      const sale = await saleRepo.findOne({ where: { id } });
-      if (!sale) {
-        throw new Error(`Sale with ID ${id} not found`);
-      }
-
-      if (sale.status !== "initiated") {
-        throw new Error(`Cannot mark a ${sale.status} sale as paid`);
-      }
-
-      const oldData = { ...sale };
-      sale.status = "paid";
-      sale.updatedAt = new Date();
-
-      const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
-
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        const auditLogger = require("../utils/auditLogger");
-        await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
-      }
-
-      logger.info(
-        `Sale #${id} marked as paid (subscriber will trigger side effects)`,
-      );
-      return updatedSale;
-    } catch (error) {
-      console.error("Failed to mark sale as paid:", error.message);
-      throw error;
-    }
+  async cleanOldSales(daysOld = null, user = "system", qr = null) {
+    // Placeholder – you can implement actual archiving logic if needed.
+    logger.info(`[Sale] cleanOldSales called with ${daysOld} days`);
+    return { count: 0 };
   }
-  // ============================================================
-  // ✅ DAILY SALES SUMMARY
-  // ============================================================
 
   /**
-   * Get daily sales summary
-   * @param {string} date - Date in YYYY-MM-DD format (defaults to today)
+   * Permanently delete a sale (hard delete) – only allowed for initiated or voided status
+   * @param {number} id
+   * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
    */
-  async getDailySalesSummary(date = null, qr = null) {
+  async permanentlyDelete(id, user = "system", qr = null) {
+    const { removeDb } = require("../utils/dbUtils/dbActions");
     const Sale = require("../entities/Sale");
+    const SaleItem = require("../entities/SaleItem");
+
     const saleRepo = this._getRepo(qr, Sale);
+    const saleItemRepo = this._getRepo(qr, SaleItem);
 
-    const targetDate = date ? new Date(date) : new Date();
-    const dateStr = targetDate.toISOString().split("T")[0];
-
-    const sales = await saleRepo
-      .createQueryBuilder("sale")
-      .leftJoinAndSelect("sale.saleItems", "saleItems")
-      .where("DATE(sale.timestamp) = :date", { date: dateStr })
-      .andWhere("sale.status = 'paid'")
-      .getMany();
-
-    let totalAmount = 0;
-    let totalWeight = 0;
-    let totalItems = 0;
-    const byPaymentMethod = {};
-
-    for (const sale of sales) {
-      totalAmount += sale.totalAmount;
-      totalItems += sale.saleItems?.length || 0;
-      const weight =
-        sale.saleItems?.reduce((sum, item) => sum + item.weightKg, 0) || 0;
-      totalWeight += weight;
-
-      const method = sale.paymentMethod || "unknown";
-      byPaymentMethod[method] =
-        (byPaymentMethod[method] || 0) + sale.totalAmount;
+    const sale = await saleRepo.findOne({
+      where: { id },
+      relations: ["saleItems"],
+    });
+    if (!sale) {
+      throw new Error(`Sale with ID ${id} not found`);
     }
 
-    return {
-      date: dateStr,
-      totalSales: sales.length,
-      totalAmount,
-      averageAmount: sales.length > 0 ? totalAmount / sales.length : 0,
-      totalItems,
-      totalWeight,
-      byPaymentMethod,
-      sales,
-    };
-  }
-
-  async bulkUpdate(updatesArray, user = "system", qr = null) {
-    const results = { updated: [], errors: [] };
-    for (const { id, updates } of updatesArray) {
-      try {
-        const saved = await this.update(id, updates, user, qr);
-        results.updated.push(saved);
-      } catch (err) {
-        results.errors.push({ id, updates, error: err.message });
-      }
+    // Only allow deletion for initiated or voided sales
+    if (sale.status !== "initiated" && sale.status !== "voided") {
+      throw new Error(`Cannot delete a sale with status "${sale.status}"`);
     }
-    return results;
-  }
 
-  // ============================================================
-  // ✅ VOID SALE (setter only – subscriber triggers side effects)
-  // ============================================================
-
-  /**
-   * Void an initiated sale (status → 'voided')
-   * Only allowed for sales with status 'initiated'.
-   *
-   * @param {number} id - Sale ID
-   * @param {string} reason - Reason for voiding (stored in notes)
-   * @param {string} user - User performing the action
-   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
-   * @returns {Promise<Sale>} Updated sale entity
-   */
-
-  async voidSale(id, reason = "", user = "system", qr = null) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const Sale = require("../entities/Sale");
-    const saleRepo = this._getRepo(qr, Sale);
-
-    // ✅ Validate reason (optional)
-    const validated = validate(
-      { reason: z.string().max(500).optional() },
-      { reason },
-      "Void reason",
-    );
-
-    try {
-      const sale = await saleRepo.findOne({ where: { id } });
-      if (!sale) {
-        throw new Error(`Sale with ID ${id} not found`);
-      }
-
-      if (sale.status !== "initiated") {
-        throw new Error(`Cannot void a sale with status "${sale.status}"`);
-      }
-
-      const oldData = { ...sale };
-      sale.status = "voided";
-      sale.notes = sale.notes
-        ? `${sale.notes}\nVoided: ${validated.reason}`
-        : `Voided: ${validated.reason}`;
-      sale.updatedAt = new Date();
-
-      const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
-
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        const auditLogger = require("../utils/auditLogger");
-        await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
-      }
-
-      logger.debug(`Sale #${id} voided`);
-      return updatedSale;
-    } catch (error) {
-      console.error("Failed to void sale:", error.message);
-      throw error;
+    // Remove sale items first
+    for (const item of sale.saleItems) {
+      await removeDb(saleItemRepo, item, { queryRunner: qr });
     }
-  }
 
-  // ============================================================
-  // ✅ REFUND SALE (setter only – subscriber triggers side effects)
-  // ============================================================
+    await removeDb(saleRepo, sale, { queryRunner: qr });
 
-  /**
-   * Refund a paid sale (status → 'refunded')
-   * Only allowed for sales with status 'paid'.
-   *
-   * @param {number} id - Sale ID
-   * @param {string} reason - Reason for refund (stored in notes)
-   * @param {boolean} restock - Whether to restock items (default: true)
-   * @param {Array<{ itemIndex: number; restock: boolean }>} restockItems - Per-item restock options
-   * @param {string} user - User performing the action
-   * @param {import("typeorm").QueryRunner | null} qr - Transaction query runner
-   * @returns {Promise<Sale>} Updated sale entity
-   */
-
-  async refundSale(
-    id,
-    reason = "",
-    restock = true,
-    restockItems = [],
-    user = "system",
-    qr = null,
-  ) {
-    const { updateDb } = require("../utils/dbUtils/dbActions");
-    const Sale = require("../entities/Sale");
-    const saleRepo = this._getRepo(qr, Sale);
-
-    // ✅ Validate reason and restockItems
-    const validated = validate(
-      {
-        reason: z.string().max(500).optional(),
-        restock: z.boolean(),
-        restockItems: z.array(
-          z.object({
-            itemIndex: z.number().int().min(0),
-            restock: z.boolean(),
-          }),
-        ),
-      },
-      { reason, restock, restockItems },
-      "Refund data",
-    );
-
-    try {
-      const sale = await saleRepo.findOne({
-        where: { id },
-        relations: [
-          "saleItems",
-          "saleItems.meat",
-          "saleItems.batch",
-          "customer",
-        ],
-      });
-      if (!sale) {
-        throw new Error(`Sale with ID ${id} not found`);
-      }
-
-      if (sale.status !== "paid") {
-        throw new Error(`Cannot refund a sale with status "${sale.status}"`);
-      }
-
-      const oldData = { ...sale };
-
-      const restockInfo = `Restock: ${validated.restock}`;
-      const itemsInfo = validated.restockItems
-        .map(
-          (ri) => `Item ${ri.itemIndex}: ${ri.restock ? "restock" : "waste"}`,
-        )
-        .join("; ");
-
-      sale.status = "refunded";
-      sale.notes = sale.notes
-        ? `${sale.notes}\nRefunded: ${validated.reason || "No reason"} (${restockInfo})`
-        : `Refunded: ${validated.reason || "No reason"} (${restockInfo})`;
-
-      if (validated.restockItems.length > 0) {
-        sale.notes = `${sale.notes}\nItem status: ${itemsInfo}`;
-      }
-
-      sale.updatedAt = new Date();
-
-      const updatedSale = await updateDb(saleRepo, sale, { queryRunner: qr });
-
-      // Store refund metadata for state service
-      updatedSale._refundMeta = {
-        restock: validated.restock,
-        restockItems: validated.restockItems,
-        reason: validated.reason,
-      };
-
-      const auditEnabled = await this._isAuditEnabled(qr);
-      if (auditEnabled) {
-        const auditLogger = require("../utils/auditLogger");
-        await auditLogger.logUpdate("Sale", id, oldData, updatedSale, user);
-      }
-
-      logger.debug(`Sale #${id} refunded (restock: ${validated.restock})`);
-      return updatedSale;
-    } catch (error) {
-      console.error("Failed to refund sale:", error.message);
-      throw error;
+    const auditEnabled = await this._isAuditEnabled(qr);
+    if (auditEnabled) {
+      await auditLogger.logCreate("Sale", id, sale, user);
     }
+
+    logger.debug(`Sale #${id} permanently deleted`);
   }
 }
 
