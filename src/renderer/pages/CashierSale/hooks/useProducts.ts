@@ -32,10 +32,10 @@ export const useProducts = () => {
       }
     } catch (error) {
       console.error("Failed to load products", error);
-      await dialogs.alert({
-        title: "Error",
-        message: "Could not load products. Please try again.",
-      });
+      // await dialogs.alert({
+      //   title: "Error",
+      //   message: "Could not load products. Please try again.",
+      // });
     } finally {
       setLoadingProducts(false);
     }
