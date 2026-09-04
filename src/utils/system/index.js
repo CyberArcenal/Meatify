@@ -1,9 +1,10 @@
 // src/utils/system.js
+//@ts-check
 // Refactored for Meatify POS - Meat Shop Management
 const path = require("path");
 const Decimal = require("decimal.js");
-const { logger } = require("./logger");
-const { SystemSetting, SettingType } = require("../entities/systemSettings");
+const { logger } = require("../logger");
+const { SystemSetting, SettingType } = require("../../entities/systemSettings");
 
 // ============================================================
 // 📊 CORE GETTER FUNCTIONS (No changes needed)
@@ -16,7 +17,7 @@ const { SystemSetting, SettingType } = require("../entities/systemSettings");
  * @param {any} defaultValue
  */
 async function getValue(key, settingType, defaultValue = null) {
-  const { AppDataSource } = require("../main/db/data-source");
+  const { AppDataSource } = require("../../main/db/data-source");
   try {
     if (typeof key !== "string" || !key.trim()) {
       logger.debug(`[DB] Invalid key: ${key}`);
@@ -654,7 +655,7 @@ async function serverUrl() {
  * @param {string} [url] - server URL (required when mode === 'online')
  */
 async function setSyncSettings(mode, url = "") {
-  const { AppDataSource } = require("../main/db/data-source");
+  const { AppDataSource } = require("../../main/db/data-source");
   const repository = AppDataSource.getRepository(SystemSetting);
   if (!repository) {
     throw new Error("SystemSetting repository not available");

@@ -209,7 +209,7 @@ class DeviceInfo {
     return {
       deviceId: fingerprint.deviceId,
       timestamp,
-      appVersion: require('../../package.json').version,
+      appVersion: require('../../../package.json').version,
       data: dataString,
       // @ts-ignore
       hash

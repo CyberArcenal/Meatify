@@ -6,6 +6,12 @@ const { logger } = require("../utils/logger");
 const system = require("../utils/system");
 const { SettingType } = require("../entities/systemSettings");
 const Customer = require("../entities/Customer");
+const { validate } = require("../validation");
+const {
+  loyaltyTransactionCreateSchema,
+  loyaltyTransactionUpdateSchema,
+} = require("../validation/schemas/loyaltyTransaction.schema");
+const { z } = require("zod");
 
 /**
  * Allowed columns for sorting (prevents SQL injection)
@@ -305,7 +311,9 @@ class LoyaltyTransactionService {
         ? options.transactionType
         : [options.transactionType];
       const allowedTypes = await this._getAllowedTransactionTypes(qr);
-      const invalidTypes = types.filter((/** @type {string} */ t) => !allowedTypes.includes(t));
+      const invalidTypes = types.filter(
+        (/** @type {string} */ t) => !allowedTypes.includes(t),
+      );
       if (invalidTypes.length > 0) {
         logger.warn(
           `[LoyaltyTransaction] Invalid transaction types: ${invalidTypes.join(", ")}. Allowed: ${allowedTypes.join(", ")}`,
@@ -535,7 +543,7 @@ class LoyaltyTransactionService {
   }
 
   // ============================================================
-  // ✏️ WRITE OPERATIONS (CRUD)
+  // ✏️ WRITE OPERATIONS (CRUD) - WITH VALIDATION
   // ============================================================
 
   /**
@@ -555,61 +563,60 @@ class LoyaltyTransactionService {
     const customerRepo = this._getRepo(qr, Customer);
     const saleRepo = this._getRepo(qr, Sale);
 
+    // ✅ Validate input
+    const validated = validate(
+      loyaltyTransactionCreateSchema,
+      data,
+      "Loyalty transaction creation",
+    );
+
     try {
+      const { customerId, pointsChange, transactionType, notes, saleId } =
+        validated;
+
+      // ✅ Check if loyalty points are enabled
       const loyaltyEnabled = await this._isLoyaltyEnabled(qr);
       if (!loyaltyEnabled) {
         throw new Error("Loyalty points are disabled in system settings");
       }
 
-      if (!data.customerId) throw new Error("customerId is required");
-      if (data.pointsChange === undefined || data.pointsChange === null) {
-        throw new Error("pointsChange is required");
-      }
-      if (data.pointsChange === 0) {
-        throw new Error("pointsChange cannot be zero");
-      }
-      if (!data.transactionType) throw new Error("transactionType is required");
-
+      // ✅ Validate transaction type against allowed types (business rule)
       const allowedTypes = await this._getAllowedTransactionTypes(qr);
-      if (!allowedTypes.includes(data.transactionType)) {
+      if (!allowedTypes.includes(transactionType)) {
         throw new Error(
-          `Invalid transaction type: "${data.transactionType}". Allowed: ${allowedTypes.join(", ")}`,
+          `Invalid transaction type: "${transactionType}". Allowed: ${allowedTypes.join(", ")}`,
         );
       }
 
-      if (data.notes) {
-        const maxLength = await this._getMaxNotesLength(qr);
-        if (data.notes.length > maxLength) {
-          throw new Error(`Notes cannot exceed ${maxLength} characters`);
-        }
+      // ✅ Only allow adjustment type for direct creation
+      if (transactionType !== "adjustment") {
+        throw new Error(
+          `Use earnPoints/redeemPoints for "${transactionType}" transactions. This service only handles "adjustment".`,
+        );
       }
 
+      // ✅ Validate customer exists
       const customer = await customerRepo.findOne({
-        where: { id: data.customerId },
+        where: { id: customerId },
       });
       if (!customer) {
-        throw new Error(`Customer with ID ${data.customerId} not found`);
+        throw new Error(`Customer with ID ${customerId} not found`);
       }
 
+      // ✅ Validate sale if provided
       let sale = null;
-      if (data.saleId) {
-        sale = await saleRepo.findOne({ where: { id: data.saleId } });
+      if (saleId) {
+        sale = await saleRepo.findOne({ where: { id: saleId } });
         if (!sale) {
-          throw new Error(`Sale with ID ${data.saleId} not found`);
+          throw new Error(`Sale with ID ${saleId} not found`);
         }
       }
 
-      // Only allow adjustment type for direct creation
-      if (data.transactionType !== "adjustment") {
-        throw new Error(
-          `Use earnPoints/redeemPoints for "${data.transactionType}" transactions. This service only handles "adjustment".`,
-        );
-      }
-
+      // ✅ Create transaction
       const transaction = loyaltyRepo.create({
-        pointsChange: data.pointsChange,
-        transactionType: data.transactionType,
-        notes: data.notes || `Manual adjustment by ${user}`,
+        pointsChange: pointsChange,
+        transactionType: transactionType,
+        notes: notes || `Manual adjustment by ${user}`,
         customer: customer,
         sale: sale || null,
         timestamp: new Date(),
@@ -651,6 +658,13 @@ class LoyaltyTransactionService {
     const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
     const repo = this._getRepo(qr, LoyaltyTransaction);
 
+    // ✅ Validate input
+    const validated = validate(
+      loyaltyTransactionUpdateSchema,
+      data,
+      "Loyalty transaction update",
+    );
+
     try {
       const existing = await repo.findOne({ where: { id } });
       if (!existing) {
@@ -659,14 +673,15 @@ class LoyaltyTransactionService {
 
       const oldData = { ...existing };
 
-      if (data.notes !== undefined) {
-        const maxLength = await this._getMaxNotesLength(qr);
-        if (data.notes.length > maxLength) {
-          throw new Error(`Notes cannot exceed ${maxLength} characters`);
-        }
-        existing.notes = data.notes;
+      // Use validated data
+      const { notes } = validated;
+
+      // ✅ Update notes
+      if (notes !== undefined) {
+        existing.notes = notes;
       }
 
+      // ❌ Prevent updating immutable fields
       if (
         data.pointsChange !== undefined ||
         data.transactionType !== undefined ||
@@ -887,6 +902,8 @@ class LoyaltyTransactionService {
           notes: record.notes || null,
           saleId: record.saleId ? parseInt(record.saleId, 10) : null,
         };
+
+        // Basic validation before passing to create()
         if (
           !data.customerId ||
           data.pointsChange === undefined ||
@@ -894,6 +911,7 @@ class LoyaltyTransactionService {
         ) {
           throw new Error("customerId and non-zero pointsChange are required");
         }
+
         const saved = await this.create(data, user, qr);
         results.imported.push(saved);
       } catch (err) {
@@ -904,15 +922,17 @@ class LoyaltyTransactionService {
   }
 
   // ============================================================
-  // 🔄 BUSINESS LOGIC METHODS (Moved from State Service)
+  // 🔄 BUSINESS LOGIC METHODS
   // ============================================================
 
   /**
    * Earn loyalty points – now only creates transaction
    * Balance update handled by subscriber.
-   * @param {any} customerId
+   * @param {number} customerId
    * @param {number} amountSpent
-   * @param {any} saleId
+   * @param {number} saleId
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
    */
   async earnPoints(
     customerId,
@@ -921,32 +941,46 @@ class LoyaltyTransactionService {
     user = "system",
     qr = null,
   ) {
-    // Remove balance update logic, just compute points and create transaction
+    // ✅ Validate input
+    const validated = validate(
+      z.object({
+        customerId: z.number().int().positive(),
+        amountSpent: z.number().min(0),
+        saleId: z.number().int().positive(),
+      }),
+      { customerId, amountSpent, saleId },
+      "Earn points",
+    );
+
     const rate = await this._getPointRate(qr);
-    const pointsEarned = Math.floor(amountSpent / rate);
+    const pointsEarned = Math.floor(validated.amountSpent / rate);
     if (pointsEarned <= 0) {
       return { customer: null, transaction: null, pointsEarned: 0 };
     }
 
     const data = {
-      customerId,
+      customerId: validated.customerId,
       pointsChange: pointsEarned,
       transactionType: "earn",
-      notes: `Sale #${saleId}`,
-      saleId,
+      notes: `Sale #${validated.saleId}`,
+      saleId: validated.saleId,
     };
     const savedTx = await this.create(data, user, qr);
     const customerRepo = this._getRepo(qr, Customer);
-    const customer = await customerRepo.findOne({ where: { id: customerId } });
+    const customer = await customerRepo.findOne({
+      where: { id: validated.customerId },
+    });
     return { customer, transaction: savedTx, pointsEarned };
   }
 
   /**
    * Redeem loyalty points – now only creates transaction
    * Balance update handled by subscriber.
-   * @param {any} customerId
+   * @param {number} customerId
    * @param {number} pointsToRedeem
-   * @param {any} saleId
+   * @param {number} saleId
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} qr
    */
   async redeemPoints(
     customerId,
@@ -955,18 +989,34 @@ class LoyaltyTransactionService {
     user = "system",
     qr = null,
   ) {
-    // Remove balance update logic, just create transaction
+    // ✅ Validate input
+    const validated = validate(
+      z.object({
+        customerId: z.number().int().positive(),
+        pointsToRedeem: z.number().int().positive(),
+        saleId: z.number().int().positive(),
+      }),
+      { customerId, pointsToRedeem, saleId },
+      "Redeem points",
+    );
+
     const data = {
-      customerId,
-      pointsChange: -pointsToRedeem,
+      customerId: validated.customerId,
+      pointsChange: -validated.pointsToRedeem,
       transactionType: "redeem",
-      notes: `Redeemed on Sale #${saleId}`,
-      saleId,
+      notes: `Redeemed on Sale #${validated.saleId}`,
+      saleId: validated.saleId,
     };
     const savedTx = await this.create(data, user, qr);
     const customerRepo = this._getRepo(qr, Customer);
-    const customer = await customerRepo.findOne({ where: { id: customerId } });
-    return { customer, transaction: savedTx, pointsRedeemed: pointsToRedeem };
+    const customer = await customerRepo.findOne({
+      where: { id: validated.customerId },
+    });
+    return {
+      customer,
+      transaction: savedTx,
+      pointsRedeemed: validated.pointsToRedeem,
+    };
   }
 
   /**
@@ -985,21 +1035,40 @@ class LoyaltyTransactionService {
     user = "system",
     qr = null,
   ) {
+    // ✅ Validate input
+    const validated = validate(
+      z.object({
+        customerId: z.number().int().positive(),
+        pointsChange: z
+          .number()
+          .int()
+          .refine((val) => val !== 0, "Points change cannot be zero"),
+        reason: z.string().min(1, "Reason is required").max(500),
+      }),
+      { customerId, pointsChange, reason },
+      "Manual adjust points",
+    );
 
     // Create transaction (without balance update)
     const data = {
-      customerId,
-      pointsChange,
+      customerId: validated.customerId,
+      pointsChange: validated.pointsChange,
       transactionType: "adjustment",
-      notes: `Manual adjustment: ${reason}`,
+      notes: `Manual adjustment: ${validated.reason}`,
       saleId: null,
     };
     const savedTx = await this.create(data, user, qr);
 
     // Since balance is not updated here, we return the customer without updated balance
     const customerRepo = this._getRepo(qr, Customer);
-    const customer = await customerRepo.findOne({ where: { id: customerId } });
-    return { customer, transaction: savedTx, pointsChanged: pointsChange };
+    const customer = await customerRepo.findOne({
+      where: { id: validated.customerId },
+    });
+    return {
+      customer,
+      transaction: savedTx,
+      pointsChanged: validated.pointsChange,
+    };
   }
 
   /**
@@ -1015,15 +1084,27 @@ class LoyaltyTransactionService {
     const Customer = require("../entities/Customer");
     const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 
+    // ✅ Validate input
+    const validated = validate(
+      z.object({
+        transactionId: z.number().int().positive(),
+        reason: z.string().max(500).optional(),
+      }),
+      { transactionId, reason },
+      "Reverse transaction",
+    );
+
     const loyaltyRepo = this._getRepo(qr, LoyaltyTransaction);
     const customerRepo = this._getRepo(qr, Customer);
 
     const originalTx = await loyaltyRepo.findOne({
-      where: { id: transactionId },
+      where: { id: validated.transactionId },
       relations: ["customer"],
     });
     if (!originalTx) {
-      throw new Error(`LoyaltyTransaction #${transactionId} not found`);
+      throw new Error(
+        `LoyaltyTransaction #${validated.transactionId} not found`,
+      );
     }
 
     if (originalTx.transactionType === "adjustment") {
@@ -1031,7 +1112,7 @@ class LoyaltyTransactionService {
       const result = await this.manualAdjustPoints(
         originalTx.customer.id,
         pointsToReverse,
-        `Reverse of adjustment: ${reason}`,
+        `Reverse of adjustment: ${validated.reason || "No reason provided"}`,
         user,
         qr,
       );
@@ -1068,7 +1149,7 @@ class LoyaltyTransactionService {
       const reverseTx = loyaltyRepo.create({
         pointsChange: pointsToReverse,
         transactionType: "refund",
-        notes: `Reverse of transaction #${transactionId}: ${reason}`,
+        notes: `Reverse of transaction #${validated.transactionId}: ${validated.reason || "No reason provided"}`,
         customer: updatedCustomer,
         sale: originalTx.sale || null,
         timestamp: new Date(),
@@ -1090,7 +1171,7 @@ class LoyaltyTransactionService {
       }
 
       logger.info(
-        `[LoyaltyTransaction] Reversed earned transaction #${transactionId}. Customer #${customer.id} balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`,
+        `[LoyaltyTransaction] Reversed earned transaction #${validated.transactionId}. Customer #${customer.id} balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`,
       );
 
       return {
@@ -1120,7 +1201,7 @@ class LoyaltyTransactionService {
       const reverseTx = loyaltyRepo.create({
         pointsChange: pointsToReverse,
         transactionType: "refund",
-        notes: `Reverse of redemption #${transactionId}: ${reason}`,
+        notes: `Reverse of redemption #${validated.transactionId}: ${validated.reason || "No reason provided"}`,
         customer: updatedCustomer,
         sale: originalTx.sale || null,
         timestamp: new Date(),
@@ -1142,7 +1223,7 @@ class LoyaltyTransactionService {
       }
 
       logger.info(
-        `[LoyaltyTransaction] Reversed redemption #${transactionId}. Customer #${customer.id} balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`,
+        `[LoyaltyTransaction] Reversed redemption #${validated.transactionId}. Customer #${customer.id} balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`,
       );
 
       return {
@@ -1170,17 +1251,28 @@ class LoyaltyTransactionService {
     const Customer = require("../entities/Customer");
     const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 
+    // ✅ Validate customerId
+    const validated = validate(
+      z.object({ customerId: z.number().int().positive() }),
+      { customerId },
+      "Customer ID",
+    );
+
     const customerRepo = this._getRepo(qr, Customer);
     const loyaltyRepo = this._getRepo(qr, LoyaltyTransaction);
 
-    const customer = await customerRepo.findOne({ where: { id: customerId } });
+    const customer = await customerRepo.findOne({
+      where: { id: validated.customerId },
+    });
     if (!customer) {
-      throw new Error(`Customer with ID ${customerId} not found`);
+      throw new Error(`Customer with ID ${validated.customerId} not found`);
     }
 
     const transactions = await loyaltyRepo
       .createQueryBuilder("tx")
-      .where("tx.customerId = :customerId", { customerId })
+      .where("tx.customerId = :customerId", {
+        customerId: validated.customerId,
+      })
       .andWhere("tx.deletedAt IS NULL")
       .orderBy("tx.timestamp", "DESC")
       .getMany();
@@ -1251,8 +1343,15 @@ class LoyaltyTransactionService {
       daysOld = await this._getRetentionDays(qr);
     }
 
+    // ✅ Validate daysOld
+    const validated = validate(
+      z.object({ daysOld: z.number().int().positive() }),
+      { daysOld },
+      "Clean old transactions",
+    );
+
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+    cutoffDate.setDate(cutoffDate.getDate() - validated.daysOld);
 
     const oldTransactions = await repo
       .createQueryBuilder("tx")
@@ -1262,7 +1361,7 @@ class LoyaltyTransactionService {
 
     if (oldTransactions.length === 0) {
       logger.info(
-        `[LoyaltyTransaction] No old transactions to clean up (threshold: ${daysOld} days)`,
+        `[LoyaltyTransaction] No old transactions to clean up (threshold: ${validated.daysOld} days)`,
       );
       return { count: 0 };
     }
@@ -1281,7 +1380,7 @@ class LoyaltyTransactionService {
 
         updatedCount++;
         logger.debug(
-          `[LoyaltyTransaction] Soft deleted transaction #${tx.id} (older than ${daysOld} days)`,
+          `[LoyaltyTransaction] Soft deleted transaction #${tx.id} (older than ${validated.daysOld} days)`,
         );
       } catch (err) {
         logger.error(
@@ -1292,7 +1391,7 @@ class LoyaltyTransactionService {
     }
 
     logger.info(
-      `[LoyaltyTransaction] Cleaned up ${updatedCount} old transactions (older than ${daysOld} days)`,
+      `[LoyaltyTransaction] Cleaned up ${updatedCount} old transactions (older than ${validated.daysOld} days)`,
     );
     return { count: updatedCount };
   }
