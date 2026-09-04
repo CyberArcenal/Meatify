@@ -20,6 +20,11 @@ const Batch = new EntitySchema({
     note: { type: String, nullable: true },
     createdAt: { type: Date, default: () => "CURRENT_TIMESTAMP" },
     updatedAt: { type: Date, nullable: true },
+
+    version: { 
+      type: Number, 
+      default: 1 
+    },
   },
   relations: {
     meat: { // ipo-link sa Meat entity sa ibaba
