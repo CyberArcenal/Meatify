@@ -10,7 +10,7 @@ module.exports = async (params) => {
       limit,
       sortBy,
       sortOrder,
-      ...filters,
+      ...filters,   // includes search, paymentMethod, status, startDate, endDate, customerId, etc.
     };
 
     const result = await saleService.findAll(options);
@@ -18,11 +18,11 @@ module.exports = async (params) => {
       status: true,
       message: "Sales retrieved successfully",
       data: {
-        items: result.data,                 // ✅ array ng meats
-        total: result.pagination.total,     // ✅ total items
-        page: result.pagination.page,       // ✅ current page
-        limit: result.pagination.limit,     // ✅ items per page
-        totalPages: result.pagination.pages, // ✅ total pages (convert "pages" to "totalPages")
+        items: result.data,
+        total: result.pagination.total,
+        page: result.pagination.page,
+        limit: result.pagination.limit,
+        totalPages: result.pagination.pages,
       },
     };
   } catch (error) {

@@ -1,5 +1,5 @@
 // src/renderer/pages/sales/transactions/index.tsx
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   PlusCircle,
   Download,
@@ -30,6 +30,7 @@ const TransactionsPage: React.FC = () => {
   const navigate = useNavigate();
   const { pagination, setPagination, clearPagination } = usePagination();
 
+  // ✅ Same as MeatPage – useTransactions with internal state
   const {
     transactions,
     filters,
@@ -104,7 +105,7 @@ const TransactionsPage: React.FC = () => {
         await dialogs.success("Refund processed successfully.", "Success");
         setRefundModalOpen(false);
         setRefundTransaction(null);
-        closeDetails(); // close drawer if open
+        closeDetails();
       } else {
         throw new Error(response.message);
       }
@@ -121,67 +122,31 @@ const TransactionsPage: React.FC = () => {
     filters.startDate !== format(new Date(), "yyyy-MM-dd") ||
     filters.endDate !== format(new Date(), "yyyy-MM-dd"));
 
-  // ─── Pagination Sync ──────────────────────────────────────────────
-  const handlePageChange = useCallback(
-    (newPage: number) => {
-      goToPage(newPage);
+  // ─── Filter Handlers (same as MeatPage) ──────────────────────
+  const handleFilterChange = useCallback(
+    <K extends keyof TransactionFilters>(key: K, value: TransactionFilters[K]) => {
+      setFilters((prev) => ({ ...prev, [key]: value }));
+      goToPage(1);
     },
-    [goToPage]
+    [setFilters, goToPage]
   );
 
-  const handlePageSizeChange = useCallback(
-    (newSize: number) => {
-      changeLimit(newSize);
-    },
-    [changeLimit]
-  );
-
-  const handlersRef = useRef({
-    onPageChange: handlePageChange,
-    onPageSizeChange: handlePageSizeChange,
-  });
-
+  // ─── Pagination Sync – EXACT same as MeatPage ─────────────────
   useEffect(() => {
-    handlersRef.current = {
-      onPageChange: handlePageChange,
-      onPageSizeChange: handlePageSizeChange,
-    };
-  }, [handlePageChange, handlePageSizeChange]);
-
-  const prevPageRef = useRef(pagination.currentPage);
-  const prevTotalRef = useRef(totalItems);
-  const prevLimitRef = useRef(pagination.pageSize);
-
-  useEffect(() => {
-    const pageChanged = prevPageRef.current !== page;
-    const totalChanged = prevTotalRef.current !== totalItems;
-    const limitChanged = prevLimitRef.current !== limit;
-
-    if (pageChanged || totalChanged || limitChanged) {
-      prevPageRef.current = page;
-      prevTotalRef.current = totalItems;
-      prevLimitRef.current = limit;
-
-      setPagination({
-        currentPage: page,
-        totalItems: totalItems,
-        pageSize: limit,
-        onPageChange: handlersRef.current.onPageChange,
-        onPageSizeChange: handlersRef.current.onPageSizeChange,
-        pageSizeOptions: [10, 25, 50, 100],
-        showPageSize: true,
-      });
-    }
-  }, [page, totalItems, limit, setPagination]);
+    setPagination({
+      currentPage: page,
+      totalItems: totalItems,
+      pageSize: limit,
+      onPageChange: goToPage,        // ✅ Direct
+      onPageSizeChange: changeLimit, // ✅ Direct
+      pageSizeOptions: [10, 25, 50, 100],
+      showPageSize: true,
+    });
+  }, [page, limit, totalItems, setPagination, goToPage, changeLimit]);
 
   useEffect(() => {
     return () => clearPagination();
   }, [clearPagination]);
-
-  // ─── Filter Handlers ────────────────────────────────────────────
-  const handleFilterChange = (key: keyof TransactionFilters, value: any) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-  };
 
   // ─── Action Handlers ────────────────────────────────────────────
   const handlePrint = async (transaction: Sale) => {
@@ -366,7 +331,7 @@ const TransactionsPage: React.FC = () => {
         onRefund={handleRefundClick}
       />
 
-      {/* Refund Options Modal (Centralized) */}
+      {/* Refund Options Modal */}
       <RefundOptionsModal
         isOpen={refundModalOpen}
         onClose={() => {

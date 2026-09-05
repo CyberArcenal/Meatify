@@ -164,7 +164,7 @@ class SaleAPI {
     limit?: number;
     customerId?: number;
     status?: string | string[];
-    paymentMethod?: string;
+    paymentMethod?: string | string[];
     startDate?: string;
     endDate?: string;
     minAmount?: number;
@@ -182,6 +182,8 @@ class SaleAPI {
         method: "getAllSales",
         params: params || {},
       });
+
+      console.log("getAllSales response:", response);
 
       if (response.status) {
         return response;

@@ -30,12 +30,21 @@ class SaleSubscriber {
    * @param {import("../entities/Sale")} entity
    */
   beforeInsert(entity) {
-    logger.debug("[SaleSubscriber] beforeInsert:", {
+    // ✅ Log the FULL entity
+    logger.debug("[SaleSubscriber] beforeInsert - FULL ENTITY:", JSON.stringify(entity, null, 2));
+    
+    logger.debug("[SaleSubscriber] beforeInsert - SUMMARY:", {
       id: entity?.id,
       customerId: entity?.customerId,
       status: entity?.status,
       totalAmount: entity?.totalAmount,
       paymentMethod: entity?.paymentMethod,
+      voucherCode: entity?.voucherCode,
+      voucherDiscount: entity?.voucherDiscount, // ✅ Check this!
+      usedVoucher: entity?.usedVoucher,
+      loyaltyRedeemed: entity?.loyaltyRedeemed,
+      pointsEarn: entity?.pointsEarn,
+      notes: entity?.notes?.substring(0, 50),
     });
   }
 
@@ -43,25 +52,28 @@ class SaleSubscriber {
    * @param {import("../entities/Sale")} entity
    */
   async afterInsert(entity, { manager, queryRunner }) {
-    logger.info("[SaleSubscriber] afterInsert:", {
+    // ✅ Log the FULL entity after insert (with generated ID)
+    logger.debug("[SaleSubscriber] afterInsert - FULL ENTITY:", JSON.stringify(entity, null, 2));
+    
+    logger.info("[SaleSubscriber] afterInsert - SUMMARY:", {
       id: entity.id,
       customerId: entity.customerId,
       status: entity.status,
       totalAmount: entity.totalAmount,
       paymentMethod: entity.paymentMethod,
+      voucherCode: entity?.voucherCode,
+      voucherDiscount: entity?.voucherDiscount, // ✅ Check this!
+      usedVoucher: entity?.usedVoucher,
+      pointsEarn: entity?.pointsEarn,
     });
 
-    // If sale is created with 'paid' status, trigger state service
     if (entity.status === "paid") {
       try {
         const service = await this.getStateService(manager.connection);
         await service.onPaid(entity.id, "system", queryRunner);
       } catch (err) {
-        logger.error(
-          "[SaleSubscriber] Failed to process paid sale on insert:",
-          err,
-        );
-        throw err; // Rethrow to ensure transaction rollback
+        logger.error("[SaleSubscriber] Failed to process paid sale on insert:", err);
+        throw err;
       }
     }
   }
@@ -70,9 +82,15 @@ class SaleSubscriber {
    * @param {import("../entities/Sale")} entity
    */
   beforeUpdate(entity) {
-    logger.debug("[SaleSubscriber] beforeUpdate:", {
+    // ✅ Log the FULL entity before update
+    logger.debug("[SaleSubscriber] beforeUpdate - FULL ENTITY:", JSON.stringify(entity, null, 2));
+    
+    logger.debug("[SaleSubscriber] beforeUpdate - SUMMARY:", {
       id: entity?.id,
       status: entity?.status,
+      totalAmount: entity?.totalAmount,
+      voucherCode: entity?.voucherCode,
+      voucherDiscount: entity?.voucherDiscount,
     });
   }
 
@@ -83,18 +101,26 @@ class SaleSubscriber {
     const { entity, databaseEntity } = event;
     if (!entity) return;
 
-    logger.info("[SaleSubscriber] afterUpdate:", {
+    // ✅ Log the FULL entity after update
+    logger.debug("[SaleSubscriber] afterUpdate - FULL ENTITY:", JSON.stringify(entity, null, 2));
+    logger.debug("[SaleSubscriber] afterUpdate - DATABASE ENTITY:", JSON.stringify(databaseEntity, null, 2));
+
+    logger.info("[SaleSubscriber] afterUpdate - SUMMARY:", {
       id: entity.id,
       oldStatus: databaseEntity?.status,
       newStatus: entity.status,
+      oldTotal: databaseEntity?.totalAmount,
+      newTotal: entity.totalAmount,
+      oldVoucherDiscount: databaseEntity?.voucherDiscount,
+      newVoucherDiscount: entity?.voucherDiscount,
+      oldUsedVoucher: databaseEntity?.usedVoucher,
+      newUsedVoucher: entity?.usedVoucher,
     });
 
-    // Skip if status hasn't changed
     if (databaseEntity && databaseEntity.status === entity.status) {
       return;
     }
 
-    // Trigger state service based on new status
     try {
       const service = await this.getStateService(manager.connection);
 
@@ -112,11 +138,8 @@ class SaleSubscriber {
           break;
       }
     } catch (err) {
-      logger.error(
-        `[SaleSubscriber] Failed to handle status change to ${entity.status}:`,
-        err,
-      );
-      throw err; // Rethrow to ensure transaction rollback
+      logger.error(`[SaleSubscriber] Failed to handle status change to ${entity.status}:`, err);
+      throw err;
     }
   }
 
@@ -124,6 +147,7 @@ class SaleSubscriber {
    * @param {import("../entities/Sale")} entity
    */
   beforeRemove(entity) {
+    logger.debug("[SaleSubscriber] beforeRemove - FULL ENTITY:", JSON.stringify(entity, null, 2));
     logger.debug("[SaleSubscriber] beforeRemove:", {
       id: entity?.id,
       status: entity?.status,
