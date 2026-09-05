@@ -13,11 +13,15 @@ function validate(schema, data, context = 'data') {
   try {
     return schema.parse(data);
   } catch (error) {
+    // ✅ Check if it's a ZodError before accessing error.errors
     if (error instanceof ZodError) {
-      const messages = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; ');
+      const messages = error.errors
+        .map(e => `${e.path.join('.')}: ${e.message}`)
+        .join('; ');
       throw new Error(`Validation failed for ${context}: ${messages}`);
     }
-    throw error;
+    // ✅ Safe fallback for non-Zod errors
+    throw new Error(`Validation failed for ${context}: ${error.message || String(error)}`);
   }
 }
 
