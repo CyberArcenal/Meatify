@@ -407,7 +407,7 @@ class SupplierService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("Supplier", format, filters, user);
+        await auditLogger.logCreate("Supplier", format, filters, user);
       }
 
       logger.debug(

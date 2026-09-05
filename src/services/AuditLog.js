@@ -401,7 +401,7 @@ class AuditLogService {
         };
       }
 
-      await auditLogger.debugExport("AuditLog", format, filters, user);
+      await auditLogger.logCreate("AuditLog", format, filters, user);
       logger.debug(`Exported ${logs.length} audit logs in ${format} format`);
       return exportData;
     } catch (error) {

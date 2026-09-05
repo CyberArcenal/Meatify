@@ -805,7 +805,7 @@ class SaleItemService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("SaleItem", format, filters, user);
+        await auditLogger.logCreate("SaleItem", format, filters, user);
       }
 
       logger.debug(`Exported ${items.length} sale items in ${format} format`);

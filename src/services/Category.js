@@ -250,7 +250,7 @@ class CategoryService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("Category", format, filters, user);
+        await auditLogger.logCreate("Category", format, filters, user);
       }
 
       logger.debug(

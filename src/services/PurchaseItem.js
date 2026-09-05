@@ -595,7 +595,7 @@ class PurchaseItemService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("PurchaseItem", format, filters, user);
+        await auditLogger.logCreate("PurchaseItem", format, filters, user);
       }
 
       logger.debug(`Exported ${items.length} purchase items in ${format} format`);

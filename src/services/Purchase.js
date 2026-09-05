@@ -487,7 +487,7 @@ class PurchaseService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("Purchase", format, filters, user);
+        await auditLogger.logCreate("Purchase", format, filters, user);
       }
 
       logger.debug(
