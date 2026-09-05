@@ -3,18 +3,37 @@
 
 const { logger } = require("../utils/logger");
 const saleService = require("../services/Sale");
-const notificationService = require("../services/Notification");
 const system = require("../utils/system");
+const { BaseScheduler } = require("./BaseScheduler");
 
-class DailySalesReportScheduler {
+class DailySalesReportScheduler extends BaseScheduler {
   constructor() {
-    this.intervalId = null;
-    this.runTime = 60 * 60 * 1000; // 1 hour after midnight (1:00 AM)
+    super({
+      name: 'DailySalesReportScheduler',
+      checkInterval: 24 * 60 * 60 * 1000, // 24 hours
+      startupDelay: 5000,
+      cooldownMinutes: 24 * 60, // 24 hours (only one report per day)
+    });
   }
 
   async start() {
-    logger.info("🚀 Starting Daily Sales Report Scheduler...");
-    
+    if (!this.isEnabled) {
+      logger.info(`⏸️ ${this.name} is disabled`);
+      return this;
+    }
+
+    logger.info(`🚀 Starting ${this.name}...`);
+
+    // Wait for database readiness
+    if (!this._isDatabaseReady()) {
+      logger.info(`⏳ ${this.name} waiting for database...`);
+      const ready = await this._waitForDatabase(30000);
+      if (!ready) {
+        logger.warn(`⚠️ ${this.name} database not ready after 30s`);
+        return this;
+      }
+    }
+
     // Calculate next run (tomorrow 1:00 AM)
     const now = new Date();
     const tomorrow = new Date(now);
@@ -24,26 +43,21 @@ class DailySalesReportScheduler {
 
     logger.info(`⏳ First daily report in ${Math.round(delay / (1000 * 60))} minutes`);
 
-    setTimeout(async () => {
-      await this.generateDailyReport();
+    // Schedule first run after delay
+    this.startupTimeoutId = setTimeout(async () => {
+      await this.execute();
+      // Start periodic interval
       this.intervalId = setInterval(async () => {
-        await this.generateDailyReport();
-      }, 24 * 60 * 60 * 1000);
+        await this.execute();
+      }, this.checkInterval);
       logger.info("✅ Daily sales report scheduled (every 24 hours)");
     }, delay);
 
+    this._isRunning = true;
     return this;
   }
 
-  async stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-      logger.info("🛑 Daily Sales Report Scheduler Stopped");
-    }
-  }
-
-  async generateDailyReport() {
+  async execute() {
     try {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
@@ -62,24 +76,24 @@ class DailySalesReportScheduler {
       message += `Total Weight: ${summary.totalWeight.toFixed(2)}kg\n`;
       message += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
 
-      // Payment methods breakdown
       for (const [method, amount] of Object.entries(summary.byPaymentMethod)) {
         message += `${method}: ₱${amount.toFixed(2)}\n`;
       }
 
-      // Send to admin
-      await notificationService.create({
-        userId: 1,
+      // ✅ Deduplicated notification - once per day is enough
+      await this._sendNotification({
         title: `Daily Sales Report - ${dateStr}`,
         message: message,
         type: "info",
+        notificationType: "daily_sales_report",
         metadata: {
           date: dateStr,
           totalSales: summary.totalSales,
           totalAmount: summary.totalAmount,
           totalWeight: summary.totalWeight,
         },
-      }, "system");
+        cooldownMinutes: 24 * 60, // Once per day
+      });
 
       logger.info(`[DAILY REPORT] ✅ Daily report for ${dateStr} sent`);
     } catch (error) {
@@ -89,7 +103,7 @@ class DailySalesReportScheduler {
 
   async forceReport() {
     logger.info("🔄 Force daily report triggered");
-    await this.generateDailyReport();
+    await this.execute();
   }
 }
 

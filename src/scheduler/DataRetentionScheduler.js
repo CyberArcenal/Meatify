@@ -3,40 +3,31 @@
 
 const { logger } = require("../utils/logger");
 const { dataRetentionDays } = require("../utils/system");
-const notificationService = require("../services/Notification");
 const saleService = require("../services/Sale");
 const inventoryMovementService = require("../services/InventoryMovement");
 const loyaltyTransactionService = require("../services/LoyaltyTransaction");
+const { BaseScheduler } = require("./BaseScheduler");
 
-class DataRetentionScheduler {
+class DataRetentionScheduler extends BaseScheduler {
   constructor() {
-    this.intervalId = null;
+    super({
+      name: 'DataRetentionScheduler',
+      checkInterval: 7 * 24 * 60 * 60 * 1000, // 7 days
+      startupDelay: 30000, // 30 seconds
+      cooldownMinutes: 7 * 24 * 60, // 7 days
+    });
   }
 
-  async start() {
-    logger.info("🚀 Starting Data Retention Scheduler...");
-    // Run weekly (every 7 days)
-    this.intervalId = setInterval(async () => {
-      await this.cleanupOldData();
-    }, 7 * 24 * 60 * 60 * 1000);
-    // Also run on startup
-    setTimeout(() => this.cleanupOldData(), 30000);
-    logger.info("✅ Data retention scheduled (weekly)");
-    return this;
-  }
-
-  async stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-      logger.info("🛑 Data Retention Scheduler Stopped");
-    }
-  }
-
-  async cleanupOldData() {
+  async execute() {
     try {
       const retentionDays = await dataRetentionDays();
       logger.info(`[DATA RETENTION] Cleaning up data older than ${retentionDays} days...`);
+
+      // Ensure database is ready
+      if (!this._isDatabaseReady()) {
+        logger.warn("[DATA RETENTION] Database not ready, skipping cleanup");
+        return;
+      }
 
       const results = {
         sales: 0,
@@ -44,7 +35,7 @@ class DataRetentionScheduler {
         loyalty: 0,
       };
 
-      // Clean old sales (soft delete via void)
+      // Clean old sales
       const salesResult = await saleService.cleanOldSales(retentionDays);
       results.sales = salesResult.count || 0;
 
@@ -59,15 +50,17 @@ class DataRetentionScheduler {
       const total = results.sales + results.movements + results.loyalty;
 
       if (total > 0) {
-        logger.info(`[DATA RETENTION] Cleaned ${total} records (Sales: ${results.sales}, Movements: ${results.movements}, Loyalty: ${results.loyalty})`);
-        
-        await notificationService.create({
-          userId: 1,
+        logger.info(`[DATA RETENTION] Cleaned ${total} records`);
+
+        // ✅ Deduplicated notification
+        await this._sendNotification({
           title: "Data Cleanup Completed",
           message: `Cleaned up ${total} old records older than ${retentionDays} days.`,
           type: "info",
-          metadata: results,
-        }, "system");
+          notificationType: "data_retention_cleanup",
+          metadata: { total, ...results, retentionDays },
+          cooldownMinutes: 7 * 24 * 60, // Weekly
+        });
       } else {
         logger.debug("[DATA RETENTION] No old data to clean up");
       }

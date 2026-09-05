@@ -3,14 +3,18 @@
 
 const { logger } = require("../utils/logger");
 const batchService = require("../services/Batch");
-const notificationService = require("../services/Notification");
 const { notifyLowStock, lowStockThreshold } = require("../utils/system");
 const { BrowserWindow } = require("electron");
+const { BaseScheduler } = require("./BaseScheduler");
 
-class LowStockAlertScheduler {
+class LowStockAlertScheduler extends BaseScheduler {
   constructor() {
-    this.checkInterval = 4 * 60 * 60 * 1000; // 4 hours
-    this.intervalId = null;
+    super({
+      name: 'LowStockAlertScheduler',
+      checkInterval: 4 * 60 * 60 * 1000, // 4 hours
+      startupDelay: 30000,
+      cooldownHours: 6, // ✅ Don't send same notification within 6 hours
+    });
   }
 
   _sendToRenderers(channel, data) {
@@ -22,32 +26,14 @@ class LowStockAlertScheduler {
     });
   }
 
-  async start() {
-    const enabled = await notifyLowStock();
-    if (!enabled) {
-      logger.info("⏸️ Low Stock Alert Scheduler is disabled");
-      return this;
-    }
-
-    logger.info("🚀 Starting Low Stock Alert Scheduler...");
-    await this.checkLowStock();
-    this.intervalId = setInterval(async () => {
-      await this.checkLowStock();
-    }, this.checkInterval);
-    logger.info(`✅ Low stock alert scheduled (every ${this.checkInterval / (1000 * 60 * 60)} hours)`);
-    return this;
-  }
-
-  async stop() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-      logger.info("🛑 Low Stock Alert Scheduler Stopped");
-    }
-  }
-
-  async checkLowStock() {
+  async execute() {
     try {
+      const enabled = await notifyLowStock();
+      if (!enabled) {
+        logger.debug("[LOW STOCK] Low stock alerts disabled");
+        return;
+      }
+
       const stats = await batchService.getStatistics();
       const threshold = await lowStockThreshold();
 
@@ -58,12 +44,8 @@ class LowStockAlertScheduler {
 
       logger.info(`[LOW STOCK] ${stats.lowStockBatches} batches below threshold (${threshold}kg)`);
 
-      // Build message
-      let message = `⚠️ Low Stock Alert\n`;
-      message += `━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-      message += `Threshold: ${threshold}kg\n`;
-      message += `Batches at risk: ${stats.lowStockBatches}\n`;
-      message += `━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+      let message = `⚠️ Low Stock Alert\n━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+      message += `Threshold: ${threshold}kg\nBatches at risk: ${stats.lowStockBatches}\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
       for (const batch of stats.lowStockDetails || []) {
         message += `• ${batch.meatName || "Unknown"}\n`;
@@ -71,33 +53,36 @@ class LowStockAlertScheduler {
         message += `  Remaining: ${batch.remainingQuantity}kg\n\n`;
       }
 
-      await notificationService.create({
-        userId: 1,
-        title: `⚠️ Low Stock Alert (${stats.lowStockBatches} items)`,
-        message: message,
+      const title = `⚠️ Low Stock Alert (${stats.lowStockBatches} items)`;
+      
+      // ✅ Database check automatically prevents duplicates
+      const sent = await this._sendNotification({
+        title,
+        message,
         type: "warning",
         metadata: {
           count: stats.lowStockBatches,
-          threshold: threshold,
+          threshold,
           batches: stats.lowStockDetails,
         },
-      }, "system");
-
-      this._sendToRenderers("inventory:lowStock", {
-        count: stats.lowStockBatches,
-        threshold: threshold,
-        batches: stats.lowStockDetails,
-        timestamp: new Date().toISOString(),
       });
 
+      if (sent) {
+        this._sendToRenderers("inventory:lowStock", {
+          count: stats.lowStockBatches,
+          threshold,
+          batches: stats.lowStockDetails,
+          timestamp: new Date().toISOString(),
+        });
+      }
     } catch (error) {
-      logger.error("[LOW STOCK] Error checking low stock:", error);
+      logger.error("[LOW STOCK] Error:", error);
     }
   }
 
   async forceCheck() {
     logger.info("🔄 Force low stock check triggered");
-    await this.checkLowStock();
+    await this.execute();
   }
 }
 
