@@ -122,6 +122,16 @@ class BatchService {
     };
   }
 
+  async getInventoryMovementService() {
+    if (!this._inventoryMovementService) {
+      const { defaultContainer } = require("../main/core/service-container");
+      this._inventoryMovementService = defaultContainer.get(
+        "inventoryMovementService",
+      );
+    }
+    return this._inventoryMovementService;
+  }
+
   /**
    * Helper: get a repository (transactional if queryRunner provided)
    * @param {import("typeorm").QueryRunner | null | undefined} qr
@@ -754,7 +764,7 @@ class BatchService {
    * @param {string} [metadata.notes] - Additional notes
    * @param {string} user - User performing the action
    * @param {import("typeorm").QueryRunner | null} queryRunner - Transaction query runner
-   * @returns {Promise<{ batch: any, deductedWeight: number }>}
+   * @returns {Promise<{ batch: any, deductedWeight: number, movement: any }>}
    */
   async deductFromBatch(
     batchId,
@@ -764,11 +774,8 @@ class BatchService {
     user = "system",
     queryRunner = null,
   ) {
-    const { saveDb } = require("../utils/dbUtils/dbActions");
-    const InventoryMovement = require("../entities/InventoryMovement");
     const Batch = require("../entities/Batch");
 
-    const movementRepo = this._getRepo(queryRunner, InventoryMovement);
     const batchRepo = this._getRepo(queryRunner, Batch);
 
     const batch = await batchRepo.findOne({
@@ -853,39 +860,40 @@ class BatchService {
       );
     }
 
-    const movement = movementRepo.create({
-      movementType: reason,
-      qtyChange: -weightToDeduct,
-      notes: `Deducted from batch #${batchId}. ${metadata.notes || ""}`,
-      meatId: updatedBatch.meatId,
-      batchId: batchId,
-      sale: metadata.saleId ? { id: metadata.saleId } : null,
-      timestamp: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    const savedMovement = await saveDb(movementRepo, movement, {
-      queryRunner: queryRunner,
-    });
-
-    const auditEnabled = await this._isAuditEnabled(queryRunner);
-    if (auditEnabled) {
-      const auditLogger = require("../utils/auditLogger");
-      await auditLogger.logCreate(
-        "InventoryMovement",
-        savedMovement.id,
-        savedMovement,
-        user,
-      );
+    // ✅ FIX: Use updatedBatch.meat.id instead of updatedBatch.meatId
+    const meatId = updatedBatch.meat?.id;
+    if (!meatId) {
+      throw new ValidationError(`Batch #${batchId} has no meat associated`);
     }
+
+    // ✅ Create movement using InventoryMovementService
+    const inventoryMovementService = await this.getInventoryMovementService();
+    const movement = await inventoryMovementService.create(
+      {
+        meatId: meatId,
+        batchId: batchId,
+        movementType: reason,
+        qtyChange: -weightToDeduct,
+        notes: `Deducted from batch #${batchId}. ${metadata.notes || ""}`,
+        saleId: metadata.saleId || null,
+      },
+      user,
+      queryRunner,
+    );
+
+    // ✅ Audit log is already inside InventoryMovementService.create()
 
     logger.info(
       `[Batch] Deducted ${weightToDeduct}kg from batch #${batchId} (${reason}). ` +
         `Remaining: ${updatedBatch.remainingQuantity}kg (version: ${updatedBatch.version})`,
     );
 
-    return { batch: updatedBatch, deductedWeight: weightToDeduct };
+    // ✅ Return structure unchanged
+    return {
+      batch: updatedBatch,
+      deductedWeight: weightToDeduct,
+      movement: movement,
+    };
   }
 
   /**
@@ -898,7 +906,7 @@ class BatchService {
    * @param {string} [metadata.notes] - Additional notes
    * @param {string} user - User performing the action
    * @param {import("typeorm").QueryRunner | null} queryRunner - Transaction query runner
-   * @returns {Promise<{ batch: any, addedWeight: number }>}
+   * @returns {Promise<{ batch: any, addedWeight: number, movement: any }>}
    */
   async addToBatch(
     batchId,
@@ -908,11 +916,8 @@ class BatchService {
     user = "system",
     queryRunner = null,
   ) {
-    const { saveDb } = require("../utils/dbUtils/dbActions");
-    const InventoryMovement = require("../entities/InventoryMovement");
     const Batch = require("../entities/Batch");
 
-    const movementRepo = this._getRepo(queryRunner, InventoryMovement);
     const batchRepo = this._getRepo(queryRunner, Batch);
 
     const batch = await batchRepo.findOne({
@@ -966,39 +971,47 @@ class BatchService {
       relations: ["meat"],
     });
 
-    const movement = movementRepo.create({
-      movementType: reason,
-      qtyChange: weightToAdd,
-      notes: `Added to batch #${batchId}. ${metadata.notes || ""}`,
-      meatId: updatedBatch.meatId,
-      batchId: batchId,
-      sale: metadata.saleId ? { id: metadata.saleId } : null,
-      timestamp: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-
-    const savedMovement = await saveDb(movementRepo, movement, {
-      queryRunner: queryRunner,
-    });
-
-    const auditEnabled = await this._isAuditEnabled(queryRunner);
-    if (auditEnabled) {
-      const auditLogger = require("../utils/auditLogger");
-      await auditLogger.logCreate(
-        "InventoryMovement",
-        savedMovement.id,
-        savedMovement,
-        user,
+    if (!updatedBatch) {
+      throw new NotFoundError(
+        `Batch #${batchId} not found after update`,
+        "Batch",
       );
     }
+
+    // ✅ FIX: Use updatedBatch.meat.id instead of updatedBatch.meatId
+    const meatId = updatedBatch.meat?.id;
+    if (!meatId) {
+      throw new ValidationError(`Batch #${batchId} has no meat associated`);
+    }
+
+    // ✅ Create movement using InventoryMovementService
+    const inventoryMovementService = await this.getInventoryMovementService();
+    const movement = await inventoryMovementService.create(
+      {
+        meatId: meatId,
+        batchId: batchId,
+        movementType: reason,
+        qtyChange: weightToAdd,
+        notes: `Added to batch #${batchId}. ${metadata.notes || ""}`,
+        saleId: metadata.saleId || null,
+      },
+      user,
+      queryRunner,
+    );
+
+    // ✅ Audit log is already inside InventoryMovementService.create()
 
     logger.info(
       `[Batch] Added ${weightToAdd}kg to batch #${batchId} (${reason}). ` +
         `Remaining: ${updatedBatch.remainingQuantity}kg (version: ${updatedBatch.version})`,
     );
 
-    return { batch: updatedBatch, addedWeight: weightToAdd };
+    // ✅ Return structure unchanged
+    return {
+      batch: updatedBatch,
+      addedWeight: weightToAdd,
+      movement: movement,
+    };
   }
 
   /**

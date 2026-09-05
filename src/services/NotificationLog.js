@@ -555,7 +555,7 @@ class NotificationLogService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("NotificationLog", format, filters, user);
+        await auditLogger.logCreate("NotificationLog", format, filters, user);
       }
 
       logger.debug(

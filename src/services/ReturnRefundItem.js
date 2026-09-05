@@ -666,7 +666,7 @@ class ReturnRefundItemService {
       // ✅ Check if audit logging is enabled before logging
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("ReturnRefundItem", format, filters, user);
+        await auditLogger.logCreate("ReturnRefundItem", format, filters, user);
       }
 
       logger.debug(`Exported ${items.length} return refund items in ${format} format`);

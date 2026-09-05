@@ -442,12 +442,7 @@ class InventoryMovementService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport(
-          "InventoryMovement",
-          format,
-          filters,
-          user,
-        );
+        await auditLogger.logCreate("InventoryMovement", format, filters, user);
       }
 
       logger.debug(
@@ -465,12 +460,14 @@ class InventoryMovementService {
   // ============================================================
 
   /**
-   * Create a new inventory movement
+   * Create a new inventory movement with relations loaded
    * @param {Object} data - { meatId, batchId?, movementType, qtyChange, notes?, saleId? }
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} qr
+   * @returns {Promise<InventoryMovement>} - Movement with meat and batch relations loaded
    */
   async create(data, user = "system", qr = null) {
+    logger.debug('inventory movement service create: ', JSON.stringify(data))
     const { saveDb } = require("../utils/dbUtils/dbActions");
     const InventoryMovement = require("../entities/InventoryMovement");
     const Meat = require("../entities/Meat");
@@ -483,78 +480,73 @@ class InventoryMovementService {
     const saleRepo = this._getRepo(qr, Sale);
 
     // ✅ Validate input
-    const validated = validate(
-      inventoryMovementCreateSchema,
-      data,
-      "Inventory movement creation",
-    );
+    // ✅ Validate input with better error handling
+    let validated;
+    try {
+      validated = validate(
+        inventoryMovementCreateSchema,
+        data,
+        "Inventory movement creation",
+      );
+    } catch (error) {
+      // ✅ Log the actual validation error
+      logger.error("[InventoryMovement] Validation failed:", error.message);
+      throw error;
+    }
 
     try {
       const { meatId, batchId, movementType, qtyChange, notes, saleId } =
         validated;
 
-      // ✅ Validate movement type against settings (business rule)
-      const allowedTypes = await this._getAllowedMovementTypes(qr);
-      if (!allowedTypes.includes(movementType)) {
-        throw new Error(
-          `Invalid movement type: "${movementType}". Allowed: ${allowedTypes.join(", ")}`,
-        );
-      }
-
-      // ✅ Check if negative stock is allowed (warning only)
-      const negativeAllowed = await this._isNegativeStockAllowed(qr);
-      if (!negativeAllowed && qtyChange < 0) {
-        logger.warn(
-          `[InventoryMovement] Negative stock is disabled, but creating negative movement of ${qtyChange}`,
-        );
-      }
-
-      // ✅ Validate meat exists and is active
+      // ✅ Get entities for relations
       const meat = await meatRepo.findOne({
         where: { id: meatId, isActive: true },
       });
-      if (!meat) {
+      if (!meat)
         throw new Error(`Meat with ID ${meatId} not found or inactive`);
-      }
 
-      // ✅ Validate batch if provided
       let batch = null;
       if (batchId) {
         batch = await batchRepo.findOne({ where: { id: batchId } });
-        if (!batch) {
-          throw new Error(`Batch with ID ${batchId} not found`);
+        if (!batch) throw new Error(`Batch with ID ${batchId} not found`);
+        if (batch.meat == null){
+          throw new Error(`Batch #${batchId} does not have an associated meat`);
         }
-        if (batch.meatId !== meatId) {
+        if (batch.meat?.id !== meatId) {
           throw new Error(
             `Batch #${batchId} does not belong to meat #${meatId}`,
           );
         }
       }
 
-      // ✅ Validate sale if provided
       let sale = null;
       if (saleId) {
         sale = await saleRepo.findOne({ where: { id: saleId } });
-        if (!sale) {
-          throw new Error(`Sale with ID ${saleId} not found`);
-        }
+        if (!sale) throw new Error(`Sale with ID ${saleId} not found`);
       }
 
-      // ✅ Create movement
+      // ✅ Create movement with relations
       const movement = movementRepo.create({
-        movementType: movementType,
-        qtyChange: qtyChange,
+        movementType,
+        qtyChange,
         notes: notes || null,
         timestamp: new Date(),
-        meat: meat,
-        batch: batch || null,
-        sale: sale || null,
+        meat: meat, // ✅ Entity relation
+        batch: batch, // ✅ Entity relation
+        sale: sale, // ✅ Entity relation
         createdAt: new Date(),
         updatedAt: new Date(),
       });
 
       const saved = await saveDb(movementRepo, movement, { queryRunner: qr });
 
+      // ✅ Load full relations after save
+      const fullMovement = await movementRepo.findOne({
+        where: { id: saved.id },
+        relations: ["meat", "batch", "sale"],
+      });
+
+      // Audit log
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
         await auditLogger.logCreate("InventoryMovement", saved.id, saved, user);
@@ -563,7 +555,7 @@ class InventoryMovementService {
       logger.debug(
         `InventoryMovement created: #${saved.id} - ${saved.movementType} (${saved.qtyChange})`,
       );
-      return saved;
+      return fullMovement;
     } catch (error) {
       console.error("Failed to create inventory movement:", error.message);
       throw error;

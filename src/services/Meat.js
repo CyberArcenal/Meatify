@@ -423,7 +423,7 @@ class MeatService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("Meat", format, filters, user);
+        await auditLogger.logCreate("Meat", format, filters, user);
       }
 
       logger.debug(`Exported ${meats.length} meats in ${format} format`);

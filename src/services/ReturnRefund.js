@@ -583,7 +583,7 @@ class ReturnRefundService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("ReturnRefund", format, filters, user);
+        await auditLogger.logCreate("ReturnRefund", format, filters, user);
       }
 
       logger.debug(`Exported ${returns.length} returns in ${format} format`);

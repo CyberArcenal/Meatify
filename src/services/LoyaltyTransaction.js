@@ -524,7 +524,7 @@ class LoyaltyTransactionService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport(
+        await auditLogger.logCreate(
           "LoyaltyTransaction",
           format,
           filters,

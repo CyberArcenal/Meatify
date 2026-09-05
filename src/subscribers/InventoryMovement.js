@@ -79,7 +79,7 @@ class InventoryMovementSubscriber {
     });
 
     // ✅ Route to state service for side effects (UI broadcast, audit log, batch update broadcast)
-    if (entity.batchId) {
+    if (entity.batchId || entity.batch?.id) {
       try {
         const {
           InventoryMovementStateService,
@@ -93,6 +93,8 @@ class InventoryMovementSubscriber {
         );
         throw err; // Rethrow to ensure transaction rollback
       }
+    }else{
+      throw new Error("Batch Id is missing from data.");
     }
   }
 

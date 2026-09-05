@@ -2,7 +2,7 @@
 const { z } = require('zod');
 
 const inventoryMovementCreateSchema = z.object({
-  meatId: z.number().int().positive(),
+  meatId: z.number().int().positive('meatId must be a positive integer'),
   batchId: z.number().int().positive().optional(),
   movementType: z.enum(['sale', 'refund', 'adjustment', 'purchase', 'expiry_write_off', 'waste']),
   qtyChange: z.number().refine(val => val !== 0, 'Quantity change cannot be zero'),

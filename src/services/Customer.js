@@ -493,7 +493,7 @@ class CustomerService {
 
       const auditEnabled = await this._isAuditEnabled(qr);
       if (auditEnabled) {
-        await auditLogger.debugExport("Customer", format, filters, user);
+        await auditLogger.logCreate("Customer", format, filters, user);
       }
 
       logger.debug(
