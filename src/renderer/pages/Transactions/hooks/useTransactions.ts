@@ -22,13 +22,12 @@ export interface TransactionSummary {
 }
 
 export const useTransactions = (initialFilters?: Partial<TransactionFilters>) => {
-  const [allTransactions, setAllTransactions] = useState<Sale[]>([]);
-  const [filteredTransactions, setFilteredTransactions] = useState<Sale[]>([]);
+  const [transactions, setTransactions] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [totalItems, setTotalItems] = useState(0);
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(10);
-  const [totalItems, setTotalItems] = useState(0);
   const [summary, setSummary] = useState<TransactionSummary>({
     todayTransactions: 0,
     todayRevenue: 0,
@@ -45,42 +44,47 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
     ...initialFilters,
   });
 
-  const loadTransactions = useCallback(
+  const fetchTransactions = useCallback(
     async (options?: { page?: number; limit?: number }) => {
       const p = options?.page ?? page;
       const l = options?.limit ?? limit;
 
       setLoading(true);
       setError(null);
+
       try {
         const response = await saleAPI.getAll({
           page: p,
           limit: l,
           startDate: filters.startDate || undefined,
           endDate: filters.endDate || undefined,
+          search: filters.search || undefined,
+          paymentMethod: filters.paymentMethod || undefined,
+          status: filters.status || undefined,
           sortBy: "timestamp",
           sortOrder: "DESC",
         });
 
         if (response.status) {
           const data = response.data;
-          const items = data.items || [];
-          setAllTransactions(items);
+          setTransactions(data.items || []);
           setTotalItems(data.total || 0);
           if (options?.page !== undefined) setPage(p);
           if (options?.limit !== undefined) setLimit(l);
 
-          // Compute summary from all items (unfiltered)
+          // Compute summary
           const today = new Date().toISOString().split("T")[0];
-          const todayTransactions = items.filter((t) => {
+          const todayTransactions = (data.items || []).filter((t) => {
             const txDate = new Date(t.timestamp).toISOString().split("T")[0];
             return txDate === today && t.status === "paid";
           });
           const revenue = todayTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
           const count = todayTransactions.length;
           const avg = count > 0 ? revenue / count : 0;
-          const refundsToday = items.filter(
-            (t) => new Date(t.timestamp).toISOString().split("T")[0] === today && t.status === "refunded"
+          const refundsToday = (data.items || []).filter(
+            (t) =>
+              new Date(t.timestamp).toISOString().split("T")[0] === today &&
+              t.status === "refunded"
           ).length;
 
           setSummary({
@@ -90,65 +94,36 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
             refundsToday,
           });
         } else {
-          throw new Error(response.message);
+          throw new Error(response.message || "Failed to fetch transactions");
         }
-      } catch (err: any) {
-        setError(err.message || "Failed to load transactions");
-        await dialogs.alert({ title: "Error", message: err.message });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Failed to fetch transactions";
+        setError(message);
+        setTransactions([]);
+        setTotalItems(0);
       } finally {
         setLoading(false);
       }
     },
-    [filters.startDate, filters.endDate, page, limit]
+    [filters, page, limit]
   );
 
-  // Apply local filters (search, paymentMethod, status)
+  // ✅ Auto-fetch when filters, page, or limit change
   useEffect(() => {
-    let filtered = [...allTransactions];
-
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      filtered = filtered.filter((tx) => {
-        if (tx.id.toString().includes(searchLower)) return true;
-        if (tx.customer?.name?.toLowerCase().includes(searchLower)) return true;
-        return tx.saleItems.some(
-          (item) =>
-            item.meat?.sku?.toLowerCase().includes(searchLower) ||
-            item.meat?.name?.toLowerCase().includes(searchLower)
-        );
-      });
-    }
-
-    if (filters.paymentMethod) {
-      filtered = filtered.filter((tx) => tx.paymentMethod === filters.paymentMethod);
-    }
-
-    if (filters.status) {
-      filtered = filtered.filter((tx) => tx.status === filters.status);
-    }
-
-    setFilteredTransactions(filtered);
-  }, [allTransactions, filters.search, filters.paymentMethod, filters.status]);
-
-  // Auto-fetch when filters change (but keep pagination to 1)
-  useEffect(() => {
-    loadTransactions({ page: 1, limit });
-  }, [filters.startDate, filters.endDate]);
-
-  // Re-fetch when page/limit change
-  useEffect(() => {
-    loadTransactions({ page, limit });
-  }, [page, limit]);
+    fetchTransactions({ page, limit });
+  }, [filters, page, limit, fetchTransactions]);
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
-      return loadTransactions(options);
+      fetchTransactions(options);
     },
-    [loadTransactions]
+    [fetchTransactions]
   );
 
   const goToPage = useCallback((newPage: number) => {
-    if (newPage >= 1) setPage(newPage);
+    if (newPage >= 1) {
+      setPage(newPage);
+    }
   }, []);
 
   const changeLimit = useCallback((newLimit: number) => {
@@ -168,13 +143,12 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
   }, []);
 
   return {
-    transactions: filteredTransactions,
-    allTransactions,
+    transactions,
     filters,
     setFilters,
     loading,
     error,
-    totalItems: allTransactions.length,
+    totalItems,
     page,
     limit,
     summary,

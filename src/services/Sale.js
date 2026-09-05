@@ -886,7 +886,9 @@ class SaleService {
       qb.andWhere("sale.timestamp >= :cutoffDate", { cutoffDate });
     }
 
-    // Filters
+    // ─── Filters ────────────────────────────────────────────────
+
+    // Status filter
     if (options.status) {
       const statuses = Array.isArray(options.status)
         ? options.status
@@ -902,11 +904,15 @@ class SaleService {
       }
       qb.andWhere("sale.status IN (:...statuses)", { statuses });
     }
+
+    // Customer filter
     if (options.customerId) {
       qb.andWhere("sale.customerId = :customerId", {
         customerId: options.customerId,
       });
     }
+
+    // Payment method filter (NEW)
     if (options.paymentMethod) {
       const methods = Array.isArray(options.paymentMethod)
         ? options.paymentMethod
@@ -920,16 +926,20 @@ class SaleService {
       }
       qb.andWhere("sale.paymentMethod IN (:...methods)", { methods });
     }
+
+    // Date range (FIXED)
     if (options.startDate) {
-      qb.andWhere("sale.timestamp >= :startDate", {
-        startDate: new Date(options.startDate),
-      });
+      const start = new Date(options.startDate);
+      start.setHours(0, 0, 0, 0);
+      qb.andWhere("sale.timestamp >= :startDate", { startDate: start });
     }
     if (options.endDate) {
       const end = new Date(options.endDate);
-      end.setHours(23, 59, 59, 999);
+      end.setHours(23, 59, 59, 999); // ✅ Include whole day
       qb.andWhere("sale.timestamp <= :endDate", { endDate: end });
     }
+
+    // Amount range
     if (options.minAmount !== undefined) {
       qb.andWhere("sale.totalAmount >= :minAmount", {
         minAmount: options.minAmount,
@@ -940,6 +950,8 @@ class SaleService {
         maxAmount: options.maxAmount,
       });
     }
+
+    // Search (already implemented)
     if (options.search) {
       qb.andWhere("(sale.notes LIKE :search OR customer.name LIKE :search)", {
         search: `%${options.search}%`,
@@ -949,9 +961,6 @@ class SaleService {
     // Sorting
     let sortBy = options.sortBy || "timestamp";
     if (!ALLOWED_SORT_COLUMNS.has(sortBy)) {
-      console.warn(
-        `[Sale] Invalid sortBy: ${sortBy}, falling back to timestamp`,
-      );
       sortBy = "timestamp";
     }
     const sortOrder = options.sortOrder === "ASC" ? "ASC" : "DESC";
@@ -963,7 +972,6 @@ class SaleService {
       limit: options.limit,
     });
 
-    await logger.debug("Sale", null, "system");
     return result;
   }
 
