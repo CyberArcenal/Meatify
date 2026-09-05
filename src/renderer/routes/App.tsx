@@ -39,16 +39,16 @@ function App() {
         // ✅ 1. Wait for app to be ready
         if (window.backendAPI?.waitForAppReady) {
           const readyInfo = await window.backendAPI.waitForAppReady();
-          console.log('[App] App is ready:', readyInfo);
+          // console.log('[App] App is ready:', readyInfo);
         } else {
-          console.log('[App] waitForAppReady not available, proceeding...');
+          // console.log('[App] waitForAppReady not available, proceeding...');
         }
         setAppReady(true);
 
         // ✅ 2. Notify main process that renderer is ready
         if (window.backendAPI?.notifyAppReady) {
           window.backendAPI.notifyAppReady();
-          console.log("Notified main process: renderer is ready");
+          // console.log("Notified main process: renderer is ready");
         }
 
         // ✅ 3. Check license

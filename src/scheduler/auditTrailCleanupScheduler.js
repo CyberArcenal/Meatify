@@ -3,24 +3,23 @@
 
 const { logger } = require("../utils/logger");
 const { auditLogEnabled, logRetentionDays } = require("../utils/system");
-const notificationService = require("../services/Notification");
 const { BrowserWindow } = require("electron");
 const { AuditLog } = require("../entities/AuditLog");
 const { AppDataSource } = require("../main/db/data-source");
+const { BaseScheduler } = require("./BaseScheduler");
 
-class AuditTrailCleanupScheduler {
+class AuditTrailCleanupScheduler extends BaseScheduler {
   constructor() {
-    this.checkInterval = 24 * 60 * 60 * 1000; // 24 hours
-    this.isEnabled = true;
-    this.intervalId = null;
-    this.startupTimeoutId = null;
-    this.startupDelay = 10000; // 10 seconds (can be made configurable later)
+    super({
+      name: 'AuditTrailCleanupScheduler',
+      checkInterval: 24 * 60 * 60 * 1000, // 24 hours
+      startupDelay: 10000, // 10 seconds
+      cooldownMinutes: 24 * 60, // 24 hours cooldown
+    });
   }
 
   /**
    * Send event to all renderer windows
-   * @param {string} channel
-   * @param {{ status: string; retentionDays?: number; cutoffDate?: string; timestamp: string; deletedCount?: number; message?: string; error?: any; }} data
    */
   _sendToRenderers(channel, data) {
     const windows = BrowserWindow.getAllWindows();
@@ -31,67 +30,11 @@ class AuditTrailCleanupScheduler {
     });
   }
 
-  async start() {
+  async execute() {
     try {
-      this.isEnabled = await auditLogEnabled();
-
-      if (!this.isEnabled) {
-        logger.info("⏸️ Audit Trail Cleanup Scheduler is disabled (audit log disabled)");
-        return this;
-      }
-
-      logger.info("🚀 Starting Audit Trail Cleanup Scheduler...");
-      logger.info(`⏳ Waiting ${this.startupDelay / 1000} seconds before first cleanup...`);
-
-      // Schedule first cleanup after delay
-      this.startupTimeoutId = setTimeout(async () => {
-        // Ensure database is ready before proceeding
-        if (!AppDataSource.isInitialized) {
-          logger.warn("[AUDIT CLEANUP] Database not ready, skipping first cleanup");
-          // Retry after another 5 seconds?
-          setTimeout(() => this.cleanupOldAuditTrails(), 5000);
-          return;
-        }
-        await this.cleanupOldAuditTrails();
-        // Start periodic interval only after first cleanup completes
-        this.intervalId = setInterval(async () => {
-          await this.cleanupOldAuditTrails();
-        }, this.checkInterval);
-        logger.info(`✅ Audit cleanup interval started (every ${this.checkInterval / (1000 * 60 * 60)} hours)`);
-      }, this.startupDelay);
-
-      logger.info("✅ Audit Trail Cleanup Scheduler initialized (first run delayed)");
-      return this;
-    } catch (error) {
-      // @ts-ignore
-      logger.error("❌ Failed to start Audit Trail Cleanup Scheduler:", error);
-      throw error;
-    }
-  }
-
-  async stop() {
-    if (this.startupTimeoutId) {
-      clearTimeout(this.startupTimeoutId);
-      this.startupTimeoutId = null;
-    }
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-      logger.info("🛑 Audit Trail Cleanup Scheduler Stopped");
-    }
-  }
-
-  async cleanupOldAuditTrails() {
-    try {
-      this.isEnabled = await auditLogEnabled();
-      if (!this.isEnabled) {
+      const enabled = await auditLogEnabled();
+      if (!enabled) {
         logger.debug("[AUDIT CLEANUP] Audit log disabled, skipping cleanup");
-        return;
-      }
-
-      // Extra safety: ensure DB is ready
-      if (!AppDataSource.isInitialized) {
-        logger.warn("[AUDIT CLEANUP] Database not ready, skipping this run");
         return;
       }
 
@@ -99,7 +42,7 @@ class AuditTrailCleanupScheduler {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
-      logger.info(`[AUDIT CLEANUP] Cleaning up audit trails older than ${retentionDays} days (before ${cutoffDate.toISOString()})`);
+      logger.info(`[AUDIT CLEANUP] Cleaning up audit trails older than ${retentionDays} days`);
 
       this._sendToRenderers("audit:cleanup", {
         status: "started",
@@ -136,21 +79,15 @@ class AuditTrailCleanupScheduler {
       const deletedCount = result.affected || 0;
       logger.info(`✅ Deleted ${deletedCount} audit trail records older than ${retentionDays} days`);
 
-      // In-app notification
-      await notificationService.create(
-        {
-          userId: 1,
-          title: "Audit Log Cleanup",
-          message: `${deletedCount} old audit record(s) older than ${retentionDays} days have been deleted.`,
-          type: "info",
-          metadata: {
-            deletedCount,
-            retentionDays,
-            cutoffDate: cutoffDate.toISOString(),
-          },
-        },
-        "system"
-      );
+      // ✅ Use deduplicated notification
+      await this._sendNotification({
+        title: "Audit Log Cleanup",
+        message: `${deletedCount} old audit record(s) older than ${retentionDays} days have been deleted.`,
+        type: "info",
+        notificationType: "audit_cleanup",
+        metadata: { deletedCount, retentionDays, cutoffDate: cutoffDate.toISOString() },
+        cooldownMinutes: 24 * 60, // Only notify once per day
+      });
 
       this._sendToRenderers("audit:cleanup", {
         status: "completed",
@@ -160,37 +97,28 @@ class AuditTrailCleanupScheduler {
         timestamp: new Date().toISOString(),
       });
 
-      await this.logCleanupAction(retentionDays, deletedCount);
+      await this._logCleanupAction(retentionDays, deletedCount);
     } catch (error) {
-      // @ts-ignore
       logger.error("❌ Error during audit trail cleanup:", error);
       this._sendToRenderers("audit:cleanup", {
         status: "failed",
-        // @ts-ignore
         error: error.message,
         timestamp: new Date().toISOString(),
       });
 
-      await notificationService.create(
-        {
-          userId: 1,
-          title: "Audit Log Cleanup Failed",
-          // @ts-ignore
-          message: `Failed to clean up old audit logs: ${error.message}`,
-          type: "error",
-          // @ts-ignore
-          metadata: { error: error.message },
-        },
-        "system"
-      ).catch(notifErr => logger.warn("Could not send failure notification", notifErr));
+      // ✅ Use deduplicated notification for failure
+      await this._sendNotification({
+        title: "Audit Log Cleanup Failed",
+        message: `Failed to clean up old audit logs: ${error.message}`,
+        type: "error",
+        notificationType: "audit_cleanup_failed",
+        metadata: { error: error.message },
+        cooldownMinutes: 60,
+      });
     }
   }
 
-  /**
-   * @param {number} retentionDays
-   * @param {number} deletedCount
-   */
-  async logCleanupAction(retentionDays, deletedCount) {
+  async _logCleanupAction(retentionDays, deletedCount) {
     try {
       const auditLogRepo = AppDataSource.getRepository(AuditLog);
       const auditEntry = auditLogRepo.create({
@@ -208,25 +136,13 @@ class AuditTrailCleanupScheduler {
       });
       await auditLogRepo.save(auditEntry);
     } catch (error) {
-      // @ts-ignore
       logger.warn("Could not log audit cleanup action:", error);
     }
   }
 
   async forceCleanup() {
     logger.info("🔄 Force audit trail cleanup triggered");
-    await this.cleanupOldAuditTrails();
-  }
-
-  getStatus() {
-    return {
-      isEnabled: this.isEnabled,
-      isRunning: !!this.intervalId,
-      startupPending: !!this.startupTimeoutId,
-      checkInterval: this.checkInterval,
-      lastRun: new Date(),
-      nextRun: this.intervalId ? new Date(Date.now() + this.checkInterval) : null,
-    };
+    await this.execute();
   }
 
   async updateConfig() {
@@ -262,7 +178,6 @@ class AuditTrailCleanupScheduler {
         cleanup_enabled: this.isEnabled,
       };
     } catch (error) {
-      // @ts-ignore
       logger.error("Error getting cleanup stats:", error);
       return null;
     }

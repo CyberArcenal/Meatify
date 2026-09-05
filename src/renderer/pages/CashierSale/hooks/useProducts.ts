@@ -17,9 +17,9 @@ export const useProducts = () => {
     try {
       if (window.backendAPI?.waitForAppReady) {
         const readyInfo = await window.backendAPI.waitForAppReady();
-        console.log('[Cashier] App is ready:', readyInfo);
+        // console.log('[Cashier] App is ready:', readyInfo);
       } else {
-        console.log('[Cashier] waitForAppReady not available, proceeding...');
+        // console.log('[Cashier] waitForAppReady not available, proceeding...');
       }
     } catch (error) {
       console.warn('[Cashier] Error waiting for app ready:', error);
