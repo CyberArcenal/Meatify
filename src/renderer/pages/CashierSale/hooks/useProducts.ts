@@ -12,6 +12,20 @@ export const useProducts = () => {
 
   const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
+    
+    // ✅ Wait for app to be ready (with fallback)
+    try {
+      if (window.backendAPI?.waitForAppReady) {
+        const readyInfo = await window.backendAPI.waitForAppReady();
+        console.log('[Cashier] App is ready:', readyInfo);
+      } else {
+        console.log('[Cashier] waitForAppReady not available, proceeding...');
+      }
+    } catch (error) {
+      console.warn('[Cashier] Error waiting for app ready:', error);
+      // Continue anyway - fallback
+    }
+
     try {
       const params: any = { limit: 1000 };
       if (categoryId) params.categoryId = categoryId;
@@ -19,23 +33,18 @@ export const useProducts = () => {
 
       const response = await inventoryReportsAPI.getData(params);
       if (response.status && response.data) {
-        // Map MeatInventory to Product - add stockQty
         const mappedProducts: Product[] = response.data.meats.map((m) => ({
           ...m,
           stockQty: m.inventory.totalActiveStock,
         }));
         setProducts(mappedProducts);
-        setFilteredProducts(mappedProducts.slice(0, 50)); // simple pagination
+        setFilteredProducts(mappedProducts.slice(0, 50));
       } else {
         setProducts([]);
         setFilteredProducts([]);
       }
     } catch (error) {
       console.error("Failed to load products", error);
-      // await dialogs.alert({
-      //   title: "Error",
-      //   message: "Could not load products. Please try again.",
-      // });
     } finally {
       setLoadingProducts(false);
     }
@@ -49,6 +58,7 @@ export const useProducts = () => {
     return () => clearTimeout(handler);
   }, [searchTerm, categoryId, loadProducts]);
 
+  // Initial load
   useEffect(() => {
     loadProducts();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

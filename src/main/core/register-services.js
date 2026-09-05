@@ -10,166 +10,119 @@ async function registerServices(mainWindow, splashWindow) {
   logger.debug("Registering services...");
 
   // ============================================================
-  // 🆕 REGISTER BATCH SERVICE
+  // 🆕 CORE SERVICES – INSTANCES (singleton)
   // ============================================================
-  const BatchService = require("../../services/Batch");
-  defaultContainer.registerClass("batchService", BatchService, {
-    lifetime: "singleton",
-  });
 
-  // ============================================================
-  // 🆕 REGISTER SALE SERVICE
-  // ============================================================
-  const SaleService = require("../../services/Sale");
-  defaultContainer.registerClass("saleService", SaleService, {
-    lifetime: "singleton",
-  });
+  // Batch Service
+  const batchService = require("../../services/Batch");
+  defaultContainer.registerValue("batchService", batchService);
 
-  // ============================================================
-  // 🆕 REGISTER SALE ITEM SERVICE (dependency ng SaleService)
-  // ============================================================
-  const SaleItemService = require("../../services/SaleItem");
-  defaultContainer.registerClass("saleItemService", SaleItemService, {
-    lifetime: "singleton",
-  });
+  // Sale Service
+  const saleService = require("../../services/Sale");
+  defaultContainer.registerValue("saleService", saleService);
 
-  // ============================================================
-  // 🆕 REGISTER INVENTORY MOVEMENT SERVICE
-  // ============================================================
-  const InventoryMovementService = require("../../services/InventoryMovement");
-  defaultContainer.registerClass(
+  // Sale Item Service
+  const saleItemService = require("../../services/SaleItem");
+  defaultContainer.registerValue("saleItemService", saleItemService);
+
+  // Inventory Movement Service
+  const inventoryMovementService = require("../../services/InventoryMovement");
+  defaultContainer.registerValue(
     "inventoryMovementService",
-    InventoryMovementService,
-    {
-      lifetime: "singleton",
-    },
+    inventoryMovementService,
   );
 
-  // ============================================================
-  // 🆕 REGISTER CUSTOMER SERVICE
-  // ============================================================
-  const CustomerService = require("../../services/Customer");
-  defaultContainer.registerClass("customerService", CustomerService, {
-    lifetime: "singleton",
-  });
+  // Customer Service
+  const customerService = require("../../services/Customer");
+  defaultContainer.registerValue("customerService", customerService);
 
-  // ============================================================
-  // 🆕 REGISTER MEAT SERVICE
-  // ============================================================
-  const MeatService = require("../../services/Meat");
-  defaultContainer.registerClass("meatService", MeatService, {
-    lifetime: "singleton",
-  });
+  // Meat Service
+  const meatService = require("../../services/Meat");
+  defaultContainer.registerValue("meatService", meatService);
 
-  // ============================================================
-  // 🆕 REGISTER SUPPLIER SERVICE
-  // ============================================================
-  const SupplierService = require("../../services/Supplier");
-  defaultContainer.registerClass("supplierService", SupplierService, {
-    lifetime: "singleton",
-  });
+  // Supplier Service
+  const supplierService = require("../../services/Supplier");
+  defaultContainer.registerValue("supplierService", supplierService);
 
-  // ============================================================
-  // 🆕 REGISTER CATEGORY SERVICE
-  // ============================================================
-  const CategoryService = require("../../services/Category");
-  defaultContainer.registerClass("categoryService", CategoryService, {
-    lifetime: "singleton",
-  });
+  // Category Service
+  const categoryService = require("../../services/Category");
+  defaultContainer.registerValue("categoryService", categoryService);
 
-  // ============================================================
-  // 🆕 REGISTER PURCHASE SERVICE
-  // ============================================================
-  const PurchaseService = require("../../services/Purchase");
-  defaultContainer.registerClass("purchaseService", PurchaseService, {
-    lifetime: "singleton",
-  });
+  // Purchase Service
+  const purchaseService = require("../../services/Purchase");
+  defaultContainer.registerValue("purchaseService", purchaseService);
 
-  // ============================================================
-  // 🆕 REGISTER RETURN REFUND SERVICE
-  // ============================================================
-  const ReturnRefundService = require("../../services/ReturnRefund");
-  defaultContainer.registerClass("returnRefundService", ReturnRefundService, {
-    lifetime: "singleton",
-  });
+  // Return Refund Service
+  const returnRefundService = require("../../services/ReturnRefund");
+  defaultContainer.registerValue("returnRefundService", returnRefundService);
 
-  // ============================================================
-  // 🆕 REGISTER LOYALTY TRANSACTION SERVICE
-  // ============================================================
-  const LoyaltyTransactionService = require("../../services/LoyaltyTransaction");
-  defaultContainer.registerClass(
+  // Loyalty Transaction Service
+  const loyaltyTransactionService = require("../../services/LoyaltyTransaction");
+  defaultContainer.registerValue(
     "loyaltyTransactionService",
-    LoyaltyTransactionService,
-    {
-      lifetime: "singleton",
-    },
+    loyaltyTransactionService,
   );
 
-  // ============================================================
-  // 🆕 REGISTER NOTIFICATION SERVICE
-  // ============================================================
-  const NotificationService = require("../../services/Notification");
-  defaultContainer.registerClass("notificationService", NotificationService, {
-    lifetime: "singleton",
-  });
+  // Notification Service
+  const notificationService = require("../../services/Notification");
+  defaultContainer.registerValue("notificationService", notificationService);
 
-  // ============================================================
-  // 🆕 REGISTER NOTIFICATION LOG SERVICE
-  // ============================================================
-  const NotificationLogService = require("../../services/NotificationLog");
-  defaultContainer.registerClass(
+  // Notification Log Service
+  const notificationLogService = require("../../services/NotificationLog");
+  defaultContainer.registerValue(
     "notificationLogService",
-    NotificationLogService,
-    {
+    notificationLogService,
+  );
+
+  // System Setting Service – check the actual file name
+  // If the file is 'Settings.js' but exports SystemSettingService class/instance
+  const systemSettingService = require("../../services/Settings");
+  defaultContainer.registerValue("systemSettingService", systemSettingService);
+
+  // Audit Log Service
+  const auditLogService = require("../../services/AuditLog");
+  defaultContainer.registerValue("auditLogService", auditLogService);
+
+  // ============================================================
+  // 🖨️ HARDWARE SERVICES – check if class or instance
+  // ============================================================
+
+  // Printer Service – if it's a class, use registerClass; if instance, use registerValue
+  const PrinterModule = require("../../services/Printer");
+  // Determine if it's a class or instance
+  if (typeof PrinterModule === "function" && PrinterModule.prototype) {
+    // It's a class constructor
+    defaultContainer.registerClass("printer", PrinterModule, {
       lifetime: "singleton",
-    },
-  );
+    });
+  } else {
+    // It's already an instance
+    defaultContainer.registerValue("printer", PrinterModule);
+  }
+
+  // Cash Drawer Service – same logic
+  const CashDrawerModule = require("../../services/CashDrawer");
+  if (typeof CashDrawerModule === "function" && CashDrawerModule.prototype) {
+    defaultContainer.registerClass("cashDrawer", CashDrawerModule, {
+      lifetime: "singleton",
+    });
+  } else {
+    defaultContainer.registerValue("cashDrawer", CashDrawerModule);
+  }
 
   // ============================================================
-  // 🆕 REGISTER SYSTEM SETTING SERVICE
+  // 🗄️ DATABASE SERVICE (factory)
   // ============================================================
-  const SystemSettingService = require("../../services/Settings");
-  defaultContainer.registerClass("systemSettingService", SystemSettingService, {
+
+  defaultContainer.register("database", () => require("../db/database"), {
     lifetime: "singleton",
   });
 
   // ============================================================
-  // 🆕 REGISTER AUDIT LOG SERVICE
-  // ============================================================
-  const AuditLogService = require("../../services/AuditLog");
-  defaultContainer.registerClass("auditLogService", AuditLogService, {
-    lifetime: "singleton",
-  });
-
-  // ============================================================
-  // EXISTING SERVICES
+  // 📦 CONFIG & LOGGER (values)
   // ============================================================
 
-  // Printer Service
-  const PrinterService = require("../../services/Printer");
-  defaultContainer.registerClass("printer", PrinterService, {
-    lifetime: "singleton",
-  });
-
-  // Cash Drawer Service
-  const CashDrawerService = require("../../services/CashDrawer");
-  defaultContainer.registerClass("cashDrawer", CashDrawerService, {
-    lifetime: "singleton",
-  });
-
-  // Database Service
-  defaultContainer.register(
-    "database",
-    () => {
-      return require("../db/database");
-    },
-    { lifetime: "singleton" },
-  );
-
-  // Logger Service
   defaultContainer.registerValue("logger", logger);
-
-  // Configuration Service
   defaultContainer.registerValue("config", APP_CONFIG);
   defaultContainer.registerValue("environment", ENVIRONMENT);
 
