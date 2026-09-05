@@ -1,6 +1,18 @@
 // src/preload.js - FIXED
 const { contextBridge, ipcRenderer } = require("electron");
 
+// ✅ Store app ready state
+let appReady = false;
+let appReadyCallbacks = [];
+
+// ✅ Listen for app-ready event from main
+ipcRenderer.on("app:ready", (event, data) => {
+  appReady = true;
+  console.log("[Preload] App is ready:", data);
+  appReadyCallbacks.forEach((cb) => cb(data));
+  appReadyCallbacks = [];
+});
+
 contextBridge.exposeInMainWorld("backendAPI", {
   // Analytics
   dashboard: (payload) => ipcRenderer.invoke("dashboard", payload),
@@ -64,4 +76,50 @@ contextBridge.exposeInMainWorld("backendAPI", {
 
   // ✅ ADD THIS - Notify main process that renderer is ready
   notifyAppReady: () => ipcRenderer.send("app:renderer-ready"),
+
+  // ========== APP READY ==========
+  /**
+   * Wait for app to be ready before making data-fetching calls
+   * @returns {Promise<{timestamp: string, databaseReady: boolean, version: string}>}
+   */
+  waitForAppReady: () => {
+    return new Promise((resolve) => {
+      if (appReady) {
+        // Already ready, resolve immediately
+        resolve({
+          timestamp: new Date().toISOString(),
+          databaseReady: true,
+          version: "1.0.9",
+        });
+      } else {
+        // Wait for ready event
+        appReadyCallbacks.push(resolve);
+      }
+    });
+  },
+
+  /**
+   * Check if app is ready (non-blocking)
+   * @returns {boolean}
+   */
+  isAppReady: () => appReady,
+
+  // ========== EVENT LISTENERS ==========
+  onAppReady: (callback) => {
+    if (appReady) {
+      // If already ready, call immediately
+      setTimeout(
+        () =>
+          callback({
+            timestamp: new Date().toISOString(),
+            databaseReady: true,
+            version: "1.0.9",
+          }),
+        0,
+      );
+      return () => {};
+    }
+    ipcRenderer.on("app-ready", callback);
+    return () => ipcRenderer.removeListener("app-ready", callback);
+  },
 });

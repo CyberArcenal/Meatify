@@ -4,6 +4,7 @@ export {};
 declare global {
   interface Window {
     backendAPI: {
+      waitForAppReady(): unknown;
       dashboard: (payload: any) => Promise<any>;
       customerInsights: (payload: any) => Promise<any>;
       dailySales: (payload: any) => Promise<any>;

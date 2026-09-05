@@ -27,24 +27,42 @@ import BatchesPage from "../pages/batches";
 import MeatifySettingsPage from "../pages/system/settings";
 import LicenseModal from "../components/UI/LicenseModal";
 
-const PageNotFound = () => <div> Page Not Found</div>;
+const PageNotFound = () => <div>Page Not Found</div>;
 
 function App() {
   const [licenseAccepted, setLicenseAccepted] = useState<boolean | null>(null);
+  const [appReady, setAppReady] = useState<boolean>(false);
 
   useEffect(() => {
-    if (window.backendAPI?.notifyAppReady) {
-      window.backendAPI.notifyAppReady();
-      console.log("Notified main process: renderer is ready");
+    async function initializeApp() {
+      try {
+        // ✅ 1. Wait for app to be ready
+        if (window.backendAPI?.waitForAppReady) {
+          const readyInfo = await window.backendAPI.waitForAppReady();
+          console.log('[App] App is ready:', readyInfo);
+        } else {
+          console.log('[App] waitForAppReady not available, proceeding...');
+        }
+        setAppReady(true);
+
+        // ✅ 2. Notify main process that renderer is ready
+        if (window.backendAPI?.notifyAppReady) {
+          window.backendAPI.notifyAppReady();
+          console.log("Notified main process: renderer is ready");
+        }
+
+        // ✅ 3. Check license
+        const accepted = localStorage.getItem('meatify_license_accepted');
+        setLicenseAccepted(accepted === 'true');
+      } catch (error) {
+        console.error('[App] Initialization error:', error);
+        // Even if error, proceed (fallback)
+        setAppReady(true);
+        setLicenseAccepted(false);
+      }
     }
 
-    // Check if license was already accepted
-    const accepted = localStorage.getItem('meatify_license_accepted');
-    if (accepted === 'true') {
-      setLicenseAccepted(true);
-    } else {
-      setLicenseAccepted(false);
-    }
+    initializeApp();
   }, []);
 
   const handleAcceptLicense = () => {
@@ -65,13 +83,15 @@ function App() {
     }
   };
 
-  // Show license modal while loading or if not accepted
-  if (licenseAccepted === null) {
+  // ✅ Show loading while waiting for app ready OR license check
+  if (!appReady || licenseAccepted === null) {
     return (
       <div className="min-h-screen bg-[var(--background-color)] flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[var(--accent-gold)] mx-auto mb-4" />
-          <p className="text-[var(--text-secondary)]">Loading...</p>
+          <p className="text-[var(--text-secondary)]">
+            {!appReady ? 'Initializing application...' : 'Loading...'}
+          </p>
         </div>
       </div>
     );
@@ -88,7 +108,7 @@ function App() {
         />
       )}
 
-      {/* Main App - only renders when license is accepted */}
+      {/* Main App - only renders when license is accepted AND app is ready */}
       {licenseAccepted && (
         <Routes>
           <Route path="/help" element={<Help />} />
