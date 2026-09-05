@@ -156,7 +156,11 @@ class SystemSettingService {
     const repo = this._getRepo(qr, SystemSetting);
 
     // ✅ Validate input
-    const validated = validate(systemSettingCreateSchema, data, 'System setting creation');
+    const validated = validate(
+      systemSettingCreateSchema,
+      data,
+      "System setting creation",
+    );
 
     const valueToStore = this._prepareValueForStorage(validated.value);
     const setting = repo.create({
@@ -185,7 +189,11 @@ class SystemSettingService {
     const repo = this._getRepo(qr, SystemSetting);
 
     // ✅ Validate input
-    const validated = validate(systemSettingUpdateSchema, data, 'System setting update');
+    const validated = validate(
+      systemSettingUpdateSchema,
+      data,
+      "System setting update",
+    );
 
     const existing = await repo.findOne({ where: { id, is_deleted: false } });
     if (!existing) throw new Error(`Setting with id ${id} not found`);
@@ -197,10 +205,14 @@ class SystemSettingService {
     if (validated.value !== undefined) {
       existing.value = this._prepareValueForStorage(validated.value);
     }
-    if (validated.setting_type !== undefined) existing.setting_type = validated.setting_type;
-    if (validated.description !== undefined) existing.description = validated.description;
-    if (validated.is_public !== undefined) existing.is_public = validated.is_public;
-    if (validated.is_deleted !== undefined) existing.is_deleted = validated.is_deleted;
+    if (validated.setting_type !== undefined)
+      existing.setting_type = validated.setting_type;
+    if (validated.description !== undefined)
+      existing.description = validated.description;
+    if (validated.is_public !== undefined)
+      existing.is_public = validated.is_public;
+    if (validated.is_deleted !== undefined)
+      existing.is_deleted = validated.is_deleted;
 
     existing.updated_at = new Date();
 
@@ -224,17 +236,29 @@ class SystemSettingService {
     // ✅ Validate key and value
     const validated = validate(
       z.object({
-        key: z.string().min(1, 'Key is required').max(100),
+        key: z.string().min(1, "Key is required").max(100),
         value: z.any(),
-        setting_type: z.enum(['general', 'inventory', 'sales', 'notifications', 'cashier']).optional(),
+        setting_type: z
+          .enum([
+            "general",
+            "inventory",
+            "sales",
+            "notifications",
+            "cashier",
+            "audit_security",
+          ])
+          .optional(),
         description: z.string().max(500).optional(),
         is_public: z.boolean().optional(),
       }),
       { key, value, ...options },
-      'Set value by key'
+      "Set value by key",
     );
 
-    const existing = await this.getSettingByKey(validated.key, validated.setting_type);
+    const existing = await this.getSettingByKey(
+      validated.key,
+      validated.setting_type,
+    );
     if (existing) {
       return this.updateSetting(
         existing.id,
@@ -245,7 +269,7 @@ class SystemSettingService {
           is_public: validated.is_public,
         },
         user,
-        qr
+        qr,
       );
     } else {
       return this.createSetting(
@@ -253,11 +277,13 @@ class SystemSettingService {
           key: validated.key,
           value: validated.value,
           setting_type: validated.setting_type || "general",
-          description: validated.description || `Auto-generated setting for ${validated.key}`,
+          description:
+            validated.description ||
+            `Auto-generated setting for ${validated.key}`,
           is_public: validated.is_public ?? false,
         },
         user,
-        qr
+        qr,
       );
     }
   }
@@ -276,10 +302,12 @@ class SystemSettingService {
     const validated = validate(
       z.object({ id: z.number().int().positive() }),
       { id },
-      'Delete setting'
+      "Delete setting",
     );
 
-    const setting = await repo.findOne({ where: { id: validated.id, is_deleted: false } });
+    const setting = await repo.findOne({
+      where: { id: validated.id, is_deleted: false },
+    });
     if (!setting) throw new Error(`Setting with id ${validated.id} not found`);
 
     setting.is_deleted = true;
@@ -301,13 +329,16 @@ class SystemSettingService {
     const validated = validate(
       z.array(systemSettingCreateSchema.or(systemSettingUpdateSchema)),
       settingsArray,
-      'Bulk settings update'
+      "Bulk settings update",
     );
 
     const results = { updated: [], errors: [] };
     for (const item of validated) {
       try {
-        const existing = await this.getSettingByKey(item.key, item.setting_type);
+        const existing = await this.getSettingByKey(
+          item.key,
+          item.setting_type,
+        );
         let saved;
         if (existing) {
           saved = await this.updateSetting(existing.id, item, user, qr);
@@ -317,6 +348,7 @@ class SystemSettingService {
           results.updated.push({ ...saved, action: "created" });
         }
       } catch (err) {
+        logger.error(err);
         results.errors.push({ key: item.key, error: err.message });
       }
     }
@@ -334,7 +366,7 @@ class SystemSettingService {
     const validated = validate(
       z.array(z.number().int().positive()),
       ids,
-      'Bulk delete settings'
+      "Bulk delete settings",
     );
 
     const results = { deleted: [], errors: [] };
@@ -343,6 +375,7 @@ class SystemSettingService {
         await this.deleteSetting(id, user, qr);
         results.deleted.push(id);
       } catch (err) {
+        logger.error(err);
         results.errors.push({ id, error: err.message });
       }
     }
@@ -370,8 +403,18 @@ class SystemSettingService {
    * @param {import("typeorm").QueryRunner | null} qr
    */
   async updateGroupedConfig(configData, user = "system", qr = null) {
-    // ✅ Validate grouped config
-    const validated = validate(systemSettingGroupedSchema, configData, 'Grouped config update');
+    // ✅ Validate grouped config with better error handling
+    let validated;
+    try {
+      validated = validate(
+        systemSettingGroupedSchema,
+        configData,
+        "Grouped config update",
+      );
+    } catch (error) {
+      logger.error("Grouped config validation failed:", error.message);
+      throw new Error(`Invalid config data: ${error.message}`);
+    }
 
     const results = { updated: [], errors: [] };
     for (const [category, dict] of Object.entries(validated)) {
@@ -386,6 +429,7 @@ class SystemSettingService {
           );
           results.updated.push({ category, key, id: saved.id });
         } catch (err) {
+          logger.error(`Failed to update ${category}.${key}:`, err.message);
           results.errors.push({ category, key, error: err.message });
         }
       }
