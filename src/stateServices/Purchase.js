@@ -5,6 +5,8 @@ const auditLogger = require("../utils/auditLogger");
 const Purchase = require("../entities/Purchase");
 const PurchaseItem = require("../entities/PurchaseItem");
 const notificationService = require("../services/Notification");
+const system = require("../utils/system");
+const notificationLogService = require("../services/NotificationLog");
 
 /**
  * PurchaseStateService handles SIDE EFFECTS only for purchase state changes.
@@ -72,7 +74,9 @@ class PurchaseStateService {
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
   async onCreated(purchaseId, purchase, user = "system", queryRunner = null) {
-    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) created by ${user}`);
+    logger.info(
+      `[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) created by ${user}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("purchase:created", {
@@ -99,7 +103,9 @@ class PurchaseStateService {
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
   async onApproved(purchaseId, purchase, user = "system", queryRunner = null) {
-    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) approved by ${user}`);
+    logger.info(
+      `[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) approved by ${user}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("purchase:approved", {
@@ -117,7 +123,7 @@ class PurchaseStateService {
       purchaseId,
       { action: "approved" },
       { status: "approved" },
-      user
+      user,
     );
 
     // Send notification to supplier (in-app)
@@ -134,10 +140,18 @@ class PurchaseStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onCompleted(purchaseId, purchase, options = {}, user = "system", queryRunner = null) {
+  async onCompleted(
+    purchaseId,
+    purchase,
+    options = {},
+    user = "system",
+    queryRunner = null,
+  ) {
     const { batchCount = purchase.purchaseItems?.length || 0 } = options;
 
-    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) completed by ${user}`);
+    logger.info(
+      `[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) completed by ${user}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("purchase:completed", {
@@ -156,7 +170,7 @@ class PurchaseStateService {
       purchaseId,
       { action: "completed" },
       { status: "completed" },
-      user
+      user,
     );
 
     // Send notification to supplier (in-app)
@@ -172,8 +186,16 @@ class PurchaseStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onCancelled(purchaseId, purchase, reason = "", user = "system", queryRunner = null) {
-    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) cancelled by ${user}`);
+  async onCancelled(
+    purchaseId,
+    purchase,
+    reason = "",
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) cancelled by ${user}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("purchase:cancelled", {
@@ -191,11 +213,17 @@ class PurchaseStateService {
       purchaseId,
       { action: "cancelled", reason },
       { status: "cancelled" },
-      user
+      user,
     );
 
     // Send notification to supplier (in-app)
-    await this._notifySupplier(purchase, "cancelled", user, queryRunner, reason);
+    await this._notifySupplier(
+      purchase,
+      "cancelled",
+      user,
+      queryRunner,
+      reason,
+    );
   }
 
   /**
@@ -207,8 +235,16 @@ class PurchaseStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onUpdated(purchaseId, purchase, changes, user = "system", queryRunner = null) {
-    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) updated (fields: ${Object.keys(changes).join(", ")})`);
+  async onUpdated(
+    purchaseId,
+    purchase,
+    changes,
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[PurchaseState] ✅ Purchase #${purchaseId} (${purchase.referenceNo}) updated (fields: ${Object.keys(changes).join(", ")})`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("purchase:updated", {
@@ -224,7 +260,7 @@ class PurchaseStateService {
       purchaseId,
       changes,
       purchase,
-      user
+      user,
     );
   }
 
@@ -237,7 +273,9 @@ class PurchaseStateService {
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
   async onDeleted(purchaseId, purchase, user = "system", queryRunner = null) {
-    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} (${purchase?.referenceNo}) soft-deleted by ${user}`);
+    logger.info(
+      `[PurchaseState] ✅ Purchase #${purchaseId} (${purchase?.referenceNo}) soft-deleted by ${user}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("purchase:deleted", {
@@ -255,12 +293,14 @@ class PurchaseStateService {
   // ============================================================
 
   /**
-   * Notify supplier about purchase status change
+   * Notify supplier about purchase status change via email (if enabled)
    * @private
    */
   async _notifySupplier(purchase, action, user, queryRunner, reason = "") {
     if (!purchase.supplier) {
-      logger.warn(`[PurchaseState] No supplier for purchase #${purchase.id}, skipping notification`);
+      logger.warn(
+        `[PurchaseState] No supplier for purchase #${purchase.id}, skipping notification`,
+      );
       return;
     }
 
@@ -287,26 +327,81 @@ class PurchaseStateService {
         return;
     }
 
+    // ─── 1. Send email to supplier (if enabled and email exists) ───
+    const emailEnabled = await system.emailEnabled();
+    if (emailEnabled && supplier.email) {
+      const emailSubject = `${title} – ${purchase.referenceNo}`;
+      const emailBody = `
+Dear ${supplier.name},
+
+${message}
+
+Purchase Details:
+- Reference: ${purchase.referenceNo}
+- Date: ${new Date(purchase.orderDate).toLocaleDateString()}
+- Total Amount: ₱${purchase.totalAmount.toFixed(2)}
+- Items: ${purchase.purchaseItems?.length || 0} item(s)
+
+Please check your dashboard for more details.
+
+Thank you,
+${await system.companyName()}
+      `;
+
+      try {
+        await notificationLogService.create(
+          {
+            to: supplier.email,
+            subject: emailSubject,
+            payload: emailBody.trim(),
+            channel: "email",
+          },
+          user,
+          queryRunner,
+        );
+        logger.info(
+          `[PurchaseState] Email notification queued for supplier ${supplier.email} (purchase #${purchase.id})`,
+        );
+      } catch (err) {
+        logger.error(
+          `[PurchaseState] Failed to queue email for supplier ${supplier.email}:`,
+          err,
+        );
+        // We don't throw here – email failure should not break the transaction
+      }
+    } else {
+      const reason = !emailEnabled
+        ? "email notifications disabled"
+        : "supplier has no email";
+      logger.warn(
+        `[PurchaseState] Skipping email to supplier (${reason}) for purchase #${purchase.id}`,
+      );
+    }
+
+    // ─── 2. (Optional) Keep in‑app notification for admin ───
     try {
       await notificationService.create(
         {
           userId: 1,
           title,
-          message: `${message}\nSupplier: ${supplier.name}`,
+          message: `${message}\nSupplier: ${supplier.name} ${emailEnabled && supplier.email ? `(email sent to ${supplier.email})` : ""}`,
           type,
           metadata: {
             purchaseId: purchase.id,
             referenceNo: purchase.referenceNo,
             supplierId: supplier.id,
             action,
+            emailSent: emailEnabled && !!supplier.email,
           },
         },
         user,
-        queryRunner
+        queryRunner,
       );
-      logger.info(`[PurchaseState] Notification sent for purchase #${purchase.id}: ${action}`);
     } catch (err) {
-      logger.error(`[PurchaseState] Failed to send notification:`, err);
+      logger.error(
+        `[PurchaseState] Failed to send admin in‑app notification:`,
+        err,
+      );
     }
   }
 }

@@ -6,6 +6,7 @@ const Customer = require("../entities/Customer");
 const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const notificationService = require("../services/Notification");
 const system = require("../utils/system");
+const notificationLogService = require("../services/NotificationLog");
 
 /**
  * CustomerStateService handles state transitions and side effects for customers.
@@ -57,6 +58,93 @@ class CustomerStateService {
     }
   }
 
+  /**
+   * Side effect after a customer is created
+   * Called from CustomerSubscriber.afterInsert
+   * @param {number} customerId
+   * @param {Customer} customerEntity
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async onCreate(
+    customerId,
+    customerEntity,
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[CustomerState] ✅ Customer #${customerId} (${customerEntity.name}) created by ${user}`,
+    );
+
+    // ─── 1. Broadcast to UI ──────────────────────────────────────
+    this._sendToRenderers("customer:created", {
+      id: customerEntity.id,
+      name: customerEntity.name,
+      email: customerEntity.email,
+      phone: customerEntity.phone,
+      status: customerEntity.status,
+      loyaltyPoints: customerEntity.loyaltyPointsBalance,
+      createdAt: customerEntity.createdAt,
+    });
+
+    // ─── 2. Audit log ────────────────────────────────────────────
+    await auditLogger.logCreate("Customer", customerId, customerEntity, user);
+
+    // ─── 3. Welcome email to new customer (if enabled) ─────────
+    const emailEnabled = await system.emailEnabled();
+    if (emailEnabled && customerEntity.email) {
+      const company = await system.companyName();
+      const subject = `Welcome to ${company}! 🥩`;
+
+      const textBody = `
+Dear ${customerEntity.name},
+
+Welcome to ${company}! We're excited to have you as a valued customer.
+
+Here's what you can expect:
+✅ Quality meat products at competitive prices
+✅ Loyalty points on every purchase
+✅ Special promotions and discounts
+✅ Easy and fast checkout experience
+
+Your loyalty points balance: ${customerEntity.loyaltyPointsBalance || 0}
+
+We look forward to serving you!
+
+Best regards,
+${company} Team
+    `;
+
+      try {
+        await notificationLogService.create(
+          {
+            to: customerEntity.email,
+            subject: subject,
+            payload: textBody.trim(),
+            channel: "email",
+          },
+          user,
+          queryRunner,
+        );
+        logger.info(
+          `[CustomerState] Welcome email queued for ${customerEntity.email}`,
+        );
+      } catch (err) {
+        logger.error(
+          `[CustomerState] Failed to queue welcome email for ${customerEntity.email}:`,
+          err,
+        );
+      }
+    } else {
+      const reason = !emailEnabled
+        ? "email notifications disabled"
+        : "customer has no email";
+      logger.debug(
+        `[CustomerState] Skipping welcome email (${reason}) for customer #${customerId}`,
+      );
+    }
+  }
+
   // ============================================================
   // 🔄 SIDE EFFECTS (called by subscriber)
   // ============================================================
@@ -70,8 +158,16 @@ class CustomerStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onStatusChange(customerId, oldStatus, newStatus, user = "system", queryRunner = null) {
-    logger.info(`[CustomerState] Customer #${customerId} status changed: ${oldStatus} → ${newStatus}`);
+  async onStatusChange(
+    customerId,
+    oldStatus,
+    newStatus,
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[CustomerState] Customer #${customerId} status changed: ${oldStatus} → ${newStatus}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("customer:statusChanged", {
@@ -87,15 +183,26 @@ class CustomerStateService {
       customerId,
       { status: oldStatus },
       { status: newStatus },
-      user
+      user,
     );
 
     // Send notification if promoted to VIP or Elite
-    if ((newStatus === "vip" || newStatus === "elite") && newStatus !== oldStatus) {
+    if (
+      (newStatus === "vip" || newStatus === "elite") &&
+      newStatus !== oldStatus
+    ) {
       const customerRepo = this._getRepo(queryRunner, Customer);
-      const customer = await customerRepo.findOne({ where: { id: customerId } });
+      const customer = await customerRepo.findOne({
+        where: { id: customerId },
+      });
       if (customer) {
-        await this._notifyStatusChange(customer, oldStatus, newStatus, user, queryRunner);
+        await this._notifyStatusChange(
+          customer,
+          oldStatus,
+          newStatus,
+          user,
+          queryRunner,
+        );
       }
     }
   }
@@ -109,9 +216,17 @@ class CustomerStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onPointsChange(customerId, oldBalance, newBalance, user = "system", queryRunner = null) {
+  async onPointsChange(
+    customerId,
+    oldBalance,
+    newBalance,
+    user = "system",
+    queryRunner = null,
+  ) {
     const diff = newBalance - oldBalance;
-    logger.info(`[CustomerState] Customer #${customerId} points changed: ${oldBalance} → ${newBalance} (diff: ${diff})`);
+    logger.info(
+      `[CustomerState] Customer #${customerId} points changed: ${oldBalance} → ${newBalance} (diff: ${diff})`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("customer:pointsChanged", {
@@ -128,14 +243,16 @@ class CustomerStateService {
       customerId,
       { loyaltyPointsBalance: oldBalance },
       { loyaltyPointsBalance: newBalance },
-      user
+      user,
     );
 
     // Optional: send notification for significant points change (e.g., > 100)
     if (Math.abs(diff) > 100) {
       try {
         const customerRepo = this._getRepo(queryRunner, Customer);
-        const customer = await customerRepo.findOne({ where: { id: customerId } });
+        const customer = await customerRepo.findOne({
+          where: { id: customerId },
+        });
         if (customer) {
           await notificationService.create(
             {
@@ -151,11 +268,14 @@ class CustomerStateService {
               },
             },
             user,
-            queryRunner
+            queryRunner,
           );
         }
       } catch (err) {
-        logger.error(`[CustomerState] Failed to send points change notification:`, err);
+        logger.error(
+          `[CustomerState] Failed to send points change notification:`,
+          err,
+        );
       }
     }
   }
@@ -178,13 +298,15 @@ class CustomerStateService {
     amountSpent,
     saleId,
     user = "system",
-    queryRunner = null
+    queryRunner = null,
   ) {
     const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
 
     const loyaltyEnabled = await system.loyaltyPointsEnabled();
     if (!loyaltyEnabled) {
-      logger.info(`[CustomerState] Loyalty points disabled, skipping earn for customer #${customerId}`);
+      logger.info(
+        `[CustomerState] Loyalty points disabled, skipping earn for customer #${customerId}`,
+      );
       return { customer: null, pointsEarned: 0 };
     }
 
@@ -197,7 +319,9 @@ class CustomerStateService {
     }
 
     if (!customer.isActive) {
-      logger.warn(`[CustomerState] Customer #${customerId} is inactive, skipping points`);
+      logger.warn(
+        `[CustomerState] Customer #${customerId} is inactive, skipping points`,
+      );
       return { customer, pointsEarned: 0 };
     }
 
@@ -205,7 +329,9 @@ class CustomerStateService {
     const pointsEarned = Math.floor(amountSpent / rate);
 
     if (pointsEarned <= 0) {
-      logger.info(`[CustomerState] No points earned for customer #${customerId} (amount: ${amountSpent})`);
+      logger.info(
+        `[CustomerState] No points earned for customer #${customerId} (amount: ${amountSpent})`,
+      );
       return { customer, pointsEarned: 0 };
     }
 
@@ -223,7 +349,9 @@ class CustomerStateService {
       customer.status = newStatus;
     }
 
-    const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
+    const updatedCustomer = await updateDb(customerRepo, customer, {
+      queryRunner,
+    });
 
     // Create loyalty transaction
     const tx = loyaltyRepo.create({
@@ -237,10 +365,15 @@ class CustomerStateService {
     const savedTx = await saveDb(loyaltyRepo, tx, { queryRunner });
 
     // Audit log for loyalty transaction creation (not for customer update)
-    await auditLogger.logCreate("LoyaltyTransaction", savedTx.id, savedTx, user);
+    await auditLogger.logCreate(
+      "LoyaltyTransaction",
+      savedTx.id,
+      savedTx,
+      user,
+    );
 
     logger.info(
-      `[CustomerState] Earned ${pointsEarned} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
+      `[CustomerState] Earned ${pointsEarned} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`,
     );
 
     // NOTE: Side effects (notifications, audit logs for customer) are now handled by the subscriber.
@@ -261,7 +394,7 @@ class CustomerStateService {
     pointsToRedeem,
     saleId,
     user = "system",
-    queryRunner = null
+    queryRunner = null,
   ) {
     const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
 
@@ -288,7 +421,7 @@ class CustomerStateService {
 
     if (customer.loyaltyPointsBalance < pointsToRedeem) {
       throw new Error(
-        `Insufficient loyalty points. Available: ${customer.loyaltyPointsBalance}, Requested: ${pointsToRedeem}`
+        `Insufficient loyalty points. Available: ${customer.loyaltyPointsBalance}, Requested: ${pointsToRedeem}`,
       );
     }
 
@@ -296,7 +429,9 @@ class CustomerStateService {
     customer.loyaltyPointsBalance -= pointsToRedeem;
     customer.updatedAt = new Date();
 
-    const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
+    const updatedCustomer = await updateDb(customerRepo, customer, {
+      queryRunner,
+    });
 
     // Create loyalty transaction
     const tx = loyaltyRepo.create({
@@ -310,10 +445,15 @@ class CustomerStateService {
     const savedTx = await saveDb(loyaltyRepo, tx, { queryRunner });
 
     // Audit log for loyalty transaction creation
-    await auditLogger.logCreate("LoyaltyTransaction", savedTx.id, savedTx, user);
+    await auditLogger.logCreate(
+      "LoyaltyTransaction",
+      savedTx.id,
+      savedTx,
+      user,
+    );
 
     logger.info(
-      `[CustomerState] Redeemed ${pointsToRedeem} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
+      `[CustomerState] Redeemed ${pointsToRedeem} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`,
     );
 
     // NOTE: Side effects are now handled by the subscriber.
@@ -334,7 +474,7 @@ class CustomerStateService {
     pointsChange,
     reason,
     user = "system",
-    queryRunner = null
+    queryRunner = null,
   ) {
     const { updateDb, saveDb } = require("../utils/dbUtils/dbActions");
 
@@ -357,14 +497,15 @@ class CustomerStateService {
 
     if (pointsChange < 0 && customer.loyaltyPointsBalance + pointsChange < 0) {
       throw new Error(
-        `Insufficient loyalty points. Available: ${customer.loyaltyPointsBalance}, Requested deduction: ${-pointsChange}`
+        `Insufficient loyalty points. Available: ${customer.loyaltyPointsBalance}, Requested deduction: ${-pointsChange}`,
       );
     }
 
     const oldBalance = customer.loyaltyPointsBalance;
     customer.loyaltyPointsBalance += pointsChange;
     if (pointsChange > 0) {
-      customer.lifetimePointsEarned = (customer.lifetimePointsEarned || 0) + pointsChange;
+      customer.lifetimePointsEarned =
+        (customer.lifetimePointsEarned || 0) + pointsChange;
     }
     customer.updatedAt = new Date();
 
@@ -379,7 +520,9 @@ class CustomerStateService {
       }
     }
 
-    const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
+    const updatedCustomer = await updateDb(customerRepo, customer, {
+      queryRunner,
+    });
 
     // Create loyalty transaction
     const tx = loyaltyRepo.create({
@@ -393,10 +536,15 @@ class CustomerStateService {
     const savedTx = await saveDb(loyaltyRepo, tx, { queryRunner });
 
     // Audit log for loyalty transaction creation
-    await auditLogger.logCreate("LoyaltyTransaction", savedTx.id, savedTx, user);
+    await auditLogger.logCreate(
+      "LoyaltyTransaction",
+      savedTx.id,
+      savedTx,
+      user,
+    );
 
     logger.info(
-      `[CustomerState] Manual adjustment: ${pointsChange > 0 ? "+" : ""}${pointsChange} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
+      `[CustomerState] Manual adjustment: ${pointsChange > 0 ? "+" : ""}${pointsChange} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`,
     );
 
     // NOTE: Side effects (status change, notifications) are now handled by the subscriber.
@@ -439,34 +587,76 @@ class CustomerStateService {
           },
         },
         user,
-        queryRunner
+        queryRunner,
       );
     } catch (err) {
-      logger.error(`[CustomerState] Failed to send milestone notification:`, err);
+      logger.error(
+        `[CustomerState] Failed to send milestone notification:`,
+        err,
+      );
     }
 
-    // Email to customer
+    // Inside _notifyStatusChange(), replace the email/SMS blocks:
+
+    // ─── Email to customer ──────────────────────────────────────────
     if (canSendEmail && customer.email) {
       const subject = `Congratulations! You've reached ${newStatus} status!`;
-      const textBody = `Dear ${customer.name},\n\nCongratulations! You have reached ${newStatus} status at ${company}.\n\nWe appreciate your continued patronage and look forward to serving you with exclusive benefits.\n\nThank you for being a valued customer!\n\nBest regards,\n${company}`;
-      const htmlBody = textBody.replace(/\n/g, "<br>");
+      const company = await system.companyName();
+      const textBody =
+        `Dear ${customer.name},\n\n` +
+        `Congratulations! You have reached ${newStatus} status at ${company}.\n\n` +
+        `Your current loyalty points: ${customer.loyaltyPointsBalance}\n` +
+        `Lifetime points: ${customer.lifetimePointsEarned || 0}\n\n` +
+        `We appreciate your continued patronage and look forward to serving you with exclusive benefits.\n\n` +
+        `Thank you for being a valued customer!\n\n` +
+        `Best regards,\n${company}`;
 
       try {
-        logger.info(`[CustomerState] Would send status upgrade email to ${customer.email}`);
-        // await emailSender.send(customer.email, subject, htmlBody, textBody);
+        await notificationLogService.create(
+          {
+            to: customer.email,
+            subject: subject,
+            payload: textBody.trim(),
+            channel: "email",
+          },
+          user,
+          queryRunner,
+        );
+        logger.info(
+          `[CustomerState] Status upgrade email queued for ${customer.email}`,
+        );
       } catch (err) {
-        logger.error(`[CustomerState] Failed to send email to ${customer.email}:`, err);
+        logger.error(
+          `[CustomerState] Failed to queue email for ${customer.email}:`,
+          err,
+        );
       }
     }
 
-    // SMS to customer
+    // ─── SMS to customer ─────────────────────────────────────────────
     if (canSendSms && customer.phone) {
+      const company = await system.companyName();
+      const smsMessage = `Congratulations! You've reached ${newStatus} status at ${company}. Thank you for your loyalty!`;
+
       try {
-        const smsMessage = `Congratulations! You've reached ${newStatus} status at ${company}. Thank you for your loyalty!`;
-        logger.info(`[CustomerState] Would send SMS to ${customer.phone}: ${smsMessage}`);
-        // await smsSender.send(customer.phone, smsMessage);
+        await notificationLogService.create(
+          {
+            to: customer.phone,
+            subject: "Loyalty Status Update", // required field
+            payload: smsMessage,
+            channel: "sms",
+          },
+          user,
+          queryRunner,
+        );
+        logger.info(
+          `[CustomerState] Status upgrade SMS queued for ${customer.phone}`,
+        );
       } catch (err) {
-        logger.error(`[CustomerState] Failed to send SMS to ${customer.phone}:`, err);
+        logger.error(
+          `[CustomerState] Failed to queue SMS for ${customer.phone}:`,
+          err,
+        );
       }
     }
   }

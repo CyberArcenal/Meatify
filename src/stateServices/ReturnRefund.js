@@ -6,6 +6,7 @@ const ReturnRefund = require("../entities/ReturnRefund");
 const ReturnRefundItem = require("../entities/ReturnRefundItem");
 const notificationService = require("../services/Notification");
 const system = require("../utils/system");
+const notificationLogService = require("../services/NotificationLog");
 
 /**
  * ReturnRefundStateService handles SIDE EFFECTS only for return/refund state changes.
@@ -75,7 +76,9 @@ class ReturnRefundStateService {
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
   async onCreated(returnId, returnRefund, user = "system", queryRunner = null) {
-    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) created by ${user}`);
+    logger.info(
+      `[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) created by ${user}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("returnRefund:created", {
@@ -98,7 +101,7 @@ class ReturnRefundStateService {
   /**
    * Side effect after a return is processed (pending → processed)
    * Called from ReturnRefundSubscriber.afterUpdate
-   * 
+   *
    * ⚠️ This is SIDE EFFECTS ONLY – business logic (stock, loyalty) is in Service
    * @param {number} returnId
    * @param {ReturnRefund} returnRefund
@@ -108,10 +111,18 @@ class ReturnRefundStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onProcessed(returnId, returnRefund, options = {}, user = "system", queryRunner = null) {
+  async onProcessed(
+    returnId,
+    returnRefund,
+    options = {},
+    user = "system",
+    queryRunner = null,
+  ) {
     const { itemsRestocked = 0, pointsReversed = 0 } = options;
 
-    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) processed by ${user}`);
+    logger.info(
+      `[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) processed by ${user}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("returnRefund:processed", {
@@ -132,7 +143,7 @@ class ReturnRefundStateService {
       returnId,
       { action: "processed", itemsRestocked, pointsReversed },
       { status: "processed" },
-      user
+      user,
     );
 
     // Send notification to customer (in-app + email/SMS)
@@ -153,17 +164,20 @@ class ReturnRefundStateService {
           },
         },
         user,
-        queryRunner
+        queryRunner,
       );
     } catch (err) {
-      logger.error(`[ReturnRefundState] Failed to send admin notification:`, err);
+      logger.error(
+        `[ReturnRefundState] Failed to send admin notification:`,
+        err,
+      );
     }
   }
 
   /**
    * Side effect after a return is cancelled
    * Called from ReturnRefundSubscriber.afterUpdate
-   * 
+   *
    * ⚠️ This is SIDE EFFECTS ONLY – business logic (stock reversal, loyalty) is in Service
    * @param {number} returnId
    * @param {ReturnRefund} returnRefund
@@ -175,10 +189,23 @@ class ReturnRefundStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onCancelled(returnId, returnRefund, reason = "", options = {}, user = "system", queryRunner = null) {
-    const { wasProcessed = false, itemsRestockedReversed = 0, pointsRestored = 0 } = options;
+  async onCancelled(
+    returnId,
+    returnRefund,
+    reason = "",
+    options = {},
+    user = "system",
+    queryRunner = null,
+  ) {
+    const {
+      wasProcessed = false,
+      itemsRestockedReversed = 0,
+      pointsRestored = 0,
+    } = options;
 
-    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) cancelled by ${user} (wasProcessed: ${wasProcessed})`);
+    logger.info(
+      `[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) cancelled by ${user} (wasProcessed: ${wasProcessed})`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("returnRefund:cancelled", {
@@ -199,11 +226,17 @@ class ReturnRefundStateService {
       returnId,
       { action: "cancelled", reason, wasProcessed },
       { status: "cancelled" },
-      user
+      user,
     );
 
     // Send notification to customer
-    await this._notifyCustomer(returnRefund, "cancelled", user, queryRunner, reason);
+    await this._notifyCustomer(
+      returnRefund,
+      "cancelled",
+      user,
+      queryRunner,
+      reason,
+    );
 
     // If it was processed before cancellation, notify admin
     if (wasProcessed) {
@@ -220,10 +253,13 @@ class ReturnRefundStateService {
             },
           },
           user,
-          queryRunner
+          queryRunner,
         );
       } catch (err) {
-        logger.error(`[ReturnRefundState] Failed to send admin notification:`, err);
+        logger.error(
+          `[ReturnRefundState] Failed to send admin notification:`,
+          err,
+        );
       }
     }
   }
@@ -237,8 +273,16 @@ class ReturnRefundStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onUpdated(returnId, returnRefund, changes, user = "system", queryRunner = null) {
-    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) updated (fields: ${Object.keys(changes).join(", ")})`);
+  async onUpdated(
+    returnId,
+    returnRefund,
+    changes,
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) updated (fields: ${Object.keys(changes).join(", ")})`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("returnRefund:updated", {
@@ -254,7 +298,7 @@ class ReturnRefundStateService {
       returnId,
       changes,
       returnRefund,
-      user
+      user,
     );
   }
 
@@ -267,7 +311,9 @@ class ReturnRefundStateService {
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
   async onDeleted(returnId, returnRefund, user = "system", queryRunner = null) {
-    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund?.referenceNo}) soft-deleted by ${user}`);
+    logger.info(
+      `[ReturnRefundState] ✅ Return #${returnId} (${returnRefund?.referenceNo}) soft-deleted by ${user}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("returnRefund:deleted", {
@@ -287,8 +333,15 @@ class ReturnRefundStateService {
    * @param {string} user
    * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  async onRestored(returnId, returnRefund, user = "system", queryRunner = null) {
-    logger.info(`[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) restored by ${user}`);
+  async onRestored(
+    returnId,
+    returnRefund,
+    user = "system",
+    queryRunner = null,
+  ) {
+    logger.info(
+      `[ReturnRefundState] ✅ Return #${returnId} (${returnRefund.referenceNo}) restored by ${user}`,
+    );
 
     // Broadcast to UI
     this._sendToRenderers("returnRefund:restored", {
@@ -303,7 +356,7 @@ class ReturnRefundStateService {
       returnId,
       { action: "restored" },
       { status: returnRefund.status },
-      user
+      user,
     );
   }
 
@@ -322,44 +375,92 @@ class ReturnRefundStateService {
 
     const customer = returnRefund.customer;
     if (!customer) {
-      logger.warn(`[ReturnRefundState] No customer for return #${returnRefund.id}, skipping notification`);
+      logger.warn(
+        `[ReturnRefundState] No customer for return #${returnRefund.id}, skipping notification`,
+      );
       return;
     }
 
-    const subject = action === "processed"
-      ? `Return Processed – ${returnRefund.referenceNo}`
-      : `Return Cancelled – ${returnRefund.referenceNo}`;
+    const subject =
+      action === "processed"
+        ? `Return Processed – ${returnRefund.referenceNo}`
+        : `Return Cancelled – ${returnRefund.referenceNo}`;
 
     const itemsList = returnRefund.items
-      .map(item => `${item.meat?.name || "Unknown"} – ${item.weightKg}kg @ ₱${item.unitPrice}`)
+      .map(
+        (item) =>
+          `${item.meat?.name || "Unknown"} – ${item.weightKg}kg @ ₱${item.unitPrice}`,
+      )
       .join("\n");
 
-    const textBody = action === "processed"
-      ? `Dear ${customer.name},\n\nWe have processed your return (ref. #${returnRefund.referenceNo}).\n\nReturned items:\n${itemsList}\n\nTotal refund amount: ₱${returnRefund.totalAmount.toFixed(2)}\nRefund method: ${returnRefund.refundMethod}\n\nThe amount will be credited according to your selected refund method.\n\nThank you for shopping with us,\n${company}`
-      : `Dear ${customer.name},\n\nYour return request (ref. #${returnRefund.referenceNo}) has been cancelled.${reason ? ` Reason: ${reason}` : ""}\n\nIf you have any questions, please contact our support.\n\nRegards,\n${company}`;
+    const textBody =
+      action === "processed"
+        ? `Dear ${customer.name},\n\nWe have processed your return (ref. #${returnRefund.referenceNo}).\n\nReturned items:\n${itemsList}\n\nTotal refund amount: ₱${returnRefund.totalAmount.toFixed(2)}\nRefund method: ${returnRefund.refundMethod}\n\nThe amount will be credited according to your selected refund method.\n\nThank you for shopping with us,\n${company}`
+        : `Dear ${customer.name},\n\nYour return request (ref. #${returnRefund.referenceNo}) has been cancelled.${reason ? ` Reason: ${reason}` : ""}\n\nIf you have any questions, please contact our support.\n\nRegards,\n${company}`;
 
     const htmlBody = textBody.replace(/\n/g, "<br>");
 
-    // Send email
+    // ─── Email to customer ──────────────────────────────────────────
     if (canSendEmail && customer.email) {
+      const company = await system.companyName();
+
+      const textBody =
+        action === "processed"
+          ? `Dear ${customer.name},\n\nWe have processed your return (ref. #${returnRefund.referenceNo}).\n\n` +
+            `Returned items:\n${itemsList}\n\nTotal refund amount: ₱${returnRefund.totalAmount.toFixed(2)}\n` +
+            `Refund method: ${returnRefund.refundMethod}\n\nThe amount will be credited according to your selected refund method.\n\n` +
+            `Thank you for shopping with us,\n${company}`
+          : `Dear ${customer.name},\n\nYour return request (ref. #${returnRefund.referenceNo}) has been cancelled.${reason ? ` Reason: ${reason}` : ""}\n\n` +
+            `If you have any questions, please contact our support.\n\nRegards,\n${company}`;
+
       try {
-        logger.info(`[ReturnRefundState] Would send email to ${customer.email}: ${subject}`);
-        // await emailSender.send(customer.email, subject, htmlBody, textBody);
+        await notificationLogService.create(
+          {
+            to: customer.email,
+            subject: subject,
+            payload: textBody.trim(),
+            channel: "email",
+          },
+          user,
+          queryRunner,
+        );
+        logger.info(
+          `[ReturnRefundState] Refund notification email queued for ${customer.email}`,
+        );
       } catch (err) {
-        logger.error(`[ReturnRefundState] Failed to send email to ${customer.email}:`, err);
+        logger.error(
+          `[ReturnRefundState] Failed to queue email for ${customer.email}:`,
+          err,
+        );
       }
     }
 
-    // Send SMS
+    // ─── SMS to customer ─────────────────────────────────────────────
     if (canSendSms && customer.phone) {
-      try {
-        const smsMessage = action === "processed"
+      const smsMessage =
+        action === "processed"
           ? `Return #${returnRefund.referenceNo} processed. Refund: ₱${returnRefund.totalAmount.toFixed(2)}. Check email for details.`
           : `Return #${returnRefund.referenceNo} cancelled.${reason ? ` Reason: ${reason}` : ""}`;
-        logger.info(`[ReturnRefundState] Would send SMS to ${customer.phone}: ${smsMessage}`);
-        // await smsSender.send(customer.phone, smsMessage);
+
+      try {
+        await notificationLogService.create(
+          {
+            to: customer.phone,
+            subject: "Refund Status Update",
+            payload: smsMessage,
+            channel: "sms",
+          },
+          user,
+          queryRunner,
+        );
+        logger.info(
+          `[ReturnRefundState] Refund notification SMS queued for ${customer.phone}`,
+        );
       } catch (err) {
-        logger.error(`[ReturnRefundState] Failed to send SMS to ${customer.phone}:`, err);
+        logger.error(
+          `[ReturnRefundState] Failed to queue SMS for ${customer.phone}:`,
+          err,
+        );
       }
     }
   }

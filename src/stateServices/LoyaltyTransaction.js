@@ -6,6 +6,7 @@ const Customer = require("../entities/Customer");
 const LoyaltyTransaction = require("../entities/LoyaltyTransaction");
 const notificationService = require("../services/Notification");
 const system = require("../utils/system");
+const notificationLogService = require("../services/NotificationLog");
 
 /**
  * LoyaltyTransactionStateService handles SIDE EFFECTS and BALANCE UPDATES.
@@ -112,34 +113,61 @@ class LoyaltyTransactionStateService {
       );
     }
 
-    // Email to customer
+    // ─── Email to customer ──────────────────────────────────────────
     if (canSendEmail && customer.email) {
       const subject = `Congratulations! You've reached ${newStatus} status!`;
-      const textBody = `Dear ${customer.name},\n\nCongratulations! You have reached ${newStatus} status at ${company}.\n\nWe appreciate your continued patronage and look forward to serving you with exclusive benefits.\n\nThank you for being a valued customer!\n\nBest regards,\n${company}`;
+      const company = await system.companyName();
+      const textBody =
+        `Dear ${customer.name},\n\n` +
+        `Congratulations! You have reached ${newStatus} status at ${company}.\n\n` +
+        `We appreciate your continued patronage and look forward to serving you with exclusive benefits.\n\n` +
+        `Thank you for being a valued customer!\n\n` +
+        `Best regards,\n${company}`;
+
       try {
-        logger.info(
-          `[LoyaltyState] Would send status upgrade email to ${customer.email}`,
+        await notificationLogService.create(
+          {
+            to: customer.email,
+            subject: subject,
+            payload: textBody.trim(),
+            channel: "email",
+          },
+          user,
+          queryRunner,
         );
-        // await emailSender.send(customer.email, subject, htmlBody, textBody);
+        logger.info(
+          `[LoyaltyState] Status upgrade email queued for ${customer.email}`,
+        );
       } catch (err) {
         logger.error(
-          `[LoyaltyState] Failed to send email to ${customer.email}:`,
+          `[LoyaltyState] Failed to queue email for ${customer.email}:`,
           err,
         );
       }
     }
 
-    // SMS to customer
+    // ─── SMS to customer ─────────────────────────────────────────────
     if (canSendSms && customer.phone) {
+      const company = await system.companyName();
+      const smsMessage = `Congratulations! You've reached ${newStatus} status at ${company}. Thank you for your loyalty!`;
+
       try {
-        const smsMessage = `Congratulations! You've reached ${newStatus} status at ${company}. Thank you for your loyalty!`;
-        logger.info(
-          `[LoyaltyState] Would send SMS to ${customer.phone}: ${smsMessage}`,
+        await notificationLogService.create(
+          {
+            to: customer.phone,
+            subject: "Loyalty Status Update",
+            payload: smsMessage,
+            channel: "sms",
+          },
+          user,
+          queryRunner,
         );
-        // await smsSender.send(customer.phone, smsMessage);
+        logger.info(
+          `[LoyaltyState] Status upgrade SMS queued for ${customer.phone}`,
+        );
       } catch (err) {
         logger.error(
-          `[LoyaltyState] Failed to send SMS to ${customer.phone}:`,
+          `[LoyaltyState] Failed to queue SMS for ${customer.phone}:`,
           err,
         );
       }

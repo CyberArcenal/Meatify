@@ -12,6 +12,7 @@ const CashDrawerService = require("../services/CashDrawer");
 const PrinterService = require("../services/Printer");
 const batchService = require("../services/Batch");
 const InventoryMovement = require("../entities/InventoryMovement");
+const notificationLogService = require("../services/NotificationLog");
 
 /**
  * SaleStateService handles side effects for sale state transitions.
@@ -507,6 +508,21 @@ class SaleStateService {
         user,
         queryRunner,
       );
+
+      // Example: Notify customer on large sale
+      if (sale.customer && sale.customer.email) {
+        const emailBody = `Dear ${sale.customer.name},\n\nThank you for your recent purchase of ₱${sale.totalAmount.toFixed(2)}!\n\nWe appreciate your business.\n\nBest regards,\n${await system.companyName()}`;
+        await notificationLogService.create(
+          {
+            to: sale.customer.email,
+            subject: `Thank you for your purchase – #${sale.id}`,
+            payload: emailBody,
+            channel: "email",
+          },
+          user,
+          queryRunner,
+        );
+      }
     } catch (err) {
       logger.error(`[SaleState] Failed to send large sale notification:`, err);
     }
