@@ -34,6 +34,7 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
     averageTicket: 0,
     refundsToday: 0,
   });
+  const [summaryLoading, setSummaryLoading] = useState(false);
 
   const [filters, setFilters] = useState<TransactionFilters>({
     startDate: new Date().toISOString().split("T")[0],
@@ -44,6 +45,43 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
     ...initialFilters,
   });
 
+  // ─── Fetch Today's Summary using getStatistics ────────────────────
+  const fetchSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    try {
+      // ✅ Use getStatistics for today's summary
+      const statsResponse = await saleAPI.getStatistics();
+
+      if (statsResponse.status) {
+        const stats = statsResponse.data;
+        
+        // Get refunds count for today
+        const today = new Date().toISOString().split("T")[0];
+        const refundsResponse = await saleAPI.getAll({
+          startDate: today,
+          endDate: today,
+          status: "refunded",
+          limit: 1,
+          page: 1,
+        });
+
+        const refundsToday = refundsResponse.status ? refundsResponse.data.total : 0;
+
+        setSummary({
+          todayTransactions: stats.todaySales || 0,
+          todayRevenue: stats.totalRevenue || 0,
+          averageTicket: stats.averageSale || 0,
+          refundsToday,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch summary:", err);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
+
+  // ─── Fetch Transactions with Pagination and Filters ──────────────
   const fetchTransactions = useCallback(
     async (options?: { page?: number; limit?: number }) => {
       const p = options?.page ?? page;
@@ -65,34 +103,14 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
           sortOrder: "DESC",
         });
 
+        console.log("getAllSales response:", response);
+
         if (response.status) {
           const data = response.data;
           setTransactions(data.items || []);
           setTotalItems(data.total || 0);
           if (options?.page !== undefined) setPage(p);
           if (options?.limit !== undefined) setLimit(l);
-
-          // Compute summary
-          const today = new Date().toISOString().split("T")[0];
-          const todayTransactions = (data.items || []).filter((t) => {
-            const txDate = new Date(t.timestamp).toISOString().split("T")[0];
-            return txDate === today && t.status === "paid";
-          });
-          const revenue = todayTransactions.reduce((sum, t) => sum + t.totalAmount, 0);
-          const count = todayTransactions.length;
-          const avg = count > 0 ? revenue / count : 0;
-          const refundsToday = (data.items || []).filter(
-            (t) =>
-              new Date(t.timestamp).toISOString().split("T")[0] === today &&
-              t.status === "refunded"
-          ).length;
-
-          setSummary({
-            todayTransactions: count,
-            todayRevenue: revenue,
-            averageTicket: avg,
-            refundsToday,
-          });
         } else {
           throw new Error(response.message || "Failed to fetch transactions");
         }
@@ -108,22 +126,28 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
     [filters, page, limit]
   );
 
-  // ✅ Auto-fetch when filters, page, or limit change
+  // ─── Reload (refresh both transactions and summary) ──────────────
+  const reload = useCallback(
+    (options?: { page?: number; limit?: number }) => {
+      fetchTransactions(options);
+      fetchSummary();
+    },
+    [fetchTransactions, fetchSummary]
+  );
+
+  // ─── Auto-fetch on filter, page, limit changes ──────────────────
   useEffect(() => {
     fetchTransactions({ page, limit });
   }, [filters, page, limit, fetchTransactions]);
 
-  const reload = useCallback(
-    (options?: { page?: number; limit?: number }) => {
-      fetchTransactions(options);
-    },
-    [fetchTransactions]
-  );
+  // ─── Fetch summary on mount ──────────────────────────────────────
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
 
+  // ─── Pagination Helpers ──────────────────────────────────────────
   const goToPage = useCallback((newPage: number) => {
-    if (newPage >= 1) {
-      setPage(newPage);
-    }
+    if (newPage >= 1) setPage(newPage);
   }, []);
 
   const changeLimit = useCallback((newLimit: number) => {
@@ -152,6 +176,7 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
     page,
     limit,
     summary,
+    summaryLoading,
     reload,
     goToPage,
     changeLimit,
