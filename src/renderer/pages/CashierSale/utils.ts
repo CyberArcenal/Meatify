@@ -1,9 +1,15 @@
 import Decimal from 'decimal.js';
 import type { CartItem } from './types';
 
+
 export const calculateSubtotal = (cart: CartItem[]): Decimal => {
   return cart.reduce(
-    (sum, item) => sum.plus(new Decimal(item.pricePerKg).times(item.weightKg)),
+    (sum, item) => sum.plus(
+      new Decimal(item.pricePerKg)
+        .times(item.weightKg)
+        .times(new Decimal(1).minus(item.lineDiscount / 100))
+        .times(new Decimal(1).plus(item.lineTax / 100))  // ✅ Idagdag ang tax
+    ),
     new Decimal(0)
   );
 };
