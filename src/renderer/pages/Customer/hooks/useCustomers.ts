@@ -1,5 +1,5 @@
 // src/renderer/pages/customer/hooks/useCustomers.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import customerAPI, { type Customer, type CustomerStatistics } from "../../../api/core/customer";
 
 export interface CustomerFilters {
@@ -118,6 +118,32 @@ export const useCustomers = (initialFilters?: Partial<CustomerFilters>) => {
     }
   }, []);
 
+  // ─── Sort Handler ──────────────────────────────────────────────────
+  const handleSort = useCallback((key: string) => {
+    // Map display keys to filter sort keys
+    const keyMap: Record<string, CustomerFilters["sortBy"]> = {
+      name: "name",
+      contact: "name", // Contact uses name for sorting
+      points: "points",
+      status: "name", // Status uses name for sorting
+      active: "name", // Active uses name for sorting
+    };
+
+    const mappedKey = keyMap[key] || "name";
+
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: mappedKey,
+      sortOrder: prev.sortBy === mappedKey && prev.sortOrder === "ASC" ? "DESC" : "ASC",
+    }));
+    setPage(1);
+  }, []);
+
+  const sortConfig = useMemo(() => ({
+    key: filters.sortBy || "name",
+    direction: (filters.sortOrder || "ASC").toLowerCase() as "asc" | "desc",
+  }), [filters.sortBy, filters.sortOrder]);
+
   // Auto-fetch when filters change
   useEffect(() => {
     fetchCustomers({ page: 1, limit });
@@ -178,5 +204,7 @@ export const useCustomers = (initialFilters?: Partial<CustomerFilters>) => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort,
+    sortConfig,
   };
 };

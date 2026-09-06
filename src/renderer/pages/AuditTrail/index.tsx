@@ -37,6 +37,8 @@ const AuditTrailPage: React.FC = () => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort, // ✅ Add
+    sortConfig, // ✅ Add
   } = useAuditLogs({
     action: "all",
     startDate: undefined,
@@ -67,14 +69,14 @@ const AuditTrailPage: React.FC = () => {
     (newPage: number) => {
       goToPage(newPage);
     },
-    [goToPage]
+    [goToPage],
   );
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
       changeLimit(newSize);
     },
-    [changeLimit]
+    [changeLimit],
   );
 
   const handlersRef = useRef({
@@ -138,7 +140,9 @@ const AuditTrailPage: React.FC = () => {
         limit: 10000,
       });
       if (response.status && response.data) {
-        dialogs.success(`Export completed. File saved at: ${response.data.filePath}`);
+        dialogs.success(
+          `Export completed. File saved at: ${response.data.filePath}`,
+        );
       }
     } catch (err: any) {
       dialogs.error(err.message || "Export failed.");
@@ -166,7 +170,9 @@ const AuditTrailPage: React.FC = () => {
         limit: 10000,
       });
       if (response.status && response.data) {
-        dialogs.success(`Export completed. File saved at: ${response.data.filePath}`);
+        dialogs.success(
+          `Export completed. File saved at: ${response.data.filePath}`,
+        );
         setSelectedIds([]);
       }
     } catch (err: any) {
@@ -198,9 +204,15 @@ const AuditTrailPage: React.FC = () => {
             title={showStats ? "Hide summary" : "Show summary"}
           >
             {showStats ? (
-              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             ) : (
-              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             )}
           </button>
           <button
@@ -219,7 +231,8 @@ const AuditTrailPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download style={{ color: "var(--text-primary)" }}
+            <Download
+              style={{ color: "var(--text-primary)" }}
               className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
             />
           </button>
@@ -231,7 +244,10 @@ const AuditTrailPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
         </div>
       </div>
@@ -267,7 +283,9 @@ const AuditTrailPage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading audit logs</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading audit logs
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit })}
@@ -283,12 +301,14 @@ const AuditTrailPage: React.FC = () => {
           selectedIds={selectedIds}
           onSelectRow={(id, checked) => {
             setSelectedIds((prev) =>
-              checked ? [...prev, id] : prev.filter((i) => i !== id)
+              checked ? [...prev, id] : prev.filter((i) => i !== id),
             );
           }}
           onSelectAll={(checked) => {
             setSelectedIds(checked ? logs.map((l) => l.id) : []);
           }}
+          onSort={handleSort} // ✅ Pass
+          sortConfig={sortConfig} // ✅ Pass
         />
       )}
 

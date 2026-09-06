@@ -39,6 +39,8 @@ const BatchesPage: React.FC = () => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort, // ✅ Add
+    sortConfig, // ✅ Add
   } = useBatches({
     search: "",
     status: "",
@@ -78,14 +80,14 @@ const BatchesPage: React.FC = () => {
     (newPage: number) => {
       goToPage(newPage);
     },
-    [goToPage]
+    [goToPage],
   );
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
       changeLimit(newSize);
     },
-    [changeLimit]
+    [changeLimit],
   );
 
   const handlersRef = useRef({
@@ -135,7 +137,7 @@ const BatchesPage: React.FC = () => {
     <K extends keyof BatchFilters>(key: K, value: BatchFilters[K]) => {
       setFilters((prev) => ({ ...prev, [key]: value }));
     },
-    [setFilters]
+    [setFilters],
   );
 
   // ─── CRUD Handlers ──────────────────────────────────────────────
@@ -225,7 +227,15 @@ const BatchesPage: React.FC = () => {
       dialogs.warning("No items selected for export.");
       return;
     }
-    const headers = ["ID", "Batch Code", "Meat", "Supplier", "Status", "Remaining", "Expiry Date"];
+    const headers = [
+      "ID",
+      "Batch Code",
+      "Meat",
+      "Supplier",
+      "Status",
+      "Remaining",
+      "Expiry Date",
+    ];
     const rows = selectedBatches.map((b) => [
       b.id,
       b.batchCode,
@@ -266,11 +276,15 @@ const BatchesPage: React.FC = () => {
         },
       });
       if (response.status && response.data) {
-        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const blob = new Blob([response.data.data as string], {
+          type: "text/csv",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = response.data.filename || `batches_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          response.data.filename ||
+          `batches_export_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         dialogs.success("Export completed.");
@@ -303,9 +317,15 @@ const BatchesPage: React.FC = () => {
             title={showStats ? "Hide summary" : "Show summary"}
           >
             {showStats ? (
-              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             ) : (
-              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             )}
           </button>
           <button
@@ -324,7 +344,8 @@ const BatchesPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download style={{ color: "var(--text-primary)" }}
+            <Download
+              style={{ color: "var(--text-primary)" }}
               className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
             />
           </button>
@@ -336,7 +357,10 @@ const BatchesPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
           <button
             onClick={handleCreate}
@@ -382,7 +406,9 @@ const BatchesPage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading batches</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading batches
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit })}
@@ -401,12 +427,14 @@ const BatchesPage: React.FC = () => {
           selectedIds={selectedIds}
           onSelectRow={(id, checked) => {
             setSelectedIds((prev) =>
-              checked ? [...prev, id] : prev.filter((i) => i !== id)
+              checked ? [...prev, id] : prev.filter((i) => i !== id),
             );
           }}
           onSelectAll={(checked) => {
             setSelectedIds(checked ? batches.map((b) => b.id) : []);
           }}
+          onSort={handleSort}
+          sortConfig={sortConfig}
         />
       )}
 

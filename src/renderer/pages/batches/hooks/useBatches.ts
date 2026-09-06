@@ -1,5 +1,5 @@
 // src/renderer/pages/inventory/batches/hooks/useBatches.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import batchAPI, { type Batch, type BatchStatistics } from "../../../api/core/batch";
 
 export interface BatchFilters {
@@ -87,6 +87,35 @@ export const useBatches = (initialFilters?: Partial<BatchFilters>) => {
     }
   }, []);
 
+  // ─── Sort Handler ──────────────────────────────────────────────────
+  const handleSort = useCallback((key: string) => {
+    // Map display keys to API sort keys
+    const keyMap: Record<string, string> = {
+      batchCode: "batchCode",
+      meat: "meat",
+      supplier: "supplier",
+      receivedDate: "receivedDate",
+      expiryDate: "expiryDate",
+      remainingQuantity: "remainingQuantity",
+      unitCost: "unitCost",
+      status: "status",
+    };
+
+    const mappedKey = keyMap[key] || key;
+
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: mappedKey,
+      sortOrder: prev.sortBy === mappedKey && prev.sortOrder === "ASC" ? "DESC" : "ASC",
+    }));
+    setPage(1);
+  }, []);
+
+  const sortConfig = useMemo(() => ({
+    key: filters.sortBy || "createdAt",
+    direction: (filters.sortOrder || "DESC").toLowerCase() as "asc" | "desc",
+  }), [filters.sortBy, filters.sortOrder]);
+
   // Auto-fetch when filters change
   useEffect(() => {
     fetchBatches({ page: 1, limit });
@@ -150,5 +179,7 @@ export const useBatches = (initialFilters?: Partial<BatchFilters>) => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort,
+    sortConfig,
   };
 };

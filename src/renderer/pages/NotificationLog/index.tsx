@@ -9,7 +9,10 @@ import {
   Loader2,
   AlertCircle,
 } from "lucide-react";
-import { useNotificationLogs, type NotificationFilters } from "./hooks/useNotificationLogs";
+import {
+  useNotificationLogs,
+  type NotificationFilters,
+} from "./hooks/useNotificationLogs";
 import { SummaryCards } from "./components/SummaryCards";
 import { FilterBar } from "./components/FilterBar";
 import { NotificationTable } from "./components/NotificationTable";
@@ -36,6 +39,8 @@ const NotificationLogPage: React.FC = () => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort, // ✅ Add
+    sortConfig, // ✅ Add
   } = useNotificationLogs({
     sortBy: "created_at",
     sortOrder: "DESC",
@@ -63,14 +68,14 @@ const NotificationLogPage: React.FC = () => {
     (newPage: number) => {
       goToPage(newPage);
     },
-    [goToPage]
+    [goToPage],
   );
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
       changeLimit(newSize);
     },
-    [changeLimit]
+    [changeLimit],
   );
 
   const handlersRef = useRef({
@@ -120,7 +125,7 @@ const NotificationLogPage: React.FC = () => {
     (key: keyof NotificationFilters, value: any) => {
       setFilters((prev) => ({ ...prev, [key]: value }));
     },
-    [setFilters]
+    [setFilters],
   );
 
   // ─── Action Handlers ────────────────────────────────────────────
@@ -206,7 +211,9 @@ const NotificationLogPage: React.FC = () => {
 
     try {
       await Promise.all(selectedIds.map((id) => notificationLogAPI.delete(id)));
-      dialogs.success(`${selectedIds.length} notification${selectedIds.length !== 1 ? "s" : ""} deleted.`);
+      dialogs.success(
+        `${selectedIds.length} notification${selectedIds.length !== 1 ? "s" : ""} deleted.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -226,7 +233,9 @@ const NotificationLogPage: React.FC = () => {
 
     try {
       await Promise.all(selectedIds.map((id) => notificationLogAPI.retry(id)));
-      dialogs.success(`${selectedIds.length} notification${selectedIds.length !== 1 ? "s" : ""} queued for retry.`);
+      dialogs.success(
+        `${selectedIds.length} notification${selectedIds.length !== 1 ? "s" : ""} queued for retry.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -246,7 +255,9 @@ const NotificationLogPage: React.FC = () => {
 
     try {
       await Promise.all(selectedIds.map((id) => notificationLogAPI.resend(id)));
-      dialogs.success(`${selectedIds.length} notification${selectedIds.length !== 1 ? "s" : ""} resent.`);
+      dialogs.success(
+        `${selectedIds.length} notification${selectedIds.length !== 1 ? "s" : ""} resent.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -260,7 +271,16 @@ const NotificationLogPage: React.FC = () => {
       dialogs.warning("No items selected for export.");
       return;
     }
-    const headers = ["ID", "Recipient", "Subject", "Status", "Retry Count", "Resend Count", "Sent At", "Created At"];
+    const headers = [
+      "ID",
+      "Recipient",
+      "Subject",
+      "Status",
+      "Retry Count",
+      "Resend Count",
+      "Sent At",
+      "Created At",
+    ];
     const rows = selectedLogs.map((l) => [
       l.id,
       l.recipient_email,
@@ -297,11 +317,15 @@ const NotificationLogPage: React.FC = () => {
         },
       });
       if (response.status && response.data) {
-        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const blob = new Blob([response.data.data as string], {
+          type: "text/csv",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = response.data.filename || `notifications_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          response.data.filename ||
+          `notifications_export_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         dialogs.success("Export completed.");
@@ -334,9 +358,15 @@ const NotificationLogPage: React.FC = () => {
             title={showStats ? "Hide summary" : "Show summary"}
           >
             {showStats ? (
-              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             ) : (
-              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             )}
           </button>
           <button
@@ -355,7 +385,8 @@ const NotificationLogPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download style={{ color: "var(--text-primary)" }}
+            <Download
+              style={{ color: "var(--text-primary)" }}
               className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
             />
           </button>
@@ -367,7 +398,10 @@ const NotificationLogPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
         </div>
       </div>
@@ -395,8 +429,14 @@ const NotificationLogPage: React.FC = () => {
           onDeleteAll={handleBulkDelete}
           onExport={handleBulkExport}
           onClearSelection={handleClearSelection}
-          showRetryAll={selectedIds.some((id) => logs.find((l) => l.id === id)?.status === "failed")}
-          showResendAll={selectedIds.some((id) => logs.find((l) => l.id === id)?.status === "sent" || logs.find((l) => l.id === id)?.status === "resend")}
+          showRetryAll={selectedIds.some(
+            (id) => logs.find((l) => l.id === id)?.status === "failed",
+          )}
+          showResendAll={selectedIds.some(
+            (id) =>
+              logs.find((l) => l.id === id)?.status === "sent" ||
+              logs.find((l) => l.id === id)?.status === "resend",
+          )}
         />
       )}
 
@@ -408,7 +448,9 @@ const NotificationLogPage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading notification logs</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading notification logs
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit })}
@@ -428,12 +470,14 @@ const NotificationLogPage: React.FC = () => {
           selectedIds={selectedIds}
           onSelectRow={(id, checked) => {
             setSelectedIds((prev) =>
-              checked ? [...prev, id] : prev.filter((i) => i !== id)
+              checked ? [...prev, id] : prev.filter((i) => i !== id),
             );
           }}
           onSelectAll={(checked) => {
             setSelectedIds(checked ? logs.map((l) => l.id) : []);
           }}
+          onSort={handleSort}
+          sortConfig={sortConfig}
         />
       )}
 

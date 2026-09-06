@@ -1,5 +1,5 @@
 // src/renderer/pages/inventory/suppliers/hooks/useSuppliers.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import supplierAPI, {
   type Supplier,
   type SupplierStatistics,
@@ -108,9 +108,37 @@ export const useSuppliers = (initialFilters?: Partial<SupplierFilters>) => {
     [filters, page, limit]
   );
 
+  // ─── Sort Handler ──────────────────────────────────────────────────
+  const handleSort = useCallback((key: string) => {
+    // Map display keys to API sort keys
+    const keyMap: Record<string, string> = {
+      name: "name",
+      contact: "contactInfo",
+      email: "email",
+      phone: "phone",
+      address: "address",
+      meats: "name", // Meats count is computed, fallback to name
+      status: "isActive",
+    };
+
+    const mappedKey = keyMap[key] || key;
+
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: mappedKey,
+      sortOrder: prev.sortBy === mappedKey && prev.sortOrder === "ASC" ? "DESC" : "ASC",
+    }));
+    setPage(1);
+  }, []);
+
+  const sortConfig = useMemo(() => ({
+    key: filters.sortBy || "name",
+    direction: (filters.sortOrder || "ASC").toLowerCase() as "asc" | "desc",
+  }), [filters.sortBy, filters.sortOrder]);
+
   useEffect(() => {
     fetchSuppliers({ page: 1, limit: 10 });
-  }, [fetchSuppliers]);
+  }, [filters, fetchSuppliers]);
 
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
@@ -154,5 +182,7 @@ export const useSuppliers = (initialFilters?: Partial<SupplierFilters>) => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort,
+    sortConfig,
   };
 };

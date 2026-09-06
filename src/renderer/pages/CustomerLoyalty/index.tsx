@@ -44,6 +44,8 @@ const CustomerLoyaltyPage: React.FC = () => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort, // ✅ Add
+    sortConfig, // ✅ Add
   } = useLoyalty({
     type: "all",
     customerId: undefined,
@@ -73,14 +75,14 @@ const CustomerLoyaltyPage: React.FC = () => {
     (newPage: number) => {
       goToPage(newPage);
     },
-    [goToPage]
+    [goToPage],
   );
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
       changeLimit(newSize);
     },
-    [changeLimit]
+    [changeLimit],
   );
 
   const handlersRef = useRef({
@@ -130,7 +132,7 @@ const CustomerLoyaltyPage: React.FC = () => {
     (key: keyof LoyaltyFilters, value: any) => {
       setFilters((prev) => ({ ...prev, [key]: value }));
     },
-    [setFilters]
+    [setFilters],
   );
 
   // ─── Export ────────────────────────────────────────────────────
@@ -148,11 +150,15 @@ const CustomerLoyaltyPage: React.FC = () => {
         },
       });
       if (response.status && response.data) {
-        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const blob = new Blob([response.data.data as string], {
+          type: "text/csv",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = response.data.filename || `loyalty_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          response.data.filename ||
+          `loyalty_export_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         dialogs.success("Export completed.");
@@ -165,7 +171,9 @@ const CustomerLoyaltyPage: React.FC = () => {
   };
 
   const handleBulkExport = () => {
-    const selectedTransactions = transactions.filter((t) => selectedIds.includes(t.id));
+    const selectedTransactions = transactions.filter((t) =>
+      selectedIds.includes(t.id),
+    );
     if (selectedTransactions.length === 0) {
       dialogs.warning("No items selected for export.");
       return;
@@ -212,9 +220,15 @@ const CustomerLoyaltyPage: React.FC = () => {
             title={showStats ? "Hide summary" : "Show summary"}
           >
             {showStats ? (
-              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             ) : (
-              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             )}
           </button>
           <button
@@ -232,7 +246,17 @@ const CustomerLoyaltyPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors"
             title={showAnalytics ? "Hide analytics" : "Show analytics"}
           >
-            {showAnalytics ? <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" /> : <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />}
+            {showAnalytics ? (
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
+            ) : (
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
+            )}
           </button>
           <button
             onClick={handleExportAll}
@@ -240,7 +264,8 @@ const CustomerLoyaltyPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download style={{ color: "var(--text-primary)" }}
+            <Download
+              style={{ color: "var(--text-primary)" }}
               className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
             />
           </button>
@@ -252,7 +277,10 @@ const CustomerLoyaltyPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
           <button
             onClick={adjustmentDialog.open}
@@ -295,7 +323,9 @@ const CustomerLoyaltyPage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading loyalty data</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading loyalty data
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit })}
@@ -312,12 +342,14 @@ const CustomerLoyaltyPage: React.FC = () => {
             selectedIds={selectedIds}
             onSelectRow={(id, checked) => {
               setSelectedIds((prev) =>
-                checked ? [...prev, id] : prev.filter((i) => i !== id)
+                checked ? [...prev, id] : prev.filter((i) => i !== id),
               );
             }}
             onSelectAll={(checked) => {
               setSelectedIds(checked ? transactions.map((t) => t.id) : []);
             }}
+            onSort={handleSort}
+            sortConfig={sortConfig}
           />
 
           {/* Analytics Section */}
