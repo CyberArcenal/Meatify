@@ -1,27 +1,37 @@
 // src/renderer/pages/customer/components/CustomerTable.tsx
 import React from "react";
-import { Check, X, Users, Mail, Phone, Star, ChevronUp, ChevronDown } from "lucide-react";
+import {
+  Check,
+  X,
+  Users,
+  Mail,
+  Phone,
+  Star,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react";
 import { type Customer } from "../../../api/core/customer";
 import CustomerActionsDropdown from "./CustomerActionsDropdown";
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
-  const configs: Record<string, { label: string; color: string; bg: string }> = {
-    vip: {
-      label: "VIP",
-      color: "var(--customer-vip)",
-      bg: "rgba(212, 175, 55, 0.15)",
-    },
-    elite: {
-      label: "Elite",
-      color: "var(--customer-loyal)",
-      bg: "rgba(243, 156, 18, 0.15)",
-    },
-    regular: {
-      label: "Regular",
-      color: "var(--customer-regular)",
-      bg: "rgba(52, 152, 219, 0.15)",
-    },
-  };
+  const configs: Record<string, { label: string; color: string; bg: string }> =
+    {
+      vip: {
+        label: "VIP",
+        color: "var(--customer-vip)",
+        bg: "rgba(212, 175, 55, 0.15)",
+      },
+      elite: {
+        label: "Elite",
+        color: "var(--customer-loyal)",
+        bg: "rgba(243, 156, 18, 0.15)",
+      },
+      regular: {
+        label: "Regular",
+        color: "var(--customer-regular)",
+        bg: "rgba(52, 152, 219, 0.15)",
+      },
+    };
   const config = configs[status] || configs.regular;
   return (
     <span
@@ -80,7 +90,11 @@ const SortableHeader: React.FC<SortableHeaderProps> = ({
     >
       <div
         className={`flex items-center gap-1.5 ${
-          align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""
+          align === "right"
+            ? "justify-end"
+            : align === "center"
+              ? "justify-center"
+              : ""
         }`}
       >
         <span className="group-hover:text-[var(--primary-color)] transition-colors">
@@ -136,7 +150,9 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
     return (
       <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-xl p-8 text-center">
         <Users className="w-12 h-12 mx-auto mb-3 text-[var(--text-tertiary)]" />
-        <p className="text-[var(--text-primary)] font-medium">No customers found</p>
+        <p className="text-[var(--text-primary)] font-medium">
+          No customers found
+        </p>
         <p className="text-sm text-[var(--text-tertiary)] mt-1">
           Try adjusting your filters or add a new customer
         </p>
@@ -144,7 +160,8 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
     );
   }
 
-  const allSelected = customers.length > 0 && customers.every((c) => selectedIds.includes(c.id));
+  const allSelected =
+    customers.length > 0 && customers.every((c) => selectedIds.includes(c.id));
   const someSelected = selectedIds.length > 0 && !allSelected;
 
   return (
@@ -217,7 +234,10 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                 className="hover:bg-[var(--table-row-hover)] transition-colors cursor-pointer"
                 onClick={() => onView(customer)}
               >
-                <td className="py-2.5 px-2" onClick={(e) => e.stopPropagation()}>
+                <td
+                  className="py-2.5 px-2"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <input
                     type="checkbox"
                     checked={selectedIds.includes(customer.id)}
@@ -232,7 +252,9 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                   {customer.email ? (
                     <div className="flex items-center gap-1">
                       <Mail className="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
-                      <span className="truncate max-w-[120px]">{customer.email}</span>
+                      <span className="truncate max-w-[120px]">
+                        {customer.email}
+                      </span>
                     </div>
                   ) : customer.phone ? (
                     <div className="flex items-center gap-1">
@@ -246,7 +268,9 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                 <td className="py-2.5 px-3 text-right text-sm font-semibold">
                   <span className="flex items-center justify-end gap-1">
                     <Star className="w-3.5 h-3.5 text-[var(--accent-gold)]" />
-                    {customer.loyaltyPointsBalance}
+                    <span className="text-[var(--text-primary)]">
+                      {customer.loyaltyPointsBalance}
+                    </span>
                   </span>
                 </td>
                 <td className="py-2.5 px-3 text-center">
@@ -255,7 +279,10 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                 <td className="py-2.5 px-3 text-center">
                   <ActiveBadge active={customer.isActive} />
                 </td>
-                <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
+                <td
+                  className="py-2.5 px-3 text-center"
+                  onClick={(e) => e.stopPropagation()}
+                >
                   <CustomerActionsDropdown
                     customer={customer}
                     onView={onView}
