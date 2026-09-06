@@ -967,9 +967,14 @@ class SaleService {
 
     // Search (already implemented)
     if (options.search) {
-      qb.andWhere("(sale.notes LIKE :search OR customer.name LIKE :search)", {
-        search: `%${options.search}%`,
-      });
+      qb.andWhere(
+        "(sale.notes LIKE :search OR " +
+          "customer.name LIKE :search OR " +
+          "CAST(sale.id AS TEXT) LIKE :search OR " +
+          "meat.name LIKE :search OR " +
+          "meat.sku LIKE :search)",
+        { search: `%${options.search}%` },
+      );
     }
 
     // Sorting
