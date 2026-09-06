@@ -386,6 +386,7 @@ class SaleAPI {
     notes?: string;
     loyaltyRedeemed?: number;
     voucherCode?: string;
+    globalDiscount?: number;
   }): Promise<SaleResponse> {
     try {
       if (!window.backendAPI?.sale) {

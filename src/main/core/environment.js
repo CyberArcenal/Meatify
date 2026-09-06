@@ -5,6 +5,17 @@
  * Centralizes all environment detection and configuration
  */
 
+const os = require('os');
+
+// ✅ Safely require Electron (may fail in migration context)
+let electronApp = null;
+try {
+  // @ts-ignore
+  electronApp = require('electron').app;
+} catch (_) {
+  // Electron app not available (e.g., during migrations)
+}
+
 /**
  * @typedef {Object} Environment
  * @property {boolean} isDev - Development mode
@@ -16,20 +27,19 @@
  * @property {string} arch - CPU architecture
  * @property {Object} paths - Common paths
  * @property {Object} features - Feature flags
+ * @property {Object} build - Build info
  */
 
 // ===================== ENVIRONMENT DETECTION =====================
 
-const { app } = require('electron');
-const os = require('os');
-
 /** @type {Environment} */
 const ENVIRONMENT = {
   // === Environment modes ===
-  isDev: process.env.NODE_ENV === 'development' || !app.isPackaged,
+  isDev: process.env.NODE_ENV === 'development' || (electronApp && !electronApp.isPackaged),
   isTest: process.env.NODE_ENV === 'test',
   isProd: process.env.NODE_ENV === 'production',
-  isPackaged: app.isPackaged,
+  // ✅ Safely check isPackaged
+  isPackaged: electronApp ? electronApp.isPackaged : false,
   nodeEnv: process.env.NODE_ENV || 'production',
 
   // === System info ===
@@ -37,16 +47,16 @@ const ENVIRONMENT = {
   arch: process.arch,
   osVersion: os.release(),
 
-  // === Application paths ===
+  // === Application paths (with fallbacks) ===
   paths: {
-    userData: app.getPath('userData'),
-    appData: app.getPath('appData'),
-    documents: app.getPath('documents'),
-    desktop: app.getPath('desktop'),
-    temp: app.getPath('temp'),
-    logs: app.getPath('userData') + '/logs',
-    backups: app.getPath('userData') + '/backups',
-    resources: app.isPackaged ? process.resourcesPath : __dirname,
+    userData: electronApp ? electronApp.getPath('userData') : process.cwd(),
+    appData: electronApp ? electronApp.getPath('appData') : process.cwd(),
+    documents: electronApp ? electronApp.getPath('documents') : process.cwd(),
+    desktop: electronApp ? electronApp.getPath('desktop') : process.cwd(),
+    temp: electronApp ? electronApp.getPath('temp') : os.tmpdir(),
+    logs: electronApp ? electronApp.getPath('userData') + '/logs' : process.cwd() + '/logs',
+    backups: electronApp ? electronApp.getPath('userData') + '/backups' : process.cwd() + '/backups',
+    resources: (electronApp && electronApp.isPackaged) ? process.resourcesPath : __dirname,
   },
 
   // === Feature flags (can be overridden via .env or build args) ===
@@ -56,7 +66,6 @@ const ENVIRONMENT = {
     enableAutoUpdate: process.env.ENABLE_AUTO_UPDATE !== 'false',
     enableAnalytics: process.env.ENABLE_ANALYTICS === 'true',
     enableDebugMode: process.env.ENABLE_DEBUG === 'true',
-    // Meatify-specific features
     enableBatchExpiry: process.env.ENABLE_BATCH_EXPIRY !== 'false',
     enableFIFO: process.env.ENABLE_FIFO !== 'false',
     enableWeightScale: process.env.ENABLE_WEIGHT_SCALE === 'true',
@@ -64,7 +73,7 @@ const ENVIRONMENT = {
 
   // === Build info ===
   build: {
-    version: app.getVersion(),
+    version: electronApp ? electronApp.getVersion() : '1.0.0',
     buildNumber: process.env.BUILD_NUMBER || '0',
     commitHash: process.env.COMMIT_HASH || 'unknown',
     buildDate: new Date().toISOString(),

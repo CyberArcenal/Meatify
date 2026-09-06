@@ -16,6 +16,7 @@ export const useCheckout = () => {
     paymentMethod: PaymentMethod,
     notes: string,
     loyaltyRedeemed: number,
+    globalDiscount: number,
     onSuccess: (sale: any) => void,
   ) => {
     setIsProcessing(true);
@@ -39,6 +40,7 @@ export const useCheckout = () => {
         paymentMethod,
         notes,
         loyaltyRedeemed,
+        globalDiscount, 
       });
 
       if (response.status) {
@@ -65,6 +67,7 @@ export const useCheckout = () => {
     paymentMethod: PaymentMethod,
     notes: string,
     loyaltyRedeemed: number,
+    globalDiscount: number,
     total: Decimal,
     onSuccess: (sale: any) => void,
   ) => {
@@ -88,6 +91,7 @@ export const useCheckout = () => {
       paymentMethod,
       notes,
       loyaltyRedeemed,
+      globalDiscount, 
       onSuccess,
     );
   };

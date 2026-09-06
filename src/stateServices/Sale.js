@@ -123,18 +123,27 @@ class SaleStateService {
 
     // Create new items with batch assignments
     const newSaleItems = [];
+    const globalDiscount = sale.globalDiscount || 0;
     for (const deductionGroup of deductions) {
       const originalItem = deductionGroup.saleItem;
       for (const d of deductionGroup.deductions) {
+        const discountFactor = 1 - globalDiscount / 100;
+        const baseTotal = originalItem.unitPrice * d.deductedWeight;
+        const discountedTotal = baseTotal * discountFactor;
+
+        const lineTotal =
+          originalItem.unitPrice *
+            d.deductedWeight *
+            (1 - globalDiscount / 100) - // ✅ I‑apply ang global discount
+          (originalItem.discount || 0) +
+          (originalItem.tax || 0);
+
         const newItem = saleItemRepo.create({
           weightKg: d.deductedWeight,
           unitPrice: originalItem.unitPrice,
           discount: originalItem.discount || 0,
           tax: originalItem.tax || 0,
-          lineTotal:
-            originalItem.unitPrice * d.deductedWeight -
-            (originalItem.discount || 0) +
-            (originalItem.tax || 0),
+          lineTotal: lineTotal,
           sale: sale,
           meat: originalItem.meat,
           batch: d.batch,
@@ -501,7 +510,7 @@ class SaleStateService {
    */
   async _checkLoyaltyMilestone(customer, user, queryRunner) {
     return; // Disabled for now
-    
+
     try {
       await notificationService.create(
         {

@@ -17,6 +17,7 @@ const saleCreateSchema = z.object({
   notes: z.string().max(500).optional(),
   loyaltyRedeemed: z.number().int().min(0).optional(),
   voucherCode: z.string().max(50).optional(),
+  globalDiscount: z.number().min(0).max(100).default(0),
 });
 
 const saleUpdateSchema = z.object({
