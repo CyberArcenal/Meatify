@@ -127,22 +127,30 @@ class SaleStateService {
     for (const deductionGroup of deductions) {
       const originalItem = deductionGroup.saleItem;
       for (const d of deductionGroup.deductions) {
-        const discountFactor = 1 - globalDiscount / 100;
-        const baseTotal = originalItem.unitPrice * d.deductedWeight;
-        const discountedTotal = baseTotal * discountFactor;
+        // ✅ Kunin ang discount at tax bilang PERCENTAGE
+        const discountPercent = originalItem.discount || 0;
+        const taxPercent = originalItem.tax || 0;
+        const unitPrice = originalItem.unitPrice;
+        const weight = d.deductedWeight;
 
-        const lineTotal =
-          originalItem.unitPrice *
-            d.deductedWeight *
-            (1 - globalDiscount / 100) - // ✅ I‑apply ang global discount
-          (originalItem.discount || 0) +
-          (originalItem.tax || 0);
+        const subtotal = unitPrice * weight;
+        const discountAmount = subtotal * (discountPercent / 100);
+        const taxable = subtotal - discountAmount;
+        const taxAmount = taxable * (taxPercent / 100);
+        let lineTotal = taxable + taxAmount;
+
+        // ✅ Apply global discount (if any) – adjust accordingly
+        // Usually global discount is applied to the subtotal, but we can apply proportionally:
+        // lineTotal = lineTotal * (1 - globalDiscount / 100);
+        // For simplicity, we'll apply it at the end if needed:
+        const discountFactor = 1 - globalDiscount / 100;
+        lineTotal = lineTotal * discountFactor;
 
         const newItem = saleItemRepo.create({
-          weightKg: d.deductedWeight,
-          unitPrice: originalItem.unitPrice,
-          discount: originalItem.discount || 0,
-          tax: originalItem.tax || 0,
+          weightKg: weight,
+          unitPrice: unitPrice,
+          discount: discountPercent, // ✅ Store as percentage
+          tax: taxPercent, // ✅ Store as percentage
           lineTotal: lineTotal,
           sale: sale,
           meat: originalItem.meat,
