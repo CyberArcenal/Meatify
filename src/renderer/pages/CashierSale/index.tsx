@@ -136,6 +136,7 @@ const Cashier: React.FC = () => {
         paymentMethod,
         notes,
         useLoyalty ? loyaltyPointsToRedeem : 0,
+        globalDiscount,  
         (sale) => {
           const change =
             paymentMethod === "cash" && paidAmount !== undefined

@@ -1,6 +1,5 @@
 // src/main/core/app-config.js
 
-const { app } = require('electron');
 const { ENVIRONMENT, getFeatureFlag } = require('./environment');
 
 /**
@@ -18,7 +17,7 @@ const { ENVIRONMENT, getFeatureFlag } = require('./environment');
 const APP_CONFIG = {
   // === BASIC ===
   appName: 'Meatify',
-  version: app.getVersion(),
+  version: ENVIRONMENT.build.version,  // ✅ Gamitin ang ENVIRONMENT
   isDev: ENVIRONMENT.isDev,
   userDataPath: ENVIRONMENT.paths.userData,
   environment: ENVIRONMENT,
@@ -31,7 +30,7 @@ const APP_CONFIG = {
     minHeight: 768,
     backgroundColor: '#ffffff',
     frame: true,
-    title: `Meatify v${app.getVersion()}`,
+    title: `Meatify v${ENVIRONMENT.build.version}`,
   },
 
   // === SPLASH CONFIG ===

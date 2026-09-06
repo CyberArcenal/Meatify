@@ -26,6 +26,7 @@ const Sale = new EntitySchema({
     usedVoucher: { type: "boolean", default: false },
     voucherCode: { type: "text", nullable: true },
     pointsEarn: { type: "real", default: 0.0 }, // REAL for fractional points
+    globalDiscount: { type: "real", default: 0.0 }, 
 
     notes: { type: "text", nullable: true },
     createdAt: { type: "datetime", default: () => "CURRENT_TIMESTAMP" },

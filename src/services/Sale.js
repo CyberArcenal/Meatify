@@ -387,6 +387,7 @@ class SaleService {
         notes,
         loyaltyRedeemed,
         voucherCode,
+        globalDiscount = 0,
       } = validated;
 
       // ✅ Get settings
@@ -462,6 +463,7 @@ class SaleService {
       let subtotal = 0;
       let totalDiscount = 0;
       let totalTax = 0;
+      let preDiscountSubtotal = 0;
 
       for (const itemData of items) {
         // ✅ Get meat from map (no DB query)
@@ -506,6 +508,9 @@ class SaleService {
         const discount = itemData.discount ?? 0;
         const tax = itemData.tax ?? 0;
 
+        const itemSubtotal = unitPrice * itemData.weightKg;
+        preDiscountSubtotal += itemSubtotal;
+
         // ✅ Validate discount
         if (discount > 0) {
           if (!discountsEnabled) {
@@ -536,6 +541,10 @@ class SaleService {
         });
       }
 
+      // ✅ APPLY GLOBAL DISCOUNT
+      const globalDiscountAmount = (preDiscountSubtotal * globalDiscount) / 100;
+      totalDiscount += globalDiscountAmount;
+
       // ✅ Calculate totals
       const totalAmount =
         subtotal - totalDiscount + totalTax - finalLoyaltyRedeemed;
@@ -552,19 +561,24 @@ class SaleService {
         customer: customer,
         usedLoyalty,
         loyaltyRedeemed: finalLoyaltyRedeemed,
-        usedDiscount,
-        totalDiscount,
+        usedDiscount: totalDiscount > 0,
+        totalDiscount, // ✅ Includes global discount
         usedVoucher: !!voucherCode,
         voucherCode: voucherCode || null,
         pointsEarn: 0,
+        globalDiscount, // ✅ Store it for audit
         createdAt: new Date(),
         updatedAt: new Date(),
       });
 
       const savedSale = await saveDb(saleRepo, sale, { queryRunner: qr });
 
+      const proportionalFactor =
+        preDiscountSubtotal > 0 ? 1 - globalDiscount / 100 : 1;
+
       // ✅ Create sale items (using pre-loaded batch data)
       for (const itemData of saleItemsData) {
+        const adjustedLineTotal = itemData.lineTotal * proportionalFactor;
         await saleItemService.create(
           {
             saleId: savedSale.id,
@@ -573,7 +587,7 @@ class SaleService {
             unitPrice: itemData.unitPrice,
             discount: itemData.discount,
             tax: itemData.tax,
-            lineTotal: itemData.lineTotal,
+            lineTotal: adjustedLineTotal,
             batchId: itemData.batchId,
           },
           user,
