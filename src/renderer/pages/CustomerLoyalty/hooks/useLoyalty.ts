@@ -1,5 +1,5 @@
 // src/renderer/pages/Loyalty/hooks/useLoyalty.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import loyaltyAPI, {
   type LoyaltyTransaction,
   type TransactionStatistics,
@@ -12,6 +12,8 @@ export interface LoyaltyFilters {
   startDate?: string;
   endDate?: string;
   search: string;
+  sortBy?: string;
+  sortOrder?: "ASC" | "DESC";
 }
 
 export interface PointsDistribution {
@@ -42,6 +44,8 @@ export const useLoyalty = (initialFilters?: Partial<LoyaltyFilters>) => {
     startDate: undefined,
     endDate: undefined,
     search: "",
+    sortBy: "timestamp",
+    sortOrder: "DESC",
     ...initialFilters,
   });
   const [loading, setLoading] = useState(true);
@@ -70,6 +74,8 @@ export const useLoyalty = (initialFilters?: Partial<LoyaltyFilters>) => {
           startDate: filters.startDate,
           endDate: filters.endDate,
           search: filters.search || undefined,
+          sortBy: filters.sortBy,
+          sortOrder: filters.sortOrder,
         };
 
         if (filters.type !== "all") {
@@ -156,6 +162,34 @@ export const useLoyalty = (initialFilters?: Partial<LoyaltyFilters>) => {
     [filters, page, limit]
   );
 
+  // ─── Sort Handler ──────────────────────────────────────────────────
+  const handleSort = useCallback((key: string) => {
+    // Map display keys to API sort keys
+    const keyMap: Record<string, string> = {
+      id: "id",
+      customer: "customerId",
+      date: "timestamp",
+      type: "pointsChange",
+      points: "pointsChange",
+      sale: "saleId",
+      notes: "notes",
+    };
+
+    const mappedKey = keyMap[key] || key;
+
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: mappedKey,
+      sortOrder: prev.sortBy === mappedKey && prev.sortOrder === "ASC" ? "DESC" : "ASC",
+    }));
+    setPage(1);
+  }, []);
+
+  const sortConfig = useMemo(() => ({
+    key: filters.sortBy || "timestamp",
+    direction: (filters.sortOrder || "DESC").toLowerCase() as "asc" | "desc",
+  }), [filters.sortBy, filters.sortOrder]);
+
   // Auto-fetch when filters change
   useEffect(() => {
     fetchAll({ page: 1, limit });
@@ -189,6 +223,8 @@ export const useLoyalty = (initialFilters?: Partial<LoyaltyFilters>) => {
       startDate: undefined,
       endDate: undefined,
       search: "",
+      sortBy: "timestamp",
+      sortOrder: "DESC",
     });
     setPage(1);
   }, []);
@@ -211,5 +247,7 @@ export const useLoyalty = (initialFilters?: Partial<LoyaltyFilters>) => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort,
+    sortConfig,
   };
 };

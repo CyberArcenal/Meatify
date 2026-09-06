@@ -1,5 +1,5 @@
 // src/renderer/pages/system/notification-logs/hooks/useNotificationLogs.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import notificationLogAPI from "../../../api/core/notificationLog";
 import type {
   NotificationLog,
@@ -88,6 +88,34 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
     }
   }, []);
 
+  // ─── Sort Handler ──────────────────────────────────────────────────
+  const handleSort = useCallback((key: string) => {
+    // Map display keys to API sort keys
+    const keyMap: Record<string, string> = {
+      id: "id",
+      recipient: "recipient_email",
+      subject: "subject",
+      status: "status",
+      retries: "retry_count",
+      sentAt: "sent_at",
+      created: "created_at",
+    };
+
+    const mappedKey = keyMap[key] || key;
+
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: mappedKey,
+      sortOrder: prev.sortBy === mappedKey && prev.sortOrder === "ASC" ? "DESC" : "ASC",
+    }));
+    setPage(1);
+  }, []);
+
+  const sortConfig = useMemo(() => ({
+    key: filters.sortBy || "created_at",
+    direction: (filters.sortOrder || "DESC").toLowerCase() as "asc" | "desc",
+  }), [filters.sortBy, filters.sortOrder]);
+
   // Auto-fetch when filters change
   useEffect(() => {
     fetchLogs({ page: 1, limit });
@@ -147,5 +175,7 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort,
+    sortConfig,
   };
 };

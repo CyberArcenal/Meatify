@@ -1,5 +1,5 @@
 // src/renderer/pages/category/hooks/useCategories.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import categoryAPI, { type Category } from "../../../api/core/category";
 
 export interface CategoryFilters {
@@ -102,6 +102,31 @@ export const useCategories = (initialFilters?: Partial<CategoryFilters>) => {
     }
   }, []);
 
+  // ─── Sort Handler ──────────────────────────────────────────────────
+  const handleSort = useCallback((key: string) => {
+    // Map display keys to API sort keys
+    const keyMap: Record<string, string> = {
+      name: "name",
+      description: "description",
+      meats: "name", // Fallback to name since meats count is computed
+      status: "isActive",
+    };
+
+    const mappedKey = keyMap[key] || key;
+
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: mappedKey,
+      sortOrder: prev.sortBy === mappedKey && prev.sortOrder === "ASC" ? "DESC" : "ASC",
+    }));
+    setPage(1);
+  }, []);
+
+  const sortConfig = useMemo(() => ({
+    key: filters.sortBy || "name",
+    direction: (filters.sortOrder || "ASC").toLowerCase() as "asc" | "desc",
+  }), [filters.sortBy, filters.sortOrder]);
+
   // Auto-fetch when filters change
   useEffect(() => {
     fetchCategories({ page: 1, limit });
@@ -160,5 +185,7 @@ export const useCategories = (initialFilters?: Partial<CategoryFilters>) => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort,
+    sortConfig,
   };
 };

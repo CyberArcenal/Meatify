@@ -1,6 +1,6 @@
 // src/renderer/pages/inventory/batches/components/BatchTable.tsx
 import React from "react";
-import { Check, X, Package, Beef, Calendar, DollarSign } from "lucide-react";
+import { Check, X, Package, Beef, Calendar, ChevronUp, ChevronDown } from "lucide-react";
 import Decimal from "decimal.js";
 import type { Batch } from "../../../api/core/batch";
 import BatchActionsDropdown from "./BatchActionsDropdown";
@@ -38,6 +38,66 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
   );
 };
 
+// ─── Sortable Header Component ──────────────────────────────────────
+interface SortableHeaderProps {
+  label: string;
+  sortKey: string;
+  currentSort: { key: string; direction: "asc" | "desc" };
+  onSort: (key: string) => void;
+  className?: string;
+  align?: "left" | "right" | "center";
+}
+
+const SortableHeader: React.FC<SortableHeaderProps> = ({
+  label,
+  sortKey,
+  currentSort,
+  onSort,
+  className = "",
+  align = "left",
+}) => {
+  const isActive = currentSort.key === sortKey;
+  const direction = currentSort.direction;
+
+  const handleClick = () => {
+    onSort(sortKey);
+  };
+
+  return (
+    <th
+      className={`py-3 px-3 font-semibold text-[var(--text-tertiary)] text-xs uppercase tracking-wider cursor-pointer hover:text-[var(--primary-color)] transition-colors select-none group ${className}`}
+      onClick={handleClick}
+      style={{ textAlign: align }}
+    >
+      <div
+        className={`flex items-center gap-1.5 ${
+          align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""
+        }`}
+      >
+        <span className="group-hover:text-[var(--primary-color)] transition-colors">
+          {label}
+        </span>
+        <span
+          className={`inline-flex transition-all duration-200 ${
+            isActive
+              ? "text-[var(--primary-color)] opacity-100"
+              : "text-[var(--text-tertiary)] opacity-40 group-hover:opacity-70"
+          }`}
+        >
+          {isActive && direction === "asc" ? (
+            <ChevronUp className="w-3.5 h-3.5" />
+          ) : isActive && direction === "desc" ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronUp className="w-3 h-3 opacity-50" />
+          )}
+        </span>
+      </div>
+    </th>
+  );
+};
+
+// ─── Main Table Props ────────────────────────────────────────────────
 interface BatchTableProps {
   batches: Batch[];
   onView: (batch: Batch) => void;
@@ -47,6 +107,8 @@ interface BatchTableProps {
   selectedIds: number[];
   onSelectRow: (id: number, checked: boolean) => void;
   onSelectAll: (checked: boolean) => void;
+  onSort: (key: string) => void;
+  sortConfig: { key: string; direction: "asc" | "desc" };
 }
 
 export const BatchTable: React.FC<BatchTableProps> = ({
@@ -58,6 +120,8 @@ export const BatchTable: React.FC<BatchTableProps> = ({
   selectedIds,
   onSelectRow,
   onSelectAll,
+  onSort,
+  sortConfig,
 }) => {
   if (batches.length === 0) {
     return (
@@ -96,6 +160,7 @@ export const BatchTable: React.FC<BatchTableProps> = ({
         <table className="w-full text-sm">
           <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
             <tr>
+              {/* Checkbox */}
               <th className="w-8 py-3 px-2">
                 <input
                   type="checkbox"
@@ -107,30 +172,67 @@ export const BatchTable: React.FC<BatchTableProps> = ({
                   className="rounded border-[var(--border-color)] cursor-pointer"
                 />
               </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Batch Code
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Meat
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Supplier
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Received
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Expiry
-              </th>
-              <th className="py-3 px-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Remaining
-              </th>
-              <th className="py-3 px-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Unit Cost
-              </th>
-              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Status
-              </th>
+
+              {/* Sortable Headers */}
+              <SortableHeader
+                label="Batch Code"
+                sortKey="batchCode"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Meat"
+                sortKey="meat"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Supplier"
+                sortKey="supplier"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Received"
+                sortKey="receivedDate"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Expiry"
+                sortKey="expiryDate"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Remaining"
+                sortKey="remainingQuantity"
+                currentSort={sortConfig}
+                onSort={onSort}
+                align="right"
+              />
+
+              <SortableHeader
+                label="Unit Cost"
+                sortKey="unitCost"
+                currentSort={sortConfig}
+                onSort={onSort}
+                align="right"
+              />
+
+              <SortableHeader
+                label="Status"
+                sortKey="status"
+                currentSort={sortConfig}
+                onSort={onSort}
+                align="center"
+              />
+
               <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Actions
               </th>

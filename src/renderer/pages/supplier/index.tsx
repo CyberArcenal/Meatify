@@ -42,6 +42,8 @@ const SupplierPage: React.FC = () => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort, // ✅ Add
+    sortConfig, // ✅ Add
   } = useSuppliers({
     search: "",
     status: "all",
@@ -64,14 +66,14 @@ const SupplierPage: React.FC = () => {
     (newPage: number) => {
       goToPage(newPage);
     },
-    [goToPage]
+    [goToPage],
   );
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
       changeLimit(newSize);
     },
-    [changeLimit]
+    [changeLimit],
   );
 
   const handlersRef = useRef({
@@ -121,7 +123,7 @@ const SupplierPage: React.FC = () => {
     <K extends keyof SupplierFilters>(key: K, value: SupplierFilters[K]) => {
       setFilters((prev) => ({ ...prev, [key]: value }));
     },
-    [setFilters]
+    [setFilters],
   );
 
   // ─── CRUD Handlers ──────────────────────────────────────────────
@@ -160,7 +162,9 @@ const SupplierPage: React.FC = () => {
       } else {
         await supplierAPI.deactivate(supplier.id);
       }
-      dialogs.success(`${supplier.name} ${newStatus ? "activated" : "deactivated"} successfully.`);
+      dialogs.success(
+        `${supplier.name} ${newStatus ? "activated" : "deactivated"} successfully.`,
+      );
       reload({ page, limit });
     } catch (err: any) {
       dialogs.error(err.message || `Failed to ${action} supplier.`);
@@ -180,7 +184,9 @@ const SupplierPage: React.FC = () => {
 
     try {
       await Promise.all(selectedIds.map((id) => supplierAPI.delete(id)));
-      dialogs.success(`${selectedIds.length} supplier${selectedIds.length !== 1 ? "s" : ""} deactivated.`);
+      dialogs.success(
+        `${selectedIds.length} supplier${selectedIds.length !== 1 ? "s" : ""} deactivated.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -200,7 +206,9 @@ const SupplierPage: React.FC = () => {
 
     try {
       await Promise.all(selectedIds.map((id) => supplierAPI.activate(id)));
-      dialogs.success(`${selectedIds.length} supplier${selectedIds.length !== 1 ? "s" : ""} activated.`);
+      dialogs.success(
+        `${selectedIds.length} supplier${selectedIds.length !== 1 ? "s" : ""} activated.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -209,12 +217,22 @@ const SupplierPage: React.FC = () => {
   };
 
   const handleBulkExport = () => {
-    const selectedSuppliers = suppliers.filter((s) => selectedIds.includes(s.id));
+    const selectedSuppliers = suppliers.filter((s) =>
+      selectedIds.includes(s.id),
+    );
     if (selectedSuppliers.length === 0) {
       dialogs.warning("No items selected for export.");
       return;
     }
-    const headers = ["ID", "Name", "Email", "Phone", "Address", "Status", "Meat Count"];
+    const headers = [
+      "ID",
+      "Name",
+      "Email",
+      "Phone",
+      "Address",
+      "Status",
+      "Meat Count",
+    ];
     const rows = selectedSuppliers.map((s) => [
       s.id,
       s.name,
@@ -245,15 +263,20 @@ const SupplierPage: React.FC = () => {
         format: "csv",
         filters: {
           search: filters.search || undefined,
-          isActive: filters.status === "all" ? undefined : filters.status === "active",
+          isActive:
+            filters.status === "all" ? undefined : filters.status === "active",
         },
       });
       if (response.status && response.data) {
-        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const blob = new Blob([response.data.data as string], {
+          type: "text/csv",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = response.data.filename || `suppliers_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          response.data.filename ||
+          `suppliers_export_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         dialogs.success("Export completed.");
@@ -286,9 +309,15 @@ const SupplierPage: React.FC = () => {
             title={showStats ? "Hide summary" : "Show summary"}
           >
             {showStats ? (
-              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             ) : (
-              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             )}
           </button>
           <button
@@ -307,7 +336,8 @@ const SupplierPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download style={{ color: "var(--text-primary)" }}
+            <Download
+              style={{ color: "var(--text-primary)" }}
               className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
             />
           </button>
@@ -319,7 +349,10 @@ const SupplierPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
           <button
             onClick={formDialog.openAdd}
@@ -364,7 +397,9 @@ const SupplierPage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading suppliers</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading suppliers
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit })}
@@ -384,12 +419,14 @@ const SupplierPage: React.FC = () => {
           selectedIds={selectedIds}
           onSelectRow={(id, checked) => {
             setSelectedIds((prev) =>
-              checked ? [...prev, id] : prev.filter((i) => i !== id)
+              checked ? [...prev, id] : prev.filter((i) => i !== id),
             );
           }}
           onSelectAll={(checked) => {
             setSelectedIds(checked ? suppliers.map((s) => s.id) : []);
           }}
+          onSort={handleSort}
+          sortConfig={sortConfig}
         />
       )}
 

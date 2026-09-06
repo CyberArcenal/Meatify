@@ -11,7 +11,10 @@ import {
   EyeOff,
 } from "lucide-react";
 import { format } from "date-fns";
-import { useTransactions, type TransactionFilters } from "./hooks/useTransactions";
+import {
+  useTransactions,
+  type TransactionFilters,
+} from "./hooks/useTransactions";
 import { useTransactionDetails } from "./hooks/useTransactionDetails";
 import { FilterBar } from "./components/FilterBar";
 import { SummaryCards } from "./components/SummaryCards";
@@ -45,6 +48,8 @@ const TransactionsPage: React.FC = () => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort, // ✅ Add
+    sortConfig, // ✅ Add
   } = useTransactions({
     startDate: format(new Date(), "yyyy-MM-dd"),
     endDate: format(new Date(), "yyyy-MM-dd"),
@@ -97,7 +102,7 @@ const TransactionsPage: React.FC = () => {
       const options = getOptions();
       const response = await saleAPI.refundWithOptions(
         refundTransaction.id,
-        options
+        options,
       );
 
       if (response.status) {
@@ -116,19 +121,24 @@ const TransactionsPage: React.FC = () => {
     }
   };
 
-  const hasFilters = !!(filters.search ||
+  const hasFilters = !!(
+    filters.search ||
     filters.paymentMethod ||
     filters.status ||
     filters.startDate !== format(new Date(), "yyyy-MM-dd") ||
-    filters.endDate !== format(new Date(), "yyyy-MM-dd"));
+    filters.endDate !== format(new Date(), "yyyy-MM-dd")
+  );
 
   // ─── Filter Handlers (same as MeatPage) ──────────────────────
   const handleFilterChange = useCallback(
-    <K extends keyof TransactionFilters>(key: K, value: TransactionFilters[K]) => {
+    <K extends keyof TransactionFilters>(
+      key: K,
+      value: TransactionFilters[K],
+    ) => {
       setFilters((prev) => ({ ...prev, [key]: value }));
       goToPage(1);
     },
-    [setFilters, goToPage]
+    [setFilters, goToPage],
   );
 
   // ─── Pagination Sync – EXACT same as MeatPage ─────────────────
@@ -137,7 +147,7 @@ const TransactionsPage: React.FC = () => {
       currentPage: page,
       totalItems: totalItems,
       pageSize: limit,
-      onPageChange: goToPage,        // ✅ Direct
+      onPageChange: goToPage, // ✅ Direct
       onPageSizeChange: changeLimit, // ✅ Direct
       pageSizeOptions: [10, 25, 50, 100],
       showPageSize: true,
@@ -179,7 +189,10 @@ const TransactionsPage: React.FC = () => {
         },
       });
       if (response.status) {
-        const csvData = typeof response.data.data === "string" ? response.data.data : JSON.stringify(response.data.data);
+        const csvData =
+          typeof response.data.data === "string"
+            ? response.data.data
+            : JSON.stringify(response.data.data);
         const blob = new Blob([csvData], { type: "text/csv" });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -316,9 +329,11 @@ const TransactionsPage: React.FC = () => {
           onViewDetails={openDetails}
           onPrint={handlePrint}
           onRefund={handleRefundClick}
-          reload={reload}
+          reload={async ({page, limit}) => reload({ page, limit })}
           page={page}
           limit={limit}
+          onSort={handleSort}
+          sortConfig={sortConfig}
         />
       )}
 

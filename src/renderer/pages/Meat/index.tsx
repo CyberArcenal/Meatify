@@ -27,7 +27,6 @@ import { PriceEditDialog } from "./components/PriceEditDialog";
 import { ReorderLevelEditDialog } from "./components/ReorderLevelEditDialog";
 import { ReorderQtyEditDialog } from "./components/ReorderQtyEditDialog";
 
-
 const MeatPage: React.FC = () => {
   const { pagination, setPagination, clearPagination } = usePagination();
 
@@ -47,6 +46,8 @@ const MeatPage: React.FC = () => {
     fetchStats,
     goToPage,
     changeLimit,
+    handleSort,
+    sortConfig,
   } = useMeat({
     search: "",
     status: "all",
@@ -74,14 +75,14 @@ const MeatPage: React.FC = () => {
     (newPage: number) => {
       reload({ page: newPage, limit: pagination.pageSize });
     },
-    [reload, pagination.pageSize]
+    [reload, pagination.pageSize],
   );
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
       reload({ page: 1, limit: newSize });
     },
-    [reload]
+    [reload],
   );
 
   const handlersRef = useRef({
@@ -127,11 +128,16 @@ const MeatPage: React.FC = () => {
       setFilters((prev) => ({ ...prev, [key]: value }));
       reload({ page: 1, limit: pagination.pageSize });
     },
-    [setFilters, reload, pagination.pageSize]
+    [setFilters, reload, pagination.pageSize],
   );
 
   const resetFilters = useCallback(() => {
-    setFilters({ search: "", status: "all", categoryId: undefined, supplierId: undefined });
+    setFilters({
+      search: "",
+      status: "all",
+      categoryId: undefined,
+      supplierId: undefined,
+    });
     reload({ page: 1, limit: pagination.pageSize });
   }, [setFilters, reload, pagination.pageSize]);
 
@@ -172,7 +178,9 @@ const MeatPage: React.FC = () => {
       } else {
         await meatAPI.deactivate(meat.id);
       }
-      dialogs.success(`${meat.name} ${newStatus ? "activated" : "deactivated"} successfully.`);
+      dialogs.success(
+        `${meat.name} ${newStatus ? "activated" : "deactivated"} successfully.`,
+      );
       reload({ page: pagination.currentPage, limit: pagination.pageSize });
       fetchStats();
     } catch (err: any) {
@@ -259,17 +267,22 @@ const MeatPage: React.FC = () => {
         format: "csv",
         filters: {
           search: filters.search || undefined,
-          isActive: filters.status === "all" ? undefined : filters.status === "active",
+          isActive:
+            filters.status === "all" ? undefined : filters.status === "active",
           categoryId: filters.categoryId,
           supplierId: filters.supplierId,
         },
       });
       if (response.status && response.data) {
-        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const blob = new Blob([response.data.data as string], {
+          type: "text/csv",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = response.data.filename || `meats_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          response.data.filename ||
+          `meats_export_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         dialogs.success("Export completed.");
@@ -281,9 +294,7 @@ const MeatPage: React.FC = () => {
     }
   };
 
-
-
-   const [priceDialog, setPriceDialog] = useState<{
+  const [priceDialog, setPriceDialog] = useState<{
     isOpen: boolean;
     meat: Meat | null;
   }>({ isOpen: false, meat: null });
@@ -328,9 +339,6 @@ const MeatPage: React.FC = () => {
     fetchStats();
   }, [reload, fetchStats, pagination.currentPage, pagination.pageSize]);
 
-
-
-
   // ─── Render ──────────────────────────────────────────────────────
   return (
     <div className="p-4 space-y-4">
@@ -352,9 +360,15 @@ const MeatPage: React.FC = () => {
             title={showStats ? "Hide summary" : "Show summary"}
           >
             {showStats ? (
-              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             ) : (
-              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             )}
           </button>
           <button
@@ -373,20 +387,27 @@ const MeatPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download style={{ color: "var(--text-primary)" }}
+            <Download
+              style={{ color: "var(--text-primary)" }}
               className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
             />
           </button>
           <button
             onClick={() => {
-              reload({ page: pagination.currentPage, limit: pagination.pageSize });
+              reload({
+                page: pagination.currentPage,
+                limit: pagination.pageSize,
+              });
               fetchStats();
             }}
             disabled={loading}
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
           <button
             onClick={formDialog.openAdd}
@@ -439,7 +460,9 @@ const MeatPage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading meats</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading meats
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit: pagination.pageSize })}
@@ -449,25 +472,27 @@ const MeatPage: React.FC = () => {
           </button>
         </div>
       ) : (
-      <MeatTable
-        meats={meats}
-        onView={viewDialog.open}
-        onEdit={formDialog.openEdit}
-        onDelete={handleDelete}
-        onToggleStatus={handleToggleStatus}
-        onPriceEdit={handlePriceEdit}
-        onReorderLevelEdit={handleReorderLevelEdit}
-        onReorderQtyEdit={handleReorderQtyEdit}
-        selectedIds={selectedIds}
-        onSelectRow={(id, checked) => {
-          setSelectedIds((prev) =>
-            checked ? [...prev, id] : prev.filter((i) => i !== id)
-          );
-        }}
-        onSelectAll={(checked) => {
-          setSelectedIds(checked ? meats.map((m) => m.id) : []);
-        }}
-      />
+        <MeatTable
+          meats={meats}
+          onView={viewDialog.open}
+          onEdit={formDialog.openEdit}
+          onDelete={handleDelete}
+          onToggleStatus={handleToggleStatus}
+          onPriceEdit={handlePriceEdit}
+          onReorderLevelEdit={handleReorderLevelEdit}
+          onReorderQtyEdit={handleReorderQtyEdit}
+          selectedIds={selectedIds}
+          onSelectRow={(id, checked) => {
+            setSelectedIds((prev) =>
+              checked ? [...prev, id] : prev.filter((i) => i !== id),
+            );
+          }}
+          onSelectAll={(checked) => {
+            setSelectedIds(checked ? meats.map((m) => m.id) : []);
+          }}
+          onSort={handleSort}
+          sortConfig={sortConfig}
+        />
       )}
 
       {/* Modals */}
@@ -492,7 +517,7 @@ const MeatPage: React.FC = () => {
         onClose={viewDialog.close}
       />
 
-       <PriceEditDialog
+      <PriceEditDialog
         meat={priceDialog.meat}
         isOpen={priceDialog.isOpen}
         onClose={handleClosePriceDialog}

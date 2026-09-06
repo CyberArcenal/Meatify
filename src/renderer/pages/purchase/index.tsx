@@ -42,6 +42,8 @@ const PurchasePage: React.FC = () => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort, // ✅ Add
+    sortConfig, // ✅ Add
   } = usePurchases({
     search: "",
     status: "",
@@ -78,14 +80,14 @@ const PurchasePage: React.FC = () => {
     (newPage: number) => {
       goToPage(newPage);
     },
-    [goToPage]
+    [goToPage],
   );
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
       changeLimit(newSize);
     },
-    [changeLimit]
+    [changeLimit],
   );
 
   const handlersRef = useRef({
@@ -135,7 +137,7 @@ const PurchasePage: React.FC = () => {
     <K extends keyof PurchaseFilters>(key: K, value: PurchaseFilters[K]) => {
       setFilters((prev) => ({ ...prev, [key]: value }));
     },
-    [setFilters]
+    [setFilters],
   );
 
   // ─── CRUD Handlers ──────────────────────────────────────────────
@@ -194,8 +196,12 @@ const PurchasePage: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      await Promise.all(selectedIds.map((id) => purchaseAPI.cancel(id, "Bulk cancellation")));
-      dialogs.success(`${selectedIds.length} purchase${selectedIds.length !== 1 ? "s" : ""} cancelled.`);
+      await Promise.all(
+        selectedIds.map((id) => purchaseAPI.cancel(id, "Bulk cancellation")),
+      );
+      dialogs.success(
+        `${selectedIds.length} purchase${selectedIds.length !== 1 ? "s" : ""} cancelled.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -215,7 +221,9 @@ const PurchasePage: React.FC = () => {
 
     try {
       await Promise.all(selectedIds.map((id) => purchaseAPI.approve(id)));
-      dialogs.success(`${selectedIds.length} purchase${selectedIds.length !== 1 ? "s" : ""} approved.`);
+      dialogs.success(
+        `${selectedIds.length} purchase${selectedIds.length !== 1 ? "s" : ""} approved.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -235,7 +243,9 @@ const PurchasePage: React.FC = () => {
 
     try {
       await Promise.all(selectedIds.map((id) => purchaseAPI.complete(id)));
-      dialogs.success(`${selectedIds.length} purchase${selectedIds.length !== 1 ? "s" : ""} completed.`);
+      dialogs.success(
+        `${selectedIds.length} purchase${selectedIds.length !== 1 ? "s" : ""} completed.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -244,12 +254,21 @@ const PurchasePage: React.FC = () => {
   };
 
   const handleBulkExport = () => {
-    const selectedPurchases = purchases.filter((p) => selectedIds.includes(p.id));
+    const selectedPurchases = purchases.filter((p) =>
+      selectedIds.includes(p.id),
+    );
     if (selectedPurchases.length === 0) {
       dialogs.warning("No items selected for export.");
       return;
     }
-    const headers = ["ID", "Reference", "Supplier", "Status", "Total", "Order Date"];
+    const headers = [
+      "ID",
+      "Reference",
+      "Supplier",
+      "Status",
+      "Total",
+      "Order Date",
+    ];
     const rows = selectedPurchases.map((p) => [
       p.id,
       p.referenceNo || "",
@@ -286,11 +305,15 @@ const PurchasePage: React.FC = () => {
         },
       });
       if (response.status && response.data) {
-        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const blob = new Blob([response.data.data as string], {
+          type: "text/csv",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = response.data.filename || `purchases_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          response.data.filename ||
+          `purchases_export_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         dialogs.success("Export completed.");
@@ -313,7 +336,8 @@ const PurchasePage: React.FC = () => {
             Purchase Orders
           </h1>
           <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-            Manage supplier purchases, track inventory arrivals, and monitor costs
+            Manage supplier purchases, track inventory arrivals, and monitor
+            costs
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -323,9 +347,15 @@ const PurchasePage: React.FC = () => {
             title={showStats ? "Hide summary" : "Show summary"}
           >
             {showStats ? (
-              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             ) : (
-              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             )}
           </button>
           <button
@@ -344,7 +374,8 @@ const PurchasePage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download style={{ color: "var(--text-primary)" }}
+            <Download
+              style={{ color: "var(--text-primary)" }}
               className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
             />
           </button>
@@ -356,7 +387,10 @@ const PurchasePage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
           <button
             onClick={formDialog.openAdd}
@@ -393,9 +427,17 @@ const PurchasePage: React.FC = () => {
           onDelete={handleBulkDelete}
           onExport={handleBulkExport}
           onClearSelection={handleClearSelection}
-          showApprove={selectedIds.some((id) => purchases.find((p) => p.id === id)?.status === "pending")}
-          showComplete={selectedIds.some((id) => purchases.find((p) => p.id === id)?.status === "approved")}
-          showCancel={selectedIds.some((id) => purchases.find((p) => p.id === id)?.status === "pending" || purchases.find((p) => p.id === id)?.status === "approved")}
+          showApprove={selectedIds.some(
+            (id) => purchases.find((p) => p.id === id)?.status === "pending",
+          )}
+          showComplete={selectedIds.some(
+            (id) => purchases.find((p) => p.id === id)?.status === "approved",
+          )}
+          showCancel={selectedIds.some(
+            (id) =>
+              purchases.find((p) => p.id === id)?.status === "pending" ||
+              purchases.find((p) => p.id === id)?.status === "approved",
+          )}
         />
       )}
 
@@ -407,7 +449,9 @@ const PurchasePage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading purchases</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading purchases
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit })}
@@ -426,12 +470,14 @@ const PurchasePage: React.FC = () => {
           selectedIds={selectedIds}
           onSelectRow={(id, checked) => {
             setSelectedIds((prev) =>
-              checked ? [...prev, id] : prev.filter((i) => i !== id)
+              checked ? [...prev, id] : prev.filter((i) => i !== id),
             );
           }}
           onSelectAll={(checked) => {
             setSelectedIds(checked ? purchases.map((p) => p.id) : []);
           }}
+          onSort={handleSort}
+          sortConfig={sortConfig}
         />
       )}
 

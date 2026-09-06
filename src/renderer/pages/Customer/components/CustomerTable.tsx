@@ -1,6 +1,6 @@
 // src/renderer/pages/customer/components/CustomerTable.tsx
 import React from "react";
-import { Check, X, Users, Mail, Phone, Star } from "lucide-react";
+import { Check, X, Users, Mail, Phone, Star, ChevronUp, ChevronDown } from "lucide-react";
 import { type Customer } from "../../../api/core/customer";
 import CustomerActionsDropdown from "./CustomerActionsDropdown";
 
@@ -47,6 +47,66 @@ const ActiveBadge: React.FC<{ active: boolean }> = ({ active }) => {
   );
 };
 
+// ─── Sortable Header Component ──────────────────────────────────────
+interface SortableHeaderProps {
+  label: string;
+  sortKey: string;
+  currentSort: { key: string; direction: "asc" | "desc" };
+  onSort: (key: string) => void;
+  className?: string;
+  align?: "left" | "right" | "center";
+}
+
+const SortableHeader: React.FC<SortableHeaderProps> = ({
+  label,
+  sortKey,
+  currentSort,
+  onSort,
+  className = "",
+  align = "left",
+}) => {
+  const isActive = currentSort.key === sortKey;
+  const direction = currentSort.direction;
+
+  const handleClick = () => {
+    onSort(sortKey);
+  };
+
+  return (
+    <th
+      className={`py-3 px-3 font-semibold text-[var(--text-tertiary)] text-xs uppercase tracking-wider cursor-pointer hover:text-[var(--primary-color)] transition-colors select-none group ${className}`}
+      onClick={handleClick}
+      style={{ textAlign: align }}
+    >
+      <div
+        className={`flex items-center gap-1.5 ${
+          align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""
+        }`}
+      >
+        <span className="group-hover:text-[var(--primary-color)] transition-colors">
+          {label}
+        </span>
+        <span
+          className={`inline-flex transition-all duration-200 ${
+            isActive
+              ? "text-[var(--primary-color)] opacity-100"
+              : "text-[var(--text-tertiary)] opacity-40 group-hover:opacity-70"
+          }`}
+        >
+          {isActive && direction === "asc" ? (
+            <ChevronUp className="w-3.5 h-3.5" />
+          ) : isActive && direction === "desc" ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronUp className="w-3 h-3 opacity-50" />
+          )}
+        </span>
+      </div>
+    </th>
+  );
+};
+
+// ─── Main Table Props ────────────────────────────────────────────────
 interface CustomerTableProps {
   customers: Customer[];
   onView: (customer: Customer) => void;
@@ -56,6 +116,8 @@ interface CustomerTableProps {
   selectedIds: number[];
   onSelectRow: (id: number, checked: boolean) => void;
   onSelectAll: (checked: boolean) => void;
+  onSort: (key: string) => void;
+  sortConfig: { key: string; direction: "asc" | "desc" };
 }
 
 export const CustomerTable: React.FC<CustomerTableProps> = ({
@@ -67,6 +129,8 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
   selectedIds,
   onSelectRow,
   onSelectAll,
+  onSort,
+  sortConfig,
 }) => {
   if (customers.length === 0) {
     return (
@@ -89,6 +153,7 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
         <table className="w-full text-sm">
           <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
             <tr>
+              {/* Checkbox */}
               <th className="w-8 py-3 px-2">
                 <input
                   type="checkbox"
@@ -100,21 +165,46 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                   className="rounded border-[var(--border-color)] cursor-pointer"
                 />
               </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Name
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Contact
-              </th>
-              <th className="py-3 px-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Points
-              </th>
-              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Status
-              </th>
-              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Active
-              </th>
+
+              {/* Sortable Headers */}
+              <SortableHeader
+                label="Name"
+                sortKey="name"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Contact"
+                sortKey="contact"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Points"
+                sortKey="points"
+                currentSort={sortConfig}
+                onSort={onSort}
+                align="right"
+              />
+
+              <SortableHeader
+                label="Status"
+                sortKey="status"
+                currentSort={sortConfig}
+                onSort={onSort}
+                align="center"
+              />
+
+              <SortableHeader
+                label="Active"
+                sortKey="active"
+                currentSort={sortConfig}
+                onSort={onSort}
+                align="center"
+              />
+
               <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Actions
               </th>
@@ -154,7 +244,7 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                   )}
                 </td>
                 <td className="py-2.5 px-3 text-right text-sm font-semibold">
-                  <span className="flex items-center justify-end gap-1 text-white">
+                  <span className="flex items-center justify-end gap-1">
                     <Star className="w-3.5 h-3.5 text-[var(--accent-gold)]" />
                     {customer.loyaltyPointsBalance}
                   </span>

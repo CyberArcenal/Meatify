@@ -1,5 +1,5 @@
 // src/renderer/pages/AuditTrail/hooks/useAuditLogs.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { AuditLogEntry } from "../../../api/core/audit";
 import auditAPI from "../../../api/core/audit";
 import { getActionColor } from "../utils/auditColors";
@@ -45,6 +45,10 @@ export const useAuditLogs = (initialFilters?: Partial<AuditFilters>) => {
     mostAffectedEntity: null,
   });
 
+  // ─── Sorting State ──────────────────────────────────────────────
+  const [sortBy, setSortBy] = useState<string>("timestamp");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
   const fetchLogs = useCallback(
     async (options?: { page?: number; limit?: number }) => {
       const p = options?.page ?? page;
@@ -70,12 +74,11 @@ export const useAuditLogs = (initialFilters?: Partial<AuditFilters>) => {
 
         const items = response.data.items || [];
         const total = response.data.total || 0;
-        setLogs(items);
         setTotalItems(total);
         if (options?.page !== undefined) setPage(p);
         if (options?.limit !== undefined) setLimit(l);
 
-        // Compute summary
+        // ─── Compute Summary (before sorting) ────────────────────
         const today = new Date().toISOString().split("T")[0];
         const todayLogs = items.filter((log) => {
           const logDate =
@@ -125,6 +128,33 @@ export const useAuditLogs = (initialFilters?: Partial<AuditFilters>) => {
           mostActiveUser,
           mostAffectedEntity,
         });
+
+        // ─── Client-side Sorting ────────────────────────────────
+        const sorted = [...items].sort((a, b) => {
+          let aVal: any = a[sortBy as keyof AuditLogEntry];
+          let bVal: any = b[sortBy as keyof AuditLogEntry];
+
+          // Handle date strings
+          if (sortBy === "timestamp") {
+            aVal = new Date(aVal).getTime();
+            bVal = new Date(bVal).getTime();
+          }
+
+          // Handle null/undefined
+          if (aVal == null) aVal = "";
+          if (bVal == null) bVal = "";
+
+          if (typeof aVal === "string") {
+            aVal = aVal.toLowerCase();
+            bVal = bVal.toLowerCase();
+          }
+
+          if (aVal < bVal) return sortOrder === "asc" ? -1 : 1;
+          if (aVal > bVal) return sortOrder === "asc" ? 1 : -1;
+          return 0;
+        });
+
+        setLogs(sorted);
       } catch (err: any) {
         setError(err.message);
         setTotalItems(0);
@@ -132,19 +162,15 @@ export const useAuditLogs = (initialFilters?: Partial<AuditFilters>) => {
         setLoading(false);
       }
     },
-    [filters, page, limit]
+    [filters, page, limit, sortBy, sortOrder]
   );
 
-  // Auto-fetch when filters change
-  useEffect(() => {
-    fetchLogs({ page: 1, limit });
-  }, [filters]);
-
-  // Re-fetch when page/limit change
+  // Auto-fetch when filters, sort, or pagination change
   useEffect(() => {
     fetchLogs({ page, limit });
-  }, [page, limit]);
+  }, [filters, sortBy, sortOrder, page, limit, fetchLogs]);
 
+  // ─── Handlers ──────────────────────────────────────────────────
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
       fetchLogs(options);
@@ -173,6 +199,17 @@ export const useAuditLogs = (initialFilters?: Partial<AuditFilters>) => {
     setPage(1);
   }, []);
 
+  const handleSort = useCallback((key: string) => {
+    setSortBy(key);
+    setSortOrder((prev) => (sortBy === key && prev === "asc" ? "desc" : "asc"));
+    setPage(1);
+  }, [sortBy]);
+
+  const sortConfig = useMemo(() => ({
+    key: sortBy,
+    direction: sortOrder,
+  }), [sortBy, sortOrder]);
+
   return {
     logs,
     filters,
@@ -188,5 +225,7 @@ export const useAuditLogs = (initialFilters?: Partial<AuditFilters>) => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort,
+    sortConfig,
   };
 };

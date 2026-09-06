@@ -1,6 +1,6 @@
 // src/renderer/pages/inventory/movements/components/MovementTable.tsx
 import React from "react";
-import { Package, TrendingUp, TrendingDown, Beef, Calendar } from "lucide-react";
+import { Package, Beef, ChevronUp, ChevronDown } from "lucide-react";
 import {
   formatMovementType,
   getMovementTypeColor,
@@ -8,12 +8,74 @@ import {
 import type { InventoryMovement } from "../../../api/core/inventoryMovement";
 import MovementActionsDropdown from "./MovementActionsDropdown";
 
+// ─── Sortable Header Component ──────────────────────────────────────
+interface SortableHeaderProps {
+  label: string;
+  sortKey: string;
+  currentSort: { key: string; direction: "asc" | "desc" };
+  onSort: (key: string) => void;
+  className?: string;
+  align?: "left" | "right" | "center";
+}
+
+const SortableHeader: React.FC<SortableHeaderProps> = ({
+  label,
+  sortKey,
+  currentSort,
+  onSort,
+  className = "",
+  align = "left",
+}) => {
+  const isActive = currentSort.key === sortKey;
+  const direction = currentSort.direction;
+
+  const handleClick = () => {
+    onSort(sortKey);
+  };
+
+  return (
+    <th
+      className={`py-3 px-3 font-semibold text-[var(--text-tertiary)] text-xs uppercase tracking-wider cursor-pointer hover:text-[var(--primary-color)] transition-colors select-none group ${className}`}
+      onClick={handleClick}
+      style={{ textAlign: align }}
+    >
+      <div
+        className={`flex items-center gap-1.5 ${
+          align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""
+        }`}
+      >
+        <span className="group-hover:text-[var(--primary-color)] transition-colors">
+          {label}
+        </span>
+        <span
+          className={`inline-flex transition-all duration-200 ${
+            isActive
+              ? "text-[var(--primary-color)] opacity-100"
+              : "text-[var(--text-tertiary)] opacity-40 group-hover:opacity-70"
+          }`}
+        >
+          {isActive && direction === "asc" ? (
+            <ChevronUp className="w-3.5 h-3.5" />
+          ) : isActive && direction === "desc" ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronUp className="w-3 h-3 opacity-50" />
+          )}
+        </span>
+      </div>
+    </th>
+  );
+};
+
+// ─── Main Table Props ────────────────────────────────────────────────
 interface MovementTableProps {
   movements: InventoryMovement[];
   onView: (movement: InventoryMovement) => void;
   selectedIds: number[];
   onSelectRow: (id: number, checked: boolean) => void;
   onSelectAll: (checked: boolean) => void;
+  onSort: (key: string) => void;
+  sortConfig: { key: string; direction: "asc" | "desc" };
 }
 
 export const MovementTable: React.FC<MovementTableProps> = ({
@@ -22,6 +84,8 @@ export const MovementTable: React.FC<MovementTableProps> = ({
   selectedIds,
   onSelectRow,
   onSelectAll,
+  onSort,
+  sortConfig,
 }) => {
   if (movements.length === 0) {
     return (
@@ -44,6 +108,7 @@ export const MovementTable: React.FC<MovementTableProps> = ({
         <table className="w-full text-sm">
           <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
             <tr>
+              {/* Checkbox */}
               <th className="w-8 py-3 px-2">
                 <input
                   type="checkbox"
@@ -55,27 +120,59 @@ export const MovementTable: React.FC<MovementTableProps> = ({
                   className="rounded border-[var(--border-color)] cursor-pointer"
                 />
               </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                ID
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Date & Time
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Meat
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Batch
-              </th>
-              <th className="py-3 px-3 text-right text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Qty Change
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Type
-              </th>
-              <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Sale
-              </th>
+
+              {/* Sortable Headers */}
+              <SortableHeader
+                label="ID"
+                sortKey="id"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Date & Time"
+                sortKey="date"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Meat"
+                sortKey="meat"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Batch"
+                sortKey="batch"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Qty Change"
+                sortKey="qtyChange"
+                currentSort={sortConfig}
+                onSort={onSort}
+                align="right"
+              />
+
+              <SortableHeader
+                label="Type"
+                sortKey="type"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Sale"
+                sortKey="sale"
+                currentSort={sortConfig}
+                onSort={onSort}
+                align="center"
+              />
+
               <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Actions
               </th>

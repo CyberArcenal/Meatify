@@ -42,6 +42,8 @@ const CustomerPage: React.FC = () => {
     goToPage,
     changeLimit,
     resetFilters,
+      handleSort,    // ✅ Add
+  sortConfig,    // ✅ Add
   } = useCustomers({
     search: "",
     status: "all",
@@ -405,6 +407,8 @@ const CustomerPage: React.FC = () => {
           onSelectAll={(checked) => {
             setSelectedIds(checked ? customers.map((c) => c.id) : []);
           }}
+           onSort={handleSort}
+  sortConfig={sortConfig}
         />
       )}
 

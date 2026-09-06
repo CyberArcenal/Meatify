@@ -1,15 +1,77 @@
 // src/renderer/pages/AuditTrail/components/AuditTable.tsx
 import React from "react";
-import { Eye, FileText, CheckSquare, Square } from "lucide-react";
+import { Eye, FileText, ChevronUp, ChevronDown } from "lucide-react";
 import { getActionColor } from "../hooks/useAuditLogs";
 import type { AuditLogEntry } from "../../../api/core/audit";
 
+// ─── Sortable Header Component ──────────────────────────────────────
+interface SortableHeaderProps {
+  label: string;
+  sortKey: string;
+  currentSort: { key: string; direction: "asc" | "desc" };
+  onSort: (key: string) => void;
+  className?: string;
+  align?: "left" | "right" | "center";
+}
+
+const SortableHeader: React.FC<SortableHeaderProps> = ({
+  label,
+  sortKey,
+  currentSort,
+  onSort,
+  className = "",
+  align = "left",
+}) => {
+  const isActive = currentSort.key === sortKey;
+  const direction = currentSort.direction;
+
+  const handleClick = () => {
+    onSort(sortKey);
+  };
+
+  return (
+    <th
+      className={`py-3 px-3 font-semibold text-[var(--text-tertiary)] text-xs uppercase tracking-wider cursor-pointer hover:text-[var(--primary-color)] transition-colors select-none group ${className}`}
+      onClick={handleClick}
+      style={{ textAlign: align }}
+    >
+      <div
+        className={`flex items-center gap-1.5 ${
+          align === "right" ? "justify-end" : align === "center" ? "justify-center" : ""
+        }`}
+      >
+        <span className="group-hover:text-[var(--primary-color)] transition-colors">
+          {label}
+        </span>
+        <span
+          className={`inline-flex transition-all duration-200 ${
+            isActive
+              ? "text-[var(--primary-color)] opacity-100"
+              : "text-[var(--text-tertiary)] opacity-40 group-hover:opacity-70"
+          }`}
+        >
+          {isActive && direction === "asc" ? (
+            <ChevronUp className="w-3.5 h-3.5" />
+          ) : isActive && direction === "desc" ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronUp className="w-3 h-3 opacity-50" />
+          )}
+        </span>
+      </div>
+    </th>
+  );
+};
+
+// ─── Main Table Props ────────────────────────────────────────────────
 interface AuditTableProps {
   logs: AuditLogEntry[];
   onView: (log: AuditLogEntry) => void;
   selectedIds: number[];
   onSelectRow: (id: number, checked: boolean) => void;
   onSelectAll: (checked: boolean) => void;
+  onSort: (key: string) => void;
+  sortConfig: { key: string; direction: "asc" | "desc" };
 }
 
 export const AuditTable: React.FC<AuditTableProps> = ({
@@ -18,6 +80,8 @@ export const AuditTable: React.FC<AuditTableProps> = ({
   selectedIds,
   onSelectRow,
   onSelectAll,
+  onSort,
+  sortConfig,
 }) => {
   if (logs.length === 0) {
     return (
@@ -42,6 +106,7 @@ export const AuditTable: React.FC<AuditTableProps> = ({
         <table className="w-full text-sm">
           <thead className="bg-[var(--table-header-bg)] border-b border-[var(--border-color)]">
             <tr>
+              {/* Checkbox */}
               <th className="w-8 py-3 px-2">
                 <input
                   type="checkbox"
@@ -53,26 +118,49 @@ export const AuditTable: React.FC<AuditTableProps> = ({
                   className="rounded border-[var(--border-color)] cursor-pointer"
                 />
               </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                ID
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Date & Time
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                User
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Action
-              </th>
-              <th className="py-3 px-3 text-left text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
-                Entity
-              </th>
+
+              {/* Sortable Headers */}
+              <SortableHeader
+                label="ID"
+                sortKey="id"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Date & Time"
+                sortKey="timestamp"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="User"
+                sortKey="user"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Action"
+                sortKey="action"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
+                label="Entity"
+                sortKey="entity"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
               <th className="py-3 px-3 text-center text-xs font-medium text-[var(--text-tertiary)] uppercase tracking-wider">
                 Actions
               </th>
             </tr>
           </thead>
+
           <tbody className="divide-y divide-[var(--border-color)]">
             {logs.map((log) => (
               <tr
@@ -88,15 +176,19 @@ export const AuditTable: React.FC<AuditTableProps> = ({
                     className="rounded border-[var(--border-color)] cursor-pointer"
                   />
                 </td>
+
                 <td className="py-2.5 px-3 text-sm font-mono text-[var(--text-primary)]">
                   #{log.id}
                 </td>
+
                 <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)] whitespace-nowrap">
                   {new Date(log.timestamp).toLocaleString()}
                 </td>
+
                 <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)]">
                   {log.user || "System"}
                 </td>
+
                 <td className="py-2.5 px-3 text-sm">
                   <span
                     className="px-2 py-1 rounded-full text-xs font-medium"
@@ -108,10 +200,12 @@ export const AuditTable: React.FC<AuditTableProps> = ({
                     {log.action}
                   </span>
                 </td>
+
                 <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)] truncate max-w-[120px]">
                   {log.entity}
                   {log.entityId && ` #${log.entityId}`}
                 </td>
+
                 <td className="py-2.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={() => onView(log)}

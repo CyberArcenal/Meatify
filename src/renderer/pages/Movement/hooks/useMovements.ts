@@ -1,5 +1,5 @@
 // src/renderer/pages/inventory/movements/hooks/useMovements.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { InventoryMovement, MovementStatistics } from "../../../api/core/inventoryMovement";
 import inventoryMovementAPI from "../../../api/core/inventoryMovement";
 
@@ -157,6 +157,34 @@ export const useMovements = (initialFilters?: Partial<MovementFilters>) => {
     }
   }, []);
 
+  // ─── Sort Handler ──────────────────────────────────────────────────
+  const handleSort = useCallback((key: string) => {
+    // Map display keys to API sort keys
+    const keyMap: Record<string, string> = {
+      id: "id",
+      date: "timestamp",
+      meat: "meatId",
+      batch: "batchId",
+      qtyChange: "qtyChange",
+      type: "movementType",
+      sale: "saleId",
+    };
+
+    const mappedKey = keyMap[key] || key;
+
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: mappedKey,
+      sortOrder: prev.sortBy === mappedKey && prev.sortOrder === "ASC" ? "DESC" : "ASC",
+    }));
+    setPage(1);
+  }, []);
+
+  const sortConfig = useMemo(() => ({
+    key: filters.sortBy || "timestamp",
+    direction: (filters.sortOrder || "DESC").toLowerCase() as "asc" | "desc",
+  }), [filters.sortBy, filters.sortOrder]);
+
   // Auto-fetch when filters change
   useEffect(() => {
     fetchMovements({ page: 1, limit });
@@ -218,5 +246,7 @@ export const useMovements = (initialFilters?: Partial<MovementFilters>) => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort,
+    sortConfig,
   };
 };

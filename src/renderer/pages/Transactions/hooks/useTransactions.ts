@@ -1,5 +1,5 @@
 // src/renderer/pages/sales/transactions/hooks/useTransactions.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import saleAPI, { type Sale } from "../../../api/core/sale";
 import { dialogs } from "../../../utils/dialogs";
 
@@ -12,6 +12,8 @@ export interface TransactionFilters {
   search: string;
   paymentMethod: PaymentMethod | "";
   status: SaleStatus | "";
+  sortBy?: string;
+  sortOrder?: "ASC" | "DESC";
 }
 
 export interface TransactionSummary {
@@ -42,6 +44,8 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
     search: "",
     paymentMethod: "",
     status: "",
+    sortBy: "timestamp",
+    sortOrder: "DESC",
     ...initialFilters,
   });
 
@@ -49,13 +53,11 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
   const fetchSummary = useCallback(async () => {
     setSummaryLoading(true);
     try {
-      // ✅ Use getStatistics for today's summary
       const statsResponse = await saleAPI.getStatistics();
 
       if (statsResponse.status) {
         const stats = statsResponse.data;
         
-        // Get refunds count for today
         const today = new Date().toISOString().split("T")[0];
         const refundsResponse = await saleAPI.getAll({
           startDate: today,
@@ -99,8 +101,8 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
           search: filters.search || undefined,
           paymentMethod: filters.paymentMethod || undefined,
           status: filters.status || undefined,
-          sortBy: "timestamp",
-          sortOrder: "DESC",
+          sortBy: filters.sortBy || "timestamp",
+          sortOrder: filters.sortOrder || "DESC",
         });
 
         console.log("getAllSales response:", response);
@@ -126,7 +128,34 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
     [filters, page, limit]
   );
 
-  // ─── Reload (refresh both transactions and summary) ──────────────
+  // ─── Sort Handler ──────────────────────────────────────────────────
+  const handleSort = useCallback((key: string) => {
+    // Map display keys to API sort keys
+    const keyMap: Record<string, string> = {
+      id: "id",
+      date: "timestamp",
+      customer: "customerId",
+      payment: "paymentMethod",
+      status: "status",
+      total: "totalAmount",
+    };
+
+    const mappedKey = keyMap[key] || key;
+
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: mappedKey,
+      sortOrder: prev.sortBy === mappedKey && prev.sortOrder === "ASC" ? "DESC" : "ASC",
+    }));
+    setPage(1);
+  }, []);
+
+  const sortConfig = useMemo(() => ({
+    key: filters.sortBy || "timestamp",
+    direction: (filters.sortOrder || "DESC").toLowerCase() as "asc" | "desc",
+  }), [filters.sortBy, filters.sortOrder]);
+
+  // ─── Reload ──────────────────────────────────────────────────────
   const reload = useCallback(
     (options?: { page?: number; limit?: number }) => {
       fetchTransactions(options);
@@ -162,6 +191,8 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
       search: "",
       paymentMethod: "",
       status: "",
+      sortBy: "timestamp",
+      sortOrder: "DESC",
     });
     setPage(1);
   }, []);
@@ -181,5 +212,7 @@ export const useTransactions = (initialFilters?: Partial<TransactionFilters>) =>
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort,
+    sortConfig,
   };
 };

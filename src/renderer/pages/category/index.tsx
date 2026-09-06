@@ -42,6 +42,8 @@ const CategoryPage: React.FC = () => {
     goToPage,
     changeLimit,
     resetFilters,
+    handleSort, // ✅ Add
+    sortConfig, // ✅ Add
   } = useCategories({
     search: "",
     status: "all",
@@ -64,14 +66,14 @@ const CategoryPage: React.FC = () => {
     (newPage: number) => {
       goToPage(newPage);
     },
-    [goToPage]
+    [goToPage],
   );
 
   const handlePageSizeChange = useCallback(
     (newSize: number) => {
       changeLimit(newSize);
     },
-    [changeLimit]
+    [changeLimit],
   );
 
   const handlersRef = useRef({
@@ -126,7 +128,7 @@ const CategoryPage: React.FC = () => {
     <K extends keyof CategoryFilters>(key: K, value: CategoryFilters[K]) => {
       setFilters((prev) => ({ ...prev, [key]: value }));
     },
-    [setFilters]
+    [setFilters],
   );
 
   // ─── CRUD Handlers ──────────────────────────────────────────────
@@ -165,7 +167,9 @@ const CategoryPage: React.FC = () => {
       } else {
         await categoryAPI.deactivate(category.id);
       }
-      dialogs.success(`${category.name} ${newStatus ? "activated" : "deactivated"} successfully.`);
+      dialogs.success(
+        `${category.name} ${newStatus ? "activated" : "deactivated"} successfully.`,
+      );
       reload({ page, limit });
     } catch (err: any) {
       dialogs.error(err.message || `Failed to ${action} category.`);
@@ -185,7 +189,9 @@ const CategoryPage: React.FC = () => {
 
     try {
       await Promise.all(selectedIds.map((id) => categoryAPI.delete(id)));
-      dialogs.success(`${selectedIds.length} categor${selectedIds.length !== 1 ? "ies" : "y"} deactivated.`);
+      dialogs.success(
+        `${selectedIds.length} categor${selectedIds.length !== 1 ? "ies" : "y"} deactivated.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -205,7 +211,9 @@ const CategoryPage: React.FC = () => {
 
     try {
       await Promise.all(selectedIds.map((id) => categoryAPI.activate(id)));
-      dialogs.success(`${selectedIds.length} categor${selectedIds.length !== 1 ? "ies" : "y"} activated.`);
+      dialogs.success(
+        `${selectedIds.length} categor${selectedIds.length !== 1 ? "ies" : "y"} activated.`,
+      );
       setSelectedIds([]);
       reload({ page, limit });
     } catch (err: any) {
@@ -214,7 +222,9 @@ const CategoryPage: React.FC = () => {
   };
 
   const handleBulkExport = () => {
-    const selectedCategories = categories.filter((c) => selectedIds.includes(c.id));
+    const selectedCategories = categories.filter((c) =>
+      selectedIds.includes(c.id),
+    );
     if (selectedCategories.length === 0) {
       dialogs.warning("No items selected for export.");
       return;
@@ -248,15 +258,20 @@ const CategoryPage: React.FC = () => {
         format: "csv",
         filters: {
           search: filters.search || undefined,
-          isActive: filters.status === "all" ? undefined : filters.status === "active",
+          isActive:
+            filters.status === "all" ? undefined : filters.status === "active",
         },
       });
       if (response.status && response.data) {
-        const blob = new Blob([response.data.data as string], { type: "text/csv" });
+        const blob = new Blob([response.data.data as string], {
+          type: "text/csv",
+        });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = response.data.filename || `categories_export_${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download =
+          response.data.filename ||
+          `categories_export_${new Date().toISOString().slice(0, 10)}.csv`;
         a.click();
         URL.revokeObjectURL(url);
         dialogs.success("Export completed.");
@@ -289,9 +304,15 @@ const CategoryPage: React.FC = () => {
             title={showStats ? "Hide summary" : "Show summary"}
           >
             {showStats ? (
-              <EyeOff style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <EyeOff
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             ) : (
-              <Eye style={{ color: "var(--text-primary)" }} className="w-4 h-4" />
+              <Eye
+                style={{ color: "var(--text-primary)" }}
+                className="w-4 h-4"
+              />
             )}
           </button>
           <button
@@ -310,7 +331,8 @@ const CategoryPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Export all (current filters)"
           >
-            <Download style={{ color: "var(--text-primary)" }}
+            <Download
+              style={{ color: "var(--text-primary)" }}
               className={`w-4 h-4 ${exporting ? "animate-pulse" : ""}`}
             />
           </button>
@@ -322,7 +344,10 @@ const CategoryPage: React.FC = () => {
             className="p-2 rounded-lg hover:bg-[var(--card-hover-bg)] transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw style={{ color: "var(--text-primary)" }} className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+            <RefreshCw
+              style={{ color: "var(--text-primary)" }}
+              className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+            />
           </button>
           <button
             onClick={formDialog.openAdd}
@@ -335,9 +360,7 @@ const CategoryPage: React.FC = () => {
       </div>
 
       {/* Summary Cards */}
-      {showStats && stats && (
-        <SummaryCards stats={stats} loading={loading} />
-      )}
+      {showStats && stats && <SummaryCards stats={stats} loading={loading} />}
 
       {/* Filters Bar */}
       {showFilters && (
@@ -369,7 +392,9 @@ const CategoryPage: React.FC = () => {
       ) : error ? (
         <div className="text-center py-12 border border-[var(--border-color)] rounded-xl bg-[var(--card-bg)]">
           <AlertCircle className="w-12 h-12 mx-auto mb-3 text-[var(--danger-color)]" />
-          <p className="text-[var(--text-primary)] font-medium">Error loading categories</p>
+          <p className="text-[var(--text-primary)] font-medium">
+            Error loading categories
+          </p>
           <p className="text-sm text-[var(--text-tertiary)] mt-1">{error}</p>
           <button
             onClick={() => reload({ page: 1, limit })}
@@ -389,12 +414,14 @@ const CategoryPage: React.FC = () => {
           selectedIds={selectedIds}
           onSelectRow={(id, checked) => {
             setSelectedIds((prev) =>
-              checked ? [...prev, id] : prev.filter((i) => i !== id)
+              checked ? [...prev, id] : prev.filter((i) => i !== id),
             );
           }}
           onSelectAll={(checked) => {
             setSelectedIds(checked ? categories.map((c) => c.id) : []);
           }}
+          onSort={handleSort}
+          sortConfig={sortConfig}
         />
       )}
 

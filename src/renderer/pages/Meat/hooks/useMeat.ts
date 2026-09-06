@@ -65,7 +65,6 @@ export const useMeat = (initialFilters?: Partial<MeatFilters>) => {
           const data = response.data;
           setMeats(data.items || []);
           setTotalItems(data.total || 0);
-          // Update page and limit only if they were provided or if they changed
           if (options?.page !== undefined) setPage(p);
           if (options?.limit !== undefined) setLimit(l);
         } else {
@@ -122,10 +121,20 @@ export const useMeat = (initialFilters?: Partial<MeatFilters>) => {
     }
   }, []);
 
+  // ─── Sort Handler ──────────────────────────────────────────────────
+  const handleSort = useCallback((key: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      sortBy: key,
+      sortOrder: prev.sortBy === key && prev.sortOrder === "ASC" ? "DESC" : "ASC",
+    }));
+    setPage(1); // Reset to first page when sorting changes
+  }, []);
+
   // Automatically fetch when filters or page/limit change
   useEffect(() => {
     fetchMeats({ page, limit });
-  }, [filters, page, limit, fetchMeats]); // fetchMeats depends on filters, page, limit
+  }, [filters, page, limit, fetchMeats]);
 
   // Initial load of categories and suppliers
   useEffect(() => {
@@ -140,7 +149,6 @@ export const useMeat = (initialFilters?: Partial<MeatFilters>) => {
     [fetchMeats]
   );
 
-  // Setters that also trigger refetch
   const goToPage = useCallback((newPage: number) => {
     if (newPage >= 1) {
       setPage(newPage);
@@ -149,7 +157,7 @@ export const useMeat = (initialFilters?: Partial<MeatFilters>) => {
 
   const changeLimit = useCallback((newLimit: number) => {
     setLimit(newLimit);
-    setPage(1); // reset to first page when limit changes
+    setPage(1);
   }, []);
 
   return {
@@ -168,5 +176,7 @@ export const useMeat = (initialFilters?: Partial<MeatFilters>) => {
     fetchStats,
     goToPage,
     changeLimit,
+    handleSort, // ✅ Expose sort handler
+    sortConfig: { key: filters.sortBy || "name", direction: (filters.sortOrder || "ASC").toLowerCase() as "asc" | "desc" },
   };
 };
