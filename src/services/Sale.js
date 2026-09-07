@@ -507,6 +507,7 @@ class SaleService {
         const unitPrice = itemData.unitPrice ?? meat.pricePerKg;
         const discount = itemData.discount ?? 0;
         const itemSubtotal = unitPrice * itemData.weightKg;
+        const discountAmount = itemSubtotal * (discount / 100);
         const tax = itemData.tax ?? 0;
 
         preDiscountSubtotal += itemSubtotal;
@@ -525,14 +526,11 @@ class SaleService {
           }
         }
 
-        subtotal += unitPrice * itemData.weightKg;
-        totalDiscount += discount;
+        subtotal += itemSubtotal;
         totalTax += tax;
 
         const discountPercent = itemData.discount ?? 0;
-
-        const discountAmount = (itemSubtotal * discountPercent) / 100; // ✅ Convert to amount
-
+        totalDiscount += discountAmount;
         const taxPercent = itemData.tax ?? 0;
         const taxableAmount = itemSubtotal - discountAmount;
         const taxAmount = (taxableAmount * taxPercent) / 100; // ✅ Percentage
@@ -783,10 +781,12 @@ class SaleService {
               );
             }
           }
+          const itemSubtotal = unitPrice * itemData.weightKg;
+          const discountAmount = itemSubtotal * (discount / 100);
+          const lineTotal = itemSubtotal - discountAmount + tax;
 
-          const lineTotal = unitPrice * itemData.weightKg - discount + tax;
-          subtotal += unitPrice * itemData.weightKg;
-          totalDiscount += discount;
+          subtotal += itemSubtotal;
+          totalDiscount += discountAmount; // ✅ Peso amount
           totalTax += tax;
 
           newItems.push({

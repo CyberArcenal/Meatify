@@ -125,6 +125,7 @@ class SaleStateService {
     // Create new items with batch assignments
     const newSaleItems = [];
     const globalDiscount = sale.globalDiscount || 0;
+    let recalculatedDiscount = 0; 
     for (const deductionGroup of deductions) {
       const originalItem = deductionGroup.saleItem;
       for (const d of deductionGroup.deductions) {
@@ -139,6 +140,7 @@ class SaleStateService {
         const taxable = subtotal - discountAmount;
         const taxAmount = taxable * (taxPercent / 100);
         let lineTotal = taxable + taxAmount;
+        recalculatedDiscount += discountAmount;
 
         // ✅ Apply global discount (if any) – adjust accordingly
         // Usually global discount is applied to the subtotal, but we can apply proportionally:
@@ -150,8 +152,8 @@ class SaleStateService {
         const newItem = saleItemRepo.create({
           weightKg: weight,
           unitPrice: unitPrice,
-          discount: discountPercent, // ✅ Store as percentage
-          tax: taxPercent, // ✅ Store as percentage
+          discount: discountPercent,
+          tax: taxPercent,
           lineTotal: lineTotal,
           sale: sale,
           meat: originalItem.meat,
@@ -159,6 +161,7 @@ class SaleStateService {
           createdAt: new Date(),
           updatedAt: new Date(),
         });
+
         const saved = await saveDb(saleItemRepo, newItem, { queryRunner });
         newSaleItems.push(saved);
       }
@@ -174,6 +177,7 @@ class SaleStateService {
     }
     sale.totalAmount = Math.round(newTotal * 100) / 100;
     sale.saleItems = newSaleItems;
+    sale.totalDiscount = recalculatedDiscount; 
 
     // --- STEP 4: Loyalty Points (Earn) ---
     const loyaltyEnabled = await system.loyaltyPointsEnabled();

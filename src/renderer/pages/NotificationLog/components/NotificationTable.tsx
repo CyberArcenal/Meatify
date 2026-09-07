@@ -1,6 +1,6 @@
 // src/renderer/pages/system/notification-logs/components/NotificationTable.tsx
 import React from "react";
-import { Mail, CheckCircle, XCircle, Clock, RotateCw, ChevronUp, ChevronDown } from "lucide-react";
+import { Mail, CheckCircle, XCircle, Clock, RotateCw, ChevronUp, ChevronDown, Smartphone } from "lucide-react";
 import { formatDate } from "../../../utils/formatters";
 import type { NotificationLog } from "../../../api/core/notificationLog";
 import NotificationActionsDropdown from "./NotificationActionsDropdown";
@@ -96,6 +96,41 @@ const getStatusIcon = (status: string) => {
   }
 };
 
+// ─── Channel Helper ──────────────────────────────────────────────────
+const getChannelIcon = (channel: string) => {
+  switch (channel) {
+    case "email":
+      return <Mail className="w-3.5 h-3.5" />;
+    case "sms":
+      return <Smartphone className="w-3.5 h-3.5" />;
+    default:
+      return <Mail className="w-3.5 h-3.5" />;
+  }
+};
+
+const getChannelLabel = (channel: string) => {
+  switch (channel) {
+    case "email":
+      return "Email";
+    case "sms":
+      return "SMS";
+    default:
+      return channel || "Email";
+  }
+};
+
+const getChannelBadge = (channel: string) => {
+  const baseClasses = "px-2 py-0.5 text-xs font-medium rounded-full inline-flex items-center gap-1";
+  switch (channel) {
+    case "email":
+      return `${baseClasses} bg-[var(--accent-blue-light)] text-[var(--accent-blue)] border border-[var(--accent-blue)]/20`;
+    case "sms":
+      return `${baseClasses} bg-[var(--accent-green-light)] text-[var(--accent-green)] border border-[var(--accent-green)]/20`;
+    default:
+      return `${baseClasses} bg-[var(--card-secondary-bg)] text-[var(--text-tertiary)] border border-[var(--border-color)]/20`;
+  }
+};
+
 // ─── Main Table Props ────────────────────────────────────────────────
 interface NotificationTableProps {
   logs: NotificationLog[];
@@ -174,6 +209,13 @@ export const NotificationTable: React.FC<NotificationTableProps> = ({
               />
 
               <SortableHeader
+                label="Channel"
+                sortKey="channel"
+                currentSort={sortConfig}
+                onSort={onSort}
+              />
+
+              <SortableHeader
                 label="Subject"
                 sortKey="subject"
                 currentSort={sortConfig}
@@ -236,6 +278,12 @@ export const NotificationTable: React.FC<NotificationTableProps> = ({
                   </td>
                   <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)]">
                     {log.recipient_email}
+                  </td>
+                  <td className="py-2.5 px-3 text-sm">
+                    <span className={getChannelBadge(log.channel || "email")}>
+                      {getChannelIcon(log.channel || "email")}
+                      {getChannelLabel(log.channel || "email")}
+                    </span>
                   </td>
                   <td className="py-2.5 px-3 text-sm text-[var(--text-secondary)] truncate max-w-[150px]">
                     {log.subject || "—"}

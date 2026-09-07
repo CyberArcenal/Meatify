@@ -142,6 +142,7 @@ class NotificationLogAPI {
   async getAll(params?: {
     page?: number;
     limit?: number;
+    channel?: string;
     status?: string;
     startDate?: string;
     endDate?: string;

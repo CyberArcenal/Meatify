@@ -19,6 +19,13 @@ const STATUS_OPTIONS = [
   { value: "resend", label: "Resend" },
 ];
 
+// ✅ NEW: Channel filter options
+const CHANNEL_OPTIONS = [
+  { value: "", label: "All Channels" },
+  { value: "email", label: "📧 Email" },
+  { value: "sms", label: "📱 SMS" },
+];
+
 const SORT_OPTIONS = [
   { value: "created_at", label: "Created Date" },
   { value: "sent_at", label: "Sent Date" },
@@ -59,7 +66,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
         {/* Search */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-[var(--text-tertiary)]" />
@@ -71,6 +78,19 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             className="w-full bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg pl-9 pr-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
           />
         </div>
+
+        {/* ✅ NEW: Channel Filter */}
+        <select
+          value={filters.channel || ""}
+          onChange={(e) => onFilterChange("channel", e.target.value || undefined)}
+          className="bg-[var(--input-bg)] border border-[var(--input-border)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-gold)] focus:border-transparent"
+        >
+          {CHANNEL_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
 
         {/* Status */}
         <select

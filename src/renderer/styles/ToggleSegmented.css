@@ -1,0 +1,30 @@
+/* src/renderer/components/UI/ToggleSegmented.css */
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-20%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(20%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toggle-segmented .label-active {
+  animation: slideInLeft 0.25s ease-out;
+}
+
+.toggle-segmented .label-inactive {
+  animation: slideInRight 0.25s ease-out;
+}
