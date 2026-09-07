@@ -12,7 +12,7 @@ export interface Batch {
   unitCost: number;
   expiryDate: string;
   receivedDate: string;
-  status: 'active' | 'depleted' | 'expired' | 'on_hold';
+  status: "active" | "depleted" | "expired" | "on_hold";
   note: string | null;
   meatId: number;
   supplierId: number | null;
@@ -159,72 +159,78 @@ class BatchAPI {
     search?: string;
     includeInactive?: boolean;
     sortBy?: string;
-    sortOrder?: 'ASC' | 'DESC';
+    sortOrder?: "ASC" | "DESC";
   }): Promise<BatchesResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'getAllBatches',
+        method: "getAllBatches",
         params: params || {},
       });
 
-      console.log(response)
+      console.log(response);
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch batches');
+      throw new Error(response.message || "Failed to fetch batches");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch batches');
+      throw new Error(error.message || "Failed to fetch batches");
     }
   }
 
   /**
    * Get a single batch by ID
    */
-  async getById(id: number, includeDeleted: boolean = false): Promise<BatchResponse> {
+  async getById(
+    id: number,
+    includeDeleted: boolean = false,
+  ): Promise<BatchResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'getBatchById',
+        method: "getBatchById",
         params: { id, includeDeleted },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch batch');
+      throw new Error(response.message || "Failed to fetch batch");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch batch');
+      throw new Error(error.message || "Failed to fetch batch");
     }
   }
 
   /**
    * Get all batches for a specific meat
    */
-  async getByMeat(meatId: number, includeInactive: boolean = false): Promise<BatchesResponse> {
+  async getByMeat(
+    meatId: number,
+    includeInactive: boolean = false,
+  ): Promise<BatchesResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'getBatchesByMeat',
+        method: "getBatchesByMeat",
         params: { meatId, includeInactive },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch batches by meat');
+      throw new Error(response.message || "Failed to fetch batches by meat");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch batches by meat');
+      throw new Error(error.message || "Failed to fetch batches by meat");
     }
   }
 
@@ -234,43 +240,45 @@ class BatchAPI {
   async getActiveBatches(meatId: number): Promise<BatchesResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'getActiveBatches',
+        method: "getActiveBatches",
         params: { meatId },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch active batches');
+      throw new Error(response.message || "Failed to fetch active batches");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch active batches');
+      throw new Error(error.message || "Failed to fetch active batches");
     }
   }
 
   /**
    * Get batches expiring within a certain number of days
    */
-  async getExpiringBatches(daysThreshold: number = 7): Promise<BatchesResponse> {
+  async getExpiringBatches(
+    daysThreshold: number = 7,
+  ): Promise<BatchesResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'getExpiringBatches',
+        method: "getExpiringBatches",
         params: { daysThreshold },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch expiring batches');
+      throw new Error(response.message || "Failed to fetch expiring batches");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch expiring batches');
+      throw new Error(error.message || "Failed to fetch expiring batches");
     }
   }
 
@@ -280,20 +288,20 @@ class BatchAPI {
   async getStatistics(): Promise<BatchStatisticsResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'getBatchStatistics',
+        method: "getBatchStatistics",
         params: {},
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to fetch batch statistics');
+      throw new Error(response.message || "Failed to fetch batch statistics");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to fetch batch statistics');
+      throw new Error(error.message || "Failed to fetch batch statistics");
     }
   }
 
@@ -314,20 +322,20 @@ class BatchAPI {
   }): Promise<BatchesResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'searchBatches',
+        method: "searchBatches",
         params,
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to search batches');
+      throw new Error(response.message || "Failed to search batches");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to search batches');
+      throw new Error(error.message || "Failed to search batches");
     }
   }
 
@@ -349,20 +357,20 @@ class BatchAPI {
   }): Promise<BatchResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'createBatch',
-        params: { ...data, user: 'system' },
+        method: "createBatch",
+        params: { ...data, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to create batch');
+      throw new Error(response.message || "Failed to create batch");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to create batch');
+      throw new Error(error.message || "Failed to create batch");
     }
   }
 
@@ -376,24 +384,50 @@ class BatchAPI {
       note: string;
       expiryDate: string;
       unitCost: number;
-    }>
+    }>,
   ): Promise<BatchResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'updateBatch',
-        params: { id, ...data, user: 'system' },
+        method: "updateBatch",
+        params: { id, ...data, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to update batch');
+      throw new Error(response.message || "Failed to update batch");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to update batch');
+      throw new Error(error.message || "Failed to update batch");
+    }
+  }
+
+  /**
+   * Update batch status
+   */
+  async updateStatus(
+    id: number,
+    status: "active" | "depleted" | "expired" | "on_hold",
+  ): Promise<BatchResponse> {
+    try {
+      if (!window.backendAPI?.batch) {
+        throw new Error("Electron API (batch) not available");
+      }
+
+      const response = await window.backendAPI.batch({
+        method: "updateBatchStatus",
+        params: { id, status, user: "system" },
+      });
+
+      if (response.status) {
+        return response;
+      }
+      throw new Error(response.message || "Failed to update batch status");
+    } catch (error: any) {
+      throw new Error(error.message || "Failed to update batch status");
     }
   }
 
@@ -403,20 +437,20 @@ class BatchAPI {
   async delete(id: number): Promise<{ status: boolean; message: string }> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'deleteBatch',
-        params: { id, user: 'system' },
+        method: "deleteBatch",
+        params: { id, user: "system" },
       });
 
       return {
         status: response.status,
-        message: response.message || 'Batch deleted successfully',
+        message: response.message || "Batch deleted successfully",
       };
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to delete batch');
+      throw new Error(error.message || "Failed to delete batch");
     }
   }
 
@@ -426,43 +460,45 @@ class BatchAPI {
   async restore(id: number): Promise<BatchResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'restoreBatch',
-        params: { id, user: 'system' },
+        method: "restoreBatch",
+        params: { id, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to restore batch');
+      throw new Error(response.message || "Failed to restore batch");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to restore batch');
+      throw new Error(error.message || "Failed to restore batch");
     }
   }
 
   /**
    * Permanently delete a batch
    */
-  async permanentlyDelete(id: number): Promise<{ status: boolean; message: string }> {
+  async permanentlyDelete(
+    id: number,
+  ): Promise<{ status: boolean; message: string }> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'permanentlyDeleteBatch',
-        params: { id, user: 'system' },
+        method: "permanentlyDeleteBatch",
+        params: { id, user: "system" },
       });
 
       return {
         status: response.status,
-        message: response.message || 'Batch permanently deleted',
+        message: response.message || "Batch permanently deleted",
       };
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to permanently delete batch');
+      throw new Error(error.message || "Failed to permanently delete batch");
     }
   }
 
@@ -476,25 +512,25 @@ class BatchAPI {
   async deductFromBatch(
     batchId: number,
     weightKg: number,
-    reason: string = 'sale',
-    metadata: any = {}
+    reason: string = "sale",
+    metadata: any = {},
   ): Promise<BatchDeductionResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'deductFromBatch',
-        params: { batchId, weightKg, reason, metadata, user: 'system' },
+        method: "deductFromBatch",
+        params: { batchId, weightKg, reason, metadata, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to deduct from batch');
+      throw new Error(response.message || "Failed to deduct from batch");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to deduct from batch');
+      throw new Error(error.message || "Failed to deduct from batch");
     }
   }
 
@@ -504,25 +540,25 @@ class BatchAPI {
   async fifoDeduct(
     meatId: number,
     totalWeight: number,
-    reason: string = 'sale',
-    metadata: any = {}
+    reason: string = "sale",
+    metadata: any = {},
   ): Promise<BatchFifoResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'fifoDeduct',
-        params: { meatId, totalWeight, reason, metadata, user: 'system' },
+        method: "fifoDeduct",
+        params: { meatId, totalWeight, reason, metadata, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to perform FIFO deduction');
+      throw new Error(response.message || "Failed to perform FIFO deduction");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to perform FIFO deduction');
+      throw new Error(error.message || "Failed to perform FIFO deduction");
     }
   }
 
@@ -532,20 +568,20 @@ class BatchAPI {
   async markExpired(batchId: number): Promise<BatchResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'markBatchExpired',
-        params: { batchId, user: 'system' },
+        method: "markBatchExpired",
+        params: { batchId, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to mark batch as expired');
+      throw new Error(response.message || "Failed to mark batch as expired");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to mark batch as expired');
+      throw new Error(error.message || "Failed to mark batch as expired");
     }
   }
 
@@ -559,43 +595,45 @@ class BatchAPI {
   async bulkCreate(batchesArray: any[]): Promise<BulkCreateResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'bulkCreateBatches',
-        params: { batchesArray, user: 'system' },
+        method: "bulkCreateBatches",
+        params: { batchesArray, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to bulk create batches');
+      throw new Error(response.message || "Failed to bulk create batches");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to bulk create batches');
+      throw new Error(error.message || "Failed to bulk create batches");
     }
   }
 
   /**
    * Bulk update batches
    */
-  async bulkUpdate(updatesArray: Array<{ id: number; updates: any }>): Promise<BulkUpdateResponse> {
+  async bulkUpdate(
+    updatesArray: Array<{ id: number; updates: any }>,
+  ): Promise<BulkUpdateResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'bulkUpdateBatches',
-        params: { updatesArray, user: 'system' },
+        method: "bulkUpdateBatches",
+        params: { updatesArray, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to bulk update batches');
+      throw new Error(response.message || "Failed to bulk update batches");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to bulk update batches');
+      throw new Error(error.message || "Failed to bulk update batches");
     }
   }
 
@@ -605,20 +643,20 @@ class BatchAPI {
   async importCSV(filePath: string): Promise<ImportResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'importBatchesCSV',
-        params: { filePath, user: 'system' },
+        method: "importBatchesCSV",
+        params: { filePath, user: "system" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to import batches');
+      throw new Error(response.message || "Failed to import batches");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to import batches');
+      throw new Error(error.message || "Failed to import batches");
     }
   }
 
@@ -626,25 +664,25 @@ class BatchAPI {
    * Export batches to CSV or JSON
    */
   async export(params?: {
-    format?: 'csv' | 'json';
+    format?: "csv" | "json";
     filters?: any;
   }): Promise<BatchExportResponse> {
     try {
       if (!window.backendAPI?.batch) {
-        throw new Error('Electron API (batch) not available');
+        throw new Error("Electron API (batch) not available");
       }
 
       const response = await window.backendAPI.batch({
-        method: 'exportBatches',
-        params: params || { format: 'json' },
+        method: "exportBatches",
+        params: params || { format: "json" },
       });
 
       if (response.status) {
         return response;
       }
-      throw new Error(response.message || 'Failed to export batches');
+      throw new Error(response.message || "Failed to export batches");
     } catch (error: any) {
-      throw new Error(error.message || 'Failed to export batches');
+      throw new Error(error.message || "Failed to export batches");
     }
   }
 
@@ -656,7 +694,7 @@ class BatchAPI {
    * Check if the backend API is available
    */
   async isAvailable(): Promise<boolean> {
-    return !!(window.backendAPI?.batch);
+    return !!window.backendAPI?.batch;
   }
 
   /**
@@ -665,9 +703,12 @@ class BatchAPI {
   async getTotalRemaining(meatId: number): Promise<number> {
     try {
       const response = await this.getActiveBatches(meatId);
-      return response.data.items.reduce((sum, b) => sum + b.remainingQuantity, 0);
+      return response.data.items.reduce(
+        (sum, b) => sum + b.remainingQuantity,
+        0,
+      );
     } catch (error) {
-      console.error('Error fetching total remaining:', error);
+      console.error("Error fetching total remaining:", error);
       return 0;
     }
   }
@@ -680,7 +721,7 @@ class BatchAPI {
       const response = await this.getActiveBatches(meatId);
       return response.data.items.length > 0;
     } catch (error) {
-      console.error('Error checking active batches:', error);
+      console.error("Error checking active batches:", error);
       return false;
     }
   }

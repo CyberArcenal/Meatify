@@ -47,10 +47,10 @@ export const BatchFormDialog: React.FC<BatchFormDialogProps> = ({
     e.preventDefault();
     setError(null);
 
-    if (!form.meatId || form.meatId === 0) {
-      setError("Please select a meat.");
-      return;
-    }
+  if (!batch && (!form.meatId || form.meatId === 0)) {
+    setError("Please select a meat.");
+    return;
+  }
     if (form.quantity <= 0) {
       setError("Quantity must be greater than 0.");
       return;

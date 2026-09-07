@@ -23,6 +23,7 @@ class BatchHandler {
     // ✏️ WRITE OPERATION HANDLERS
     this.createBatch = this.importHandler("./create.ipc");
     this.updateBatch = this.importHandler("./update.ipc");
+    this.updateBatchStatus = this.importHandler("./update_status.ipc");
     this.deleteBatch = this.importHandler("./delete.ipc");
     this.restoreBatch = this.importHandler("./restore.ipc");
     this.permanentlyDeleteBatch = this.importHandler("./permanent_delete.ipc");
@@ -44,7 +45,10 @@ class BatchHandler {
       const fullPath = require.resolve(`./${path}`, { paths: [__dirname] });
       return require(fullPath);
     } catch (error) {
-      console.warn(`[BatchHandler] Failed to load handler: ${path}`, error.message);
+      console.warn(
+        `[BatchHandler] Failed to load handler: ${path}`,
+        error.message,
+      );
       return async () => ({
         status: false,
         message: `Handler not implemented: ${path}`,
@@ -84,12 +88,20 @@ class BatchHandler {
           return await this.handleWithTransaction(this.createBatch, params);
         case "updateBatch":
           return await this.handleWithTransaction(this.updateBatch, params);
+        case "updateBatchStatus":
+          return await this.handleWithTransaction(
+            this.updateBatchStatus,
+            params,
+          );
         case "deleteBatch":
           return await this.handleWithTransaction(this.deleteBatch, params);
         case "restoreBatch":
           return await this.handleWithTransaction(this.restoreBatch, params);
         case "permanentlyDeleteBatch":
-          return await this.handleWithTransaction(this.permanentlyDeleteBatch, params);
+          return await this.handleWithTransaction(
+            this.permanentlyDeleteBatch,
+            params,
+          );
 
         // 🔄 STATE TRANSITIONS (with transaction)
         case "deductFromBatch":
@@ -97,15 +109,27 @@ class BatchHandler {
         case "fifoDeduct":
           return await this.handleWithTransaction(this.fifoDeduct, params);
         case "markBatchExpired":
-          return await this.handleWithTransaction(this.markBatchExpired, params);
+          return await this.handleWithTransaction(
+            this.markBatchExpired,
+            params,
+          );
 
         // 🔄 BATCH OPERATIONS (with transaction)
         case "bulkCreateBatches":
-          return await this.handleWithTransaction(this.bulkCreateBatches, params);
+          return await this.handleWithTransaction(
+            this.bulkCreateBatches,
+            params,
+          );
         case "bulkUpdateBatches":
-          return await this.handleWithTransaction(this.bulkUpdateBatches, params);
+          return await this.handleWithTransaction(
+            this.bulkUpdateBatches,
+            params,
+          );
         case "importBatchesCSV":
-          return await this.handleWithTransaction(this.importBatchesCSV, params);
+          return await this.handleWithTransaction(
+            this.importBatchesCSV,
+            params,
+          );
 
         // 📄 EXPORT (read-only)
         case "exportBatches":
@@ -158,10 +182,7 @@ const batchHandler = new BatchHandler();
 
 ipcMain.handle(
   "batch",
-  withErrorHandling(
-    batchHandler.handleRequest.bind(batchHandler),
-    "IPC:batch"
-  )
+  withErrorHandling(batchHandler.handleRequest.bind(batchHandler), "IPC:batch"),
 );
 
 module.exports = { BatchHandler, batchHandler };

@@ -171,6 +171,8 @@ const BatchesPage: React.FC = () => {
     }
   };
 
+  // src/renderer/pages/inventory/batches/index.tsx
+
   const handleToggleStatus = async (batch: Batch) => {
     const newStatus = batch.status === "active" ? "on_hold" : "active";
     const action = newStatus === "active" ? "activate" : "put on hold";
@@ -183,7 +185,8 @@ const BatchesPage: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      await batchAPI.update(batch.id, { status: newStatus as any });
+      // ✅ Use dedicated updateStatus method
+      await batchAPI.updateStatus(batch.id, newStatus);
       dialogs.success(`Batch ${batch.batchCode} ${action}d successfully.`);
       reload({ page, limit });
     } catch (err: any) {
