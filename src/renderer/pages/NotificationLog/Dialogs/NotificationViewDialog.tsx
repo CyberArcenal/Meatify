@@ -1,6 +1,6 @@
 // src/renderer/pages/system/notification-logs/Dialogs/NotificationViewDialog.tsx
 import React from "react";
-import { Mail, AlertCircle, FileText, Calendar, User } from "lucide-react";
+import { Mail, AlertCircle, FileText, Calendar, User, Smartphone } from "lucide-react";
 import Modal from "../../../components/UI/Modal";
 import { formatDate } from "../../../utils/formatters";
 import type { NotificationLog } from "../../../api/core/notificationLog";
@@ -27,6 +27,30 @@ const getStatusBadge = (status: string) => {
   }
 };
 
+// ✅ NEW: Channel badge helper
+const getChannelBadge = (channel: string) => {
+  const baseClasses = "px-2.5 py-1 rounded-full text-xs font-medium inline-flex items-center gap-1.5";
+  switch (channel) {
+    case "email":
+      return `${baseClasses} bg-[var(--accent-blue-light)] text-[var(--accent-blue)]`;
+    case "sms":
+      return `${baseClasses} bg-[var(--accent-green-light)] text-[var(--accent-green)]`;
+    default:
+      return `${baseClasses} bg-[var(--card-secondary-bg)] text-[var(--text-tertiary)]`;
+  }
+};
+
+const getChannelIcon = (channel: string) => {
+  switch (channel) {
+    case "email":
+      return <Mail className="w-3.5 h-3.5" />;
+    case "sms":
+      return <Smartphone className="w-3.5 h-3.5" />;
+    default:
+      return <Mail className="w-3.5 h-3.5" />;
+  }
+};
+
 export const NotificationViewDialog: React.FC<NotificationViewDialogProps> = ({
   log,
   isOpen,
@@ -47,10 +71,15 @@ export const NotificationViewDialog: React.FC<NotificationViewDialogProps> = ({
       size="lg"
     >
       <div className="space-y-6">
-        {/* Status & ID */}
-        <div className="flex items-center justify-between">
+        {/* Status & Channel */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <span className={getStatusBadge(log.status)}>
             {log.status.toUpperCase()}
+          </span>
+          {/* ✅ NEW: Channel badge */}
+          <span className={getChannelBadge(log.channel || "email")}>
+            {getChannelIcon(log.channel || "email")}
+            {(log.channel || "email").toUpperCase()}
           </span>
           <span className="text-sm text-[var(--text-tertiary)]">ID: #{log.id}</span>
         </div>

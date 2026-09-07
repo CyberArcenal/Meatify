@@ -59,7 +59,7 @@ class NotificationHandler {
       const params = payload.params || {};
 
       if (logger) {
-        logger.info(`NotificationHandler: ${method}`, { params });
+        // logger.info(`NotificationHandler: ${method}`, { params });
       }
 
       switch (method) {

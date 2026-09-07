@@ -330,22 +330,47 @@ class PurchaseStateService {
     // ─── 1. Send email to supplier (if enabled and email exists) ───
     const emailEnabled = await system.emailEnabled();
     if (emailEnabled && supplier.email) {
+      const company = await system.companyName();
       const emailSubject = `${title} – ${purchase.referenceNo}`;
+
+      // Build item list with details
+      let itemsList = "";
+      if (purchase.purchaseItems && purchase.purchaseItems.length > 0) {
+        itemsList = purchase.purchaseItems
+          .map((item, index) => {
+            const meatName = item.meat?.name || "Unknown Item";
+            const expiryDate = item.expiryDate
+              ? new Date(item.expiryDate).toLocaleDateString()
+              : "N/A";
+            return `  ${index + 1}. ${meatName}\n     Quantity: ${item.quantity}kg @ ₱${item.unitPrice.toFixed(2)} = ₱${item.subtotal.toFixed(2)}\n     Expiry: ${expiryDate}`;
+          })
+          .join("\n");
+      } else {
+        itemsList = "  (No items listed)";
+      }
+
       const emailBody = `
 Dear ${supplier.name},
 
 ${message}
 
-Purchase Details:
-- Reference: ${purchase.referenceNo}
-- Date: ${new Date(purchase.orderDate).toLocaleDateString()}
-- Total Amount: ₱${purchase.totalAmount.toFixed(2)}
-- Items: ${purchase.purchaseItems?.length || 0} item(s)
+┌─────────────────────────────────────────
+│ PURCHASE DETAILS
+├─────────────────────────────────────────
+│ Reference:  ${purchase.referenceNo}
+│ Date:       ${new Date(purchase.orderDate).toLocaleDateString()}
+│ Status:     ${purchase.status.toUpperCase()}
+│ Total:      ₱${purchase.totalAmount.toFixed(2)}
+│ Items:      ${purchase.purchaseItems?.length || 0}
+└─────────────────────────────────────────
 
-Please check your dashboard for more details.
+ITEMS:
+${itemsList}
 
-Thank you,
-${await system.companyName()}
+Thank you for your business.
+
+Regards,
+${company}
       `;
 
       try {
@@ -378,13 +403,18 @@ ${await system.companyName()}
       );
     }
 
-    // ─── 2. (Optional) Keep in‑app notification for admin ───
+    // ─── 2. In‑app notification for the STORE OWNER/SELLER ───
     try {
+      const emailStatus =
+        emailEnabled && supplier.email
+          ? `✓ Email sent to ${supplier.email}`
+          : "✗ Email not sent";
+
       await notificationService.create(
         {
           userId: 1,
-          title,
-          message: `${message}\nSupplier: ${supplier.name} ${emailEnabled && supplier.email ? `(email sent to ${supplier.email})` : ""}`,
+          title: `Purchase ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+          message: `Purchase #${purchase.referenceNo} ${action}.\nSupplier: ${supplier.name}\nAmount: ₱${purchase.totalAmount.toFixed(2)}\n${emailStatus}`,
           type,
           metadata: {
             purchaseId: purchase.id,
@@ -396,6 +426,9 @@ ${await system.companyName()}
         },
         user,
         queryRunner,
+      );
+      logger.info(
+        `[PurchaseState] Admin notification sent for purchase #${purchase.id}: ${action}`,
       );
     } catch (err) {
       logger.error(

@@ -8,6 +8,7 @@ import type {
 
 export interface NotificationFilters {
   status?: string;
+  channel?: string;  // ✅ NEW: Add channel filter
   startDate?: string;
   endDate?: string;
   keyword?: string;
@@ -50,6 +51,7 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
             page: p,
             limit: l,
             status: filters.status,
+            channel: filters.channel, // ✅ NEW: Pass channel filter
             startDate: filters.startDate,
             endDate: filters.endDate,
             sortBy: filters.sortBy || "created_at",
@@ -90,10 +92,10 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
 
   // ─── Sort Handler ──────────────────────────────────────────────────
   const handleSort = useCallback((key: string) => {
-    // Map display keys to API sort keys
     const keyMap: Record<string, string> = {
       id: "id",
       recipient: "recipient_email",
+      channel: "channel", // ✅ NEW: Add channel sort mapping
       subject: "subject",
       status: "status",
       retries: "retry_count",
@@ -151,6 +153,7 @@ export const useNotificationLogs = (initialFilters?: Partial<NotificationFilters
   const resetFilters = useCallback(() => {
     setFilters({
       status: undefined,
+      channel: undefined, // ✅ NEW: Reset channel filter
       startDate: undefined,
       endDate: undefined,
       keyword: undefined,
