@@ -1,4 +1,5 @@
 // src/stateServices/notificationLog/modules/status/LogUpdatedModule.js
+//@ts-check
 const { logger } = require("../../../../utils/logger");
 const UIBroadcaster = require("../../../common/UIBroadcaster");
 
