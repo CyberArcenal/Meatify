@@ -28,11 +28,16 @@ export const useBatchForm = (batch: Batch | null) => {
   // Initialize form when batch changes (editing mode)
   useEffect(() => {
     if (batch) {
+      // ✅ Format expiryDate to YYYY-MM-DD for date input
+      const expiryDate = batch.expiryDate
+        ? new Date(batch.expiryDate).toISOString().split("T")[0]
+        : "";
+
       setForm({
         meatId: batch.meatId,
         quantity: batch.initialQuantity,
         unitCost: batch.unitCost,
-        expiryDate: batch.expiryDate,
+        expiryDate: expiryDate,
         supplierId: batch.supplierId || undefined,
         note: batch.note || "",
         batchCode: batch.batchCode,
@@ -77,7 +82,7 @@ export const useBatchForm = (batch: Batch | null) => {
   }, [form.meatId, batch]);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = e.target;
     setForm((prev) => ({
