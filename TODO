@@ -1,931 +1,1248 @@
-# 🥩 Meatify - Complete Issue TODO List
+# 🧩 Modular State Transition Services Architecture
 
-## 📋 Priority Legend
-- 🔴 **CRITICAL** - Security, data integrity, or production-blocking issues
-- 🟠 **HIGH** - Performance, maintainability, or potential bugs
-- 🟡 **MEDIUM** - Code quality, duplication, or improvements
-- 🟢 **LOW** - Nice-to-have, documentation, or minor enhancements
+## 📋 The Problem
 
----
+Currently, state services are **monolithic** – each file handles ALL side effects for an entity:
 
-## 🔴 CRITICAL ISSUES (Fix Immediately)
+```
+CustomerStateService.js (350+ lines)
+├── onCreate()          // welcome email, UI broadcast, audit
+├── onStatusChange()    // notifications, audit
+├── onPointsChange()    // notifications, audit
+├── earnPoints()        // business logic + side effects
+├── redeemPoints()      // business logic + side effects
+├── manualAdjustPoints()// business logic + side effects
+├── _notifyStatusChange() // email, SMS, in-app
+├── _determineStatus()  // business logic
+└── getLoyaltyHistory() // read-only
+```
 
-### 1. **Race Conditions in Batch Deduction**
-- **File:** `src/services/Batch.js`
-- **Method:** `deductFromBatch()`, `fifoDeduct()`
-- **Issue:** Multiple concurrent requests can deduct from the same batch simultaneously, causing negative stock or overselling.
-- **Action:** Implement optimistic locking or database-level row locking.
-  ```javascript
-  // Add version column to Batch entity
-  @Column({ default: 1 })
-  version: number;
-  
-  // In deductFromBatch
-  const result = await repo.update(
-    { id: batchId, version: currentVersion },
-    { 
-      remainingQuantity: newRemaining,
-      version: currentVersion + 1 
-    }
-  );
-  if (result.affected === 0) {
-    throw new ConcurrentModificationError(`Batch ${batchId} was modified concurrently`);
-  }
-  ```
-- **Time Estimate:** 4 hours
+**Problems:**
+- ❌ Mixed responsibilities (business logic + side effects)
+- ❌ Hard to test (mock everything)
+- ❌ Hard to reuse (cannot import individual functions)
+- ❌ Hard to maintain (changes affect everything)
+- ❌ Large files (350+ lines per service)
 
 ---
 
-### 2. **Missing Input Validation in Services**
-- **Files:** Multiple services
-- **Issue:** Many services accept data without proper validation.
-  - `SaleService.create()` - doesn't validate customer exists
-  - `BatchService.create()` - doesn't validate expiry date format
-  - `CustomerService.create()` - doesn't validate email/phone properly
-- **Action:** Implement Joi/Zod validation schemas for all service inputs.
-  ```javascript
-  // Create validation schemas
-  const batchSchema = Joi.object({
-    meatId: Joi.number().positive().required(),
-    quantity: Joi.number().positive().required(),
-    unitCost: Joi.number().positive().required(),
-    expiryDate: Joi.date().greater('now').required(),
-  });
-  ```
-- **Time Estimate:** 8 hours
+## 🎯 Proposed Modular Architecture
+
+### Principle: **Single Responsibility**
+
+Each module handles ONE specific concern:
+
+```
+src/stateServices/
+├── customer/
+│   ├── CustomerStateService.js       // Orchestrator (imports modules)
+│   ├── modules/
+│   │   ├── CustomerStatusModule.js   // Status transitions
+│   │   ├── CustomerPointsModule.js   // Points operations (business logic)
+│   │   ├── CustomerNotificationModule.js // Email/SMS/In-app
+│   │   └── CustomerAuditModule.js    // Audit logging
+│   └── index.js                      // Re-exports
+├── sale/
+│   ├── SaleStateService.js           // Orchestrator
+│   ├── modules/
+│   │   ├── SaleInventoryModule.js    // Stock deduction/restock
+│   │   ├── SaleLoyaltyModule.js      // Points earn/redeem
+│   │   ├── SaleNotificationModule.js // Notifications
+│   │   └── SalePaymentModule.js      // Receipt, cash drawer
+│   └── index.js
+├── purchase/
+│   ├── PurchaseStateService.js       // Orchestrator
+│   ├── modules/
+│   │   ├── PurchaseStatusModule.js   // Status transitions
+│   │   ├── PurchaseNotificationModule.js // Supplier notifications
+│   │   └── PurchaseAuditModule.js    // Audit logging
+│   └── index.js
+├── batch/
+│   ├── BatchStateService.js          // Orchestrator
+│   └── modules/
+│       ├── BatchStatusModule.js      // Status transitions
+│       ├── BatchNotificationModule.js // Notifications
+│       └── BatchAuditModule.js       // Audit logging
+└── common/
+    ├── NotificationSender.js         // Email/SMS service (shared)
+    ├── UIBroadcaster.js              // IPC events (shared)
+    └── AuditLogger.js                // Audit logging (shared)
+```
 
 ---
 
-### 3. **N+1 Query Problem in SaleService**
-- **File:** `src/services/Sale.js`
-- **Method:** `create()`, `update()`
-- **Issue:** Loops through items and executes individual queries for meat and batch validation.
-- **Action:** Use `findByIds()` or JOIN queries.
-  ```javascript
-  // ❌ Current - N queries per item
-  for (const item of data.items) {
-    const meat = await meatRepo.findOne({ where: { id: item.meatId } });
-    const batch = await batchRepo.findOne({ where: { id: item.batchId } });
-  }
-  
-  // ✅ Better - 2 queries total
-  const meatIds = data.items.map(i => i.meatId);
-  const batchIds = data.items.map(i => i.batchId);
-  const meats = await meatRepo.findByIds(meatIds);
-  const batches = await batchRepo.findByIds(batchIds);
-  ```
-- **Time Estimate:** 3 hours
+## 🔧 Implementation Guide
 
----
+### Step 1: Create Common Shared Modules
 
-### 4. **Circular Dependencies**
-- **Files:** `BatchService.js` ↔ `SaleService.js`
-- **Issue:** Services importing each other creates circular dependencies.
-- **Action:** Use dependency injection or event-driven pattern.
-  ```javascript
-  // Create ServiceRegistry
-  class ServiceRegistry {
-    constructor() {
-      this.services = new Map();
-    }
-    
-    register(name, service) {
-      this.services.set(name, service);
-    }
-    
-    get(name) {
-      return this.services.get(name);
-    }
-  }
-  
-  // Register services after initialization
-  const registry = new ServiceRegistry();
-  registry.register('batchService', batchService);
-  registry.register('saleService', saleService);
-  ```
-- **Time Estimate:** 4 hours
+#### `src/stateServices/common/UIBroadcaster.js`
 
----
+```javascript
+// src/stateServices/common/UIBroadcaster.js
+const { logger } = require("../../utils/logger");
 
-### 5. **No Transaction Rollback on Errors**
-- **Files:** All services with complex operations
-- **Issue:** When an error occurs mid-transaction, changes are not properly rolled back.
-- **Action:** Ensure all multi-step operations use try/catch with rollback.
-  ```javascript
-  async create(data, user = "system", qr = null) {
-    const queryRunner = qr || AppDataSource.createQueryRunner();
-    let ownTransaction = !qr;
-    
+class UIBroadcaster {
+  /**
+   * Send event to all renderer windows (UI)
+   * @param {string} channel - IPC channel name
+   * @param {any} data - Data to send
+   */
+  static send(channel, data) {
     try {
-      if (ownTransaction) {
-        await queryRunner.startTransaction();
-      }
-      
-      // ... operations
-      
-      if (ownTransaction) {
-        await queryRunner.commitTransaction();
-      }
-      return result;
+      const { BrowserWindow } = require("electron");
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(channel, data);
+        }
+      });
     } catch (error) {
-      if (ownTransaction) {
-        await queryRunner.rollbackTransaction();
-      }
-      throw error;
-    } finally {
-      if (ownTransaction) {
-        await queryRunner.release();
-      }
+      logger.warn(
+        `[UIBroadcaster] Failed to send IPC event (maybe not in Electron):`,
+        error.message,
+      );
     }
   }
-  ```
-- **Time Estimate:** 6 hours
+
+  /**
+   * Broadcast batch events
+   */
+  static batch(action, data) {
+    const channel = `batch:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast customer events
+   */
+  static customer(action, data) {
+    const channel = `customer:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast sale events
+   */
+  static sale(action, data) {
+    const channel = `sale:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast purchase events
+   */
+  static purchase(action, data) {
+    const channel = `purchase:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast return/refund events
+   */
+  static returnRefund(action, data) {
+    const channel = `returnRefund:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast loyalty events
+   */
+  static loyalty(action, data) {
+    const channel = `loyalty:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast notification events
+   */
+  static notification(action, data) {
+    const channel = `notification:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast supplier events
+   */
+  static supplier(action, data) {
+    const channel = `supplier:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast category events
+   */
+  static category(action, data) {
+    const channel = `category:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast meat events
+   */
+  static meat(action, data) {
+    const channel = `meat:${action}`;
+    this.send(channel, data);
+  }
+
+  /**
+   * Broadcast inventory movement events
+   */
+  static inventoryMovement(action, data) {
+    const channel = `inventoryMovement:${action}`;
+    this.send(channel, data);
+  }
+}
+
+module.exports = UIBroadcaster;
+```
 
 ---
 
-## 🟠 HIGH PRIORITY ISSUES
+#### `src/stateServices/common/NotificationSender.js`
 
-### 6. **Performance Issues - Missing Database Indexes**
-- **Files:** All entities
-- **Issue:** Frequently queried columns lack proper indexes.
-- **Action:** Create migration for indexes.
-  ```sql
-  -- Add these indexes
-  CREATE INDEX idx_batch_meat_id ON batch(meatId);
-  CREATE INDEX idx_batch_status_expiry ON batch(status, expiryDate);
-  CREATE INDEX idx_batch_remaining ON batch(remainingQuantity);
-  CREATE INDEX idx_sale_customer_id ON sale(customerId);
-  CREATE INDEX idx_sale_timestamp_status ON sale(timestamp, status);
-  CREATE INDEX idx_sale_payment_method ON sale(paymentMethod);
-  CREATE INDEX idx_movement_batch_id ON inventory_movement(batchId);
-  CREATE INDEX idx_movement_timestamp ON inventory_movement(timestamp);
-  CREATE INDEX idx_loyalty_customer_id ON loyalty_transaction(customerId);
-  CREATE INDEX idx_loyalty_timestamp ON loyalty_transaction(timestamp);
-  CREATE INDEX idx_return_sale_id ON return_refund(saleId);
-  CREATE INDEX idx_return_customer_id ON return_refund(customerId);
-  CREATE INDEX idx_purchase_supplier_id ON purchase(supplierId);
-  CREATE INDEX idx_purchase_status ON purchase(status);
-  ```
-- **Time Estimate:** 2 hours
+```javascript
+// src/stateServices/common/NotificationSender.js
+const { logger } = require("../../utils/logger");
+const system = require("../../utils/system");
+const notificationLogService = require("../../services/NotificationLog");
+const notificationService = require("../../services/Notification");
+
+class NotificationSender {
+  /**
+   * Send email via NotificationLogService (queued)
+   * @param {string} to - Recipient email
+   * @param {string} subject - Email subject
+   * @param {string} body - Email body (plain text)
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   * @returns {Promise<boolean>}
+   */
+  static async sendEmail(to, subject, body, user = "system", queryRunner = null) {
+    try {
+      const emailEnabled = await system.emailEnabled();
+      if (!emailEnabled) {
+        logger.debug(`[NotificationSender] Email disabled, skipping send to ${to}`);
+        return false;
+      }
+      if (!to) {
+        logger.debug(`[NotificationSender] No email address provided`);
+        return false;
+      }
+
+      await notificationLogService.create(
+        {
+          to,
+          subject,
+          payload: body.trim(),
+          channel: "email",
+        },
+        user,
+        queryRunner
+      );
+      logger.info(`[NotificationSender] Email queued for ${to}`);
+      return true;
+    } catch (err) {
+      logger.error(`[NotificationSender] Failed to queue email for ${to}:`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Send SMS via NotificationLogService (queued)
+   * @param {string} to - Recipient phone number
+   * @param {string} message - SMS message
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   * @returns {Promise<boolean>}
+   */
+  static async sendSms(to, message, user = "system", queryRunner = null) {
+    try {
+      const smsEnabled = await system.smsEnabled();
+      if (!smsEnabled) {
+        logger.debug(`[NotificationSender] SMS disabled, skipping send to ${to}`);
+        return false;
+      }
+      if (!to) {
+        logger.debug(`[NotificationSender] No phone number provided`);
+        return false;
+      }
+
+      await notificationLogService.create(
+        {
+          to,
+          subject: "SMS Message",
+          payload: message,
+          channel: "sms",
+        },
+        user,
+        queryRunner
+      );
+      logger.info(`[NotificationSender] SMS queued for ${to}`);
+      return true;
+    } catch (err) {
+      logger.error(`[NotificationSender] Failed to queue SMS for ${to}:`, err);
+      return false;
+    }
+  }
+
+  /**
+   * Send in-app notification to admin
+   * @param {string} title - Notification title
+   * @param {string} message - Notification message
+   * @param {string} type - info, success, warning, error
+   * @param {Object} metadata - Additional metadata
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   * @returns {Promise<boolean>}
+   */
+  static async sendInApp(title, message, type = "info", metadata = {}, user = "system", queryRunner = null) {
+    try {
+      const inAppEnabled = await system.inAppNotificationsEnabled();
+      if (!inAppEnabled) {
+        logger.debug(`[NotificationSender] In-app notifications disabled`);
+        return false;
+      }
+
+      await notificationService.create(
+        {
+          userId: 1,
+          title,
+          message,
+          type,
+          metadata,
+        },
+        user,
+        queryRunner
+      );
+      logger.info(`[NotificationSender] In-app notification sent: ${title}`);
+      return true;
+    } catch (err) {
+      logger.error(`[NotificationSender] Failed to send in-app notification:`, err);
+      return false;
+    }
+  }
+}
+
+module.exports = NotificationSender;
+```
 
 ---
 
-### 7. **Code Duplication - BaseService Missing**
-- **Files:** All service files (`Batch.js`, `Sale.js`, `Customer.js`, etc.)
-- **Issue:** Each service has identical helper methods (`_getRepo()`, `_isAuditEnabled()`, bulk operations).
-- **Action:** Create `BaseService` class.
-  ```javascript
-  // src/services/BaseService.js
-  class BaseService {
-    constructor(entityClass, options = {}) {
-      this.entityClass = entityClass;
-      this.repository = null;
-      this.ALLOWED_SORT_COLUMNS = options.allowedSortColumns || new Set(['id', 'createdAt', 'updatedAt']);
-    }
-    
-    _getRepo(qr, entityClass = null) {
-      const target = entityClass || this.entityClass;
-      if (qr && qr.manager) {
-        return qr.manager.getRepository(target);
-      }
-      const { AppDataSource } = require("../main/db/data-source");
-      return AppDataSource.getRepository(target);
-    }
-    
-    async _isAuditEnabled(qr = null) {
-      try {
-        return await require("../utils/system").auditLogEnabled();
-      } catch (error) {
-        return true;
-      }
-    }
-    
-    async findById(id, includeDeleted = false, qr = null) {
-      const repo = this._getRepo(qr);
-      const qb = repo.createQueryBuilder(this.entityClass.name.toLowerCase());
-      // ... common implementation
-    }
-    
-    async findAll(options = {}, qr = null) {
-      // Generic pagination with filters
-    }
-    
-    async bulkCreate(dataArray, user = "system", qr = null) {
-      const results = { created: [], errors: [] };
-      for (const data of dataArray) {
-        try {
-          const saved = await this.create(data, user, qr);
-          results.created.push(saved);
-        } catch (err) {
-          results.errors.push({ data, error: err.message });
-        }
-      }
-      return results;
-    }
-    
-    async bulkUpdate(updatesArray, user = "system", qr = null) {
-      const results = { updated: [], errors: [] };
-      for (const { id, updates } of updatesArray) {
-        try {
-          const saved = await this.update(id, updates, user, qr);
-          results.updated.push(saved);
-        } catch (err) {
-          results.errors.push({ id, updates, error: err.message });
-        }
-      }
-      return results;
+#### `src/stateServices/common/AuditLogger.js`
+
+```javascript
+// src/stateServices/common/AuditLogger.js
+const { logger } = require("../../utils/logger");
+const auditLogger = require("../../utils/auditLogger");
+const system = require("../../utils/system");
+
+class AuditLogger {
+  /**
+   * Log a create action
+   * @param {string} entity - Entity name
+   * @param {number} entityId - Entity ID
+   * @param {Object} data - Entity data
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   * @returns {Promise<void>}
+   */
+  static async logCreate(entity, entityId, data, user = "system", queryRunner = null) {
+    try {
+      const auditEnabled = await system.auditLogEnabled();
+      if (!auditEnabled) return;
+      await auditLogger.logCreate(entity, entityId, data, user);
+    } catch (err) {
+      logger.error(`[AuditLogger] Failed to log ${entity} create:`, err);
     }
   }
-  ```
-- **Time Estimate:** 8 hours
+
+  /**
+   * Log an update action
+   * @param {string} entity - Entity name
+   * @param {number} entityId - Entity ID
+   * @param {Object} oldData - Old data
+   * @param {Object} newData - New data
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   * @returns {Promise<void>}
+   */
+  static async logUpdate(entity, entityId, oldData, newData, user = "system", queryRunner = null) {
+    try {
+      const auditEnabled = await system.auditLogEnabled();
+      if (!auditEnabled) return;
+      await auditLogger.logUpdate(entity, entityId, oldData, newData, user);
+    } catch (err) {
+      logger.error(`[AuditLogger] Failed to log ${entity} update:`, err);
+    }
+  }
+
+  /**
+   * Log a delete action
+   * @param {string} entity - Entity name
+   * @param {number} entityId - Entity ID
+   * @param {Object} data - Entity data
+   * @param {string} user - User performing the action
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   * @returns {Promise<void>}
+   */
+  static async logDelete(entity, entityId, data, user = "system", queryRunner = null) {
+    try {
+      const auditEnabled = await system.auditLogEnabled();
+      if (!auditEnabled) return;
+      await auditLogger.logCreate(entity, entityId, data, user);
+    } catch (err) {
+      logger.error(`[AuditLogger] Failed to log ${entity} delete:`, err);
+    }
+  }
+}
+
+module.exports = AuditLogger;
+```
 
 ---
 
-### 8. **StateService Too Large**
-- **File:** `src/stateServices/SaleStateService.js`
-- **Issue:** `onPaid()` method handles too many responsibilities (stock, loyalty, printing, notifications).
-- **Action:** Split into smaller focused handlers.
-  ```javascript
-  class SaleStateService {
-    async onPaid(saleId, user, queryRunner) {
-      const sale = await this._loadSale(saleId, queryRunner);
-      
-      // Delegate to specific handlers
-      await this._handleStockDeduction(sale, user, queryRunner);
-      await this._handleLoyaltyPoints(sale, user, queryRunner);
-      await this._handleNotifications(sale, user, queryRunner);
-      await this._handleReceiptPrinting(sale, user);
-      await this._handleCashDrawer(sale, user);
-    }
-    
-    async _handleStockDeduction(sale, user, queryRunner) {
-      // Separate method for stock handling
-    }
-    
-    async _handleLoyaltyPoints(sale, user, queryRunner) {
-      // Separate method for loyalty
-    }
-    // ... etc
-  }
-  ```
-- **Time Estimate:** 4 hours
+### Step 2: Refactor CustomerStateService into Modules
 
----
+#### `src/stateServices/customer/modules/CustomerStatusModule.js`
 
-### 9. **Inconsistent Error Handling**
-- **Files:** All services
-- **Issue:** Mix of `console.error`, `logger.error`, and `throw` without context.
-- **Action:** Create centralized error handling.
-  ```javascript
-  // src/utils/errors.js
-  class AppError extends Error {
-    constructor(message, code, statusCode = 500, details = null) {
-      super(message);
-      this.code = code;
-      this.statusCode = statusCode;
-      this.details = details;
-      this.timestamp = new Date().toISOString();
+```javascript
+// src/stateServices/customer/modules/CustomerStatusModule.js
+const { logger } = require("../../../utils/logger");
+const AuditLogger = require("../../common/AuditLogger");
+const UIBroadcaster = require("../../common/UIBroadcaster");
+const NotificationSender = require("../../common/NotificationSender");
+const system = require("../../../utils/system");
+
+class CustomerStatusModule {
+  /**
+   * @param {import("typeorm").DataSource} dataSource
+   */
+  constructor(dataSource) {
+    this.dataSource = dataSource;
+    this.customerRepo = dataSource.getRepository(require("../../../entities/Customer"));
+  }
+
+  /**
+   * Handle customer status change
+   * @param {number} customerId
+   * @param {string} oldStatus
+   * @param {string} newStatus
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async handleStatusChange(customerId, oldStatus, newStatus, user = "system", queryRunner = null) {
+    logger.info(`[CustomerStatus] Customer #${customerId} status changed: ${oldStatus} → ${newStatus}`);
+
+    // 1. Broadcast to UI
+    UIBroadcaster.customer("statusChanged", {
+      id: customerId,
+      oldStatus,
+      newStatus,
+      timestamp: new Date().toISOString(),
+    });
+
+    // 2. Audit log
+    await AuditLogger.logUpdate(
+      "Customer",
+      customerId,
+      { status: oldStatus },
+      { status: newStatus },
+      user,
+      queryRunner
+    );
+
+    // 3. Notify if promoted to VIP or Elite
+    if ((newStatus === "vip" || newStatus === "elite") && newStatus !== oldStatus) {
+      const customer = await this.customerRepo.findOne({ where: { id: customerId } });
+      if (customer) {
+        await this._notifyStatusChange(customer, oldStatus, newStatus, user, queryRunner);
+      }
     }
   }
-  
-  // Usage
-  if (!meat) {
-    throw new AppError(
-      `Meat ${meatId} not found`,
-      'MEAT_NOT_FOUND',
-      404,
-      { meatId }
+
+  /**
+   * Send notification when customer status changes
+   * @private
+   */
+  async _notifyStatusChange(customer, oldStatus, newStatus, user, queryRunner) {
+    const company = await system.companyName();
+
+    // ─── In-app notification for admin ──────────────────────────
+    await NotificationSender.sendInApp(
+      "Customer Loyalty Milestone",
+      `${customer.name} has reached ${newStatus} status! (was ${oldStatus})`,
+      "success",
+      {
+        customerId: customer.id,
+        oldStatus,
+        newStatus,
+        points: customer.loyaltyPointsBalance,
+      },
+      user,
+      queryRunner
+    );
+
+    // ─── Email to customer ──────────────────────────────────────
+    const emailBody =
+      `Dear ${customer.name},\n\n` +
+      `Congratulations! You have reached ${newStatus} status at ${company}.\n\n` +
+      `Your current loyalty points: ${customer.loyaltyPointsBalance}\n` +
+      `Lifetime points: ${customer.lifetimePointsEarned || 0}\n\n` +
+      `We appreciate your continued patronage and look forward to serving you with exclusive benefits.\n\n` +
+      `Thank you for being a valued customer!\n\n` +
+      `Best regards,\n${company}`;
+
+    await NotificationSender.sendEmail(
+      customer.email,
+      `Congratulations! You've reached ${newStatus} status!`,
+      emailBody,
+      user,
+      queryRunner
+    );
+
+    // ─── SMS to customer ────────────────────────────────────────
+    await NotificationSender.sendSms(
+      customer.phone,
+      `Congratulations! You've reached ${newStatus} status at ${company}. Thank you for your loyalty!`,
+      user,
+      queryRunner
     );
   }
-  
-  // In services - always use logger, never console
-  logger.error('Failed to create batch', { 
-    error: err.message, 
-    stack: err.stack,
-    data: data 
-  });
-  ```
-- **Time Estimate:** 3 hours
+}
+
+module.exports = CustomerStatusModule;
+```
 
 ---
 
-### 10. **No Idempotency for Sale Processing**
-- **File:** `src/stateServices/SaleStateService.js`
-- **Method:** `onPaid()`
-- **Issue:** If `onPaid()` is called multiple times for the same sale, it will double-deduct stock.
-- **Action:** Add idempotency check.
-  ```javascript
-  async onPaid(saleId, user, queryRunner) {
-    const sale = await this._loadSale(saleId, queryRunner);
-    
-    // ✅ Idempotency guard
-    if (sale.processedAt) {
-      logger.warn(`Sale #${saleId} already processed at ${sale.processedAt}`);
-      return sale;
-    }
-    
-    // ... process logic
-    
-    // Mark as processed
-    sale.processedAt = new Date();
-    await updateDb(saleRepo, sale, { queryRunner });
-  }
-  ```
-- **Time Estimate:** 2 hours
+#### `src/stateServices/customer/modules/CustomerPointsModule.js`
 
----
+```javascript
+// src/stateServices/customer/modules/CustomerPointsModule.js
+const { logger } = require("../../../utils/logger");
+const AuditLogger = require("../../common/AuditLogger");
+const UIBroadcaster = require("../../common/UIBroadcaster");
+const NotificationSender = require("../../common/NotificationSender");
+const system = require("../../../utils/system");
+const { updateDb, saveDb } = require("../../../utils/dbUtils/dbActions");
 
-## 🟡 MEDIUM PRIORITY ISSUES
-
-### 11. **Hardcoded Values Everywhere**
-- **Files:** Multiple services
-- **Issue:** User IDs, thresholds, and other values are hardcoded.
-- **Action:** Use system settings or context.
-  ```javascript
-  // ❌ Bad
-  userId: 1
-  
-  // ✅ Good
-  userId: context.userId || await system.getSystemUserId()
-  
-  // ❌ Bad
-  if (daysOld === 365)
-  
-  // ✅ Good
-  const defaultDays = await system.getInt('cleanup_default_days', 'general', 365);
-  ```
-- **Time Estimate:** 3 hours
-
----
-
-### 12. **Missing Bulk Operations in Some Services**
-- **Files:** `ReturnRefundItemService`, `PurchaseItemService`, `SaleItemService`
-- **Issue:** These services lack `bulkCreate` and `bulkUpdate` methods.
-- **Action:** Add bulk operations (can inherit from BaseService).
-- **Time Estimate:** 2 hours
-
----
-
-### 13. **Export/Import Methods Inconsistent**
-- **Files:** All services with export/import
-- **Issue:** Each service implements export/import differently.
-- **Action:** Standardize with BaseService.
-  ```javascript
-  // In BaseService
-  async export(format = 'json', filters = {}, user = 'system', qr = null) {
-    const result = await this.findAll({ ...filters, limit: undefined, page: undefined }, qr);
-    const data = result.data;
-    
-    if (format === 'csv') {
-      return this._toCSV(data);
-    }
-    return { format: 'json', data, filename: `${this.entityClass.name}_export_${Date.now()}.json` };
-  }
-  
-  async importFromCSV(filePath, user = 'system', qr = null) {
-    const records = await this._parseCSV(filePath);
-    return this.bulkCreate(records, user, qr);
-  }
-  ```
-- **Time Estimate:** 3 hours
-
----
-
-### 14. **Notification Service Not Used Everywhere**
-- **Files:** Services that should send notifications but don't
-- **Issue:** Some important events lack notifications (e.g., supplier deactivation, category merge).
-- **Action:** Add notifications to all state services.
-  ```javascript
-  // In SupplierStateService.onDeactivated
-  try {
-    await notificationService.create({
-      userId: 1,
-      title: 'Supplier Deactivated',
-      message: `Supplier "${supplier.name}" was deactivated`,
-      type: 'warning',
-      metadata: { supplierId: supplier.id }
-    }, user, queryRunner);
-  } catch (err) {
-    logger.error('Failed to send notification', err);
-  }
-  ```
-- **Time Estimate:** 4 hours
-
----
-
-### 15. **Duplicate Type Definitions**
-- **Files:** Multiple services
-- **Issue:** Same JSDoc types repeated across files.
-- **Action:** Create shared type definitions.
-  ```javascript
-  // src/types/service.types.js
+class CustomerPointsModule {
   /**
-   * @typedef {Object} PaginationOptions
-   * @property {number} [page=1] - Page number
-   * @property {number} [limit=50] - Items per page
-   * @property {string} [sortBy='id'] - Sort column
-   * @property {string} [sortOrder='DESC'] - Sort order
+   * @param {import("typeorm").DataSource} dataSource
    */
-  
+  constructor(dataSource) {
+    this.dataSource = dataSource;
+    this.customerRepo = dataSource.getRepository(require("../../../entities/Customer"));
+    this.loyaltyRepo = dataSource.getRepository(require("../../../entities/LoyaltyTransaction"));
+  }
+
   /**
-   * @typedef {Object} AuditLogData
-   * @property {string} action - Action performed
-   * @property {string} entity - Entity name
-   * @property {number} [entityId] - Entity ID
-   * @property {string} [user] - User who performed action
-   * @property {string} [description] - Description
+   * Helper: get repository (transactional)
    */
-  ```
-- **Time Estimate:** 2 hours
+  _getRepo(qr, entityClass) {
+    if (qr) return qr.manager.getRepository(entityClass);
+    return this.dataSource.getRepository(entityClass);
+  }
 
----
-
-### 16. **Missing Soft Delete in Some Entities**
-- **Files:** Entities: `SystemSetting`, `NotificationLog`
-- **Issue:** Some entities lack `deletedAt` or `isDeleted` fields.
-- **Action:** Add soft delete columns and update services.
-  ```javascript
-  // In SystemSetting entity
-  @Column({ default: false })
-  is_deleted: boolean;
-  
-  // In service methods
-  async findAll(options = {}, qr = null) {
-    const qb = repo.createQueryBuilder('entity');
-    if (!options.includeDeleted) {
-      qb.andWhere('entity.is_deleted = false');
+  /**
+   * Earn loyalty points for a customer (from a sale)
+   * @param {number} customerId
+   * @param {number} amountSpent
+   * @param {number} saleId
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   * @returns {Promise<{ customer: any, pointsEarned: number }>}
+   */
+  async earnPoints(customerId, amountSpent, saleId, user = "system", queryRunner = null) {
+    const loyaltyEnabled = await system.loyaltyPointsEnabled();
+    if (!loyaltyEnabled) {
+      logger.info(`[CustomerPoints] Loyalty disabled, skipping earn for customer #${customerId}`);
+      return { customer: null, pointsEarned: 0 };
     }
+
+    const customerRepo = this._getRepo(queryRunner, this.customerRepo.target);
+    const loyaltyRepo = this._getRepo(queryRunner, this.loyaltyRepo.target);
+
+    const customer = await customerRepo.findOne({ where: { id: customerId } });
+    if (!customer) {
+      throw new Error(`Customer #${customerId} not found`);
+    }
+    if (!customer.isActive) {
+      logger.warn(`[CustomerPoints] Customer #${customerId} is inactive, skipping points`);
+      return { customer, pointsEarned: 0 };
+    }
+
+    const rate = await system.getLoyaltyPointRate();
+    const pointsEarned = Math.floor(amountSpent / rate);
+
+    if (pointsEarned <= 0) {
+      logger.info(`[CustomerPoints] No points earned for customer #${customerId} (amount: ${amountSpent})`);
+      return { customer, pointsEarned: 0 };
+    }
+
+    const oldBalance = customer.loyaltyPointsBalance;
+    const oldLifetime = customer.lifetimePointsEarned || 0;
+
+    customer.loyaltyPointsBalance += pointsEarned;
+    customer.lifetimePointsEarned = oldLifetime + pointsEarned;
+    customer.updatedAt = new Date();
+
+    // Check if customer should be promoted to VIP or Elite
+    const oldStatus = customer.status;
+    const newStatus = this._determineStatus(customer.lifetimePointsEarned);
+    if (newStatus !== oldStatus) {
+      customer.status = newStatus;
+    }
+
+    const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
+
+    // Create loyalty transaction
+    const tx = loyaltyRepo.create({
+      pointsChange: pointsEarned,
+      transactionType: "earn",
+      notes: `Sale #${saleId}`,
+      customer: updatedCustomer,
+      sale: { id: saleId },
+      timestamp: new Date(),
+    });
+    const savedTx = await saveDb(loyaltyRepo, tx, { queryRunner });
+
+    await AuditLogger.logCreate("LoyaltyTransaction", savedTx.id, savedTx, user);
+
+    logger.info(
+      `[CustomerPoints] Earned ${pointsEarned} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
+    );
+
+    return { customer: updatedCustomer, pointsEarned };
   }
-  ```
-- **Time Estimate:** 3 hours
 
----
+  /**
+   * Redeem loyalty points (from a sale)
+   * @param {number} customerId
+   * @param {number} pointsToRedeem
+   * @param {number} saleId
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   * @returns {Promise<{ customer: any, pointsRedeemed: number }>}
+   */
+  async redeemPoints(customerId, pointsToRedeem, saleId, user = "system", queryRunner = null) {
+    const loyaltyEnabled = await system.loyaltyPointsEnabled();
+    if (!loyaltyEnabled) {
+      throw new Error("Loyalty points are disabled");
+    }
 
-### 17. **Logger Usage Inconsistent**
-- **Files:** All files
-- **Issue:** Mix of `logger` and `console` methods.
-- **Action:** Use logger everywhere.
-  ```javascript
-  // ❌ Bad
-  console.error('Error:', err);
-  console.log('Debug info');
-  
-  // ✅ Good
-  logger.error('Error:', { error: err.message, stack: err.stack });
-  logger.debug('Debug info', { data: info });
-  
-  // Add lint rule to prevent console usage
-  // .eslintrc.js
-  rules: {
-    'no-console': ['error', { allow: ['warn', 'error'] }]
+    const customerRepo = this._getRepo(queryRunner, this.customerRepo.target);
+    const loyaltyRepo = this._getRepo(queryRunner, this.loyaltyRepo.target);
+
+    const customer = await customerRepo.findOne({ where: { id: customerId } });
+    if (!customer) {
+      throw new Error(`Customer #${customerId} not found`);
+    }
+    if (!customer.isActive) {
+      throw new Error(`Customer #${customerId} is inactive`);
+    }
+    if (pointsToRedeem <= 0) {
+      throw new Error("Points to redeem must be greater than 0");
+    }
+    if (customer.loyaltyPointsBalance < pointsToRedeem) {
+      throw new Error(
+        `Insufficient loyalty points. Available: ${customer.loyaltyPointsBalance}, Requested: ${pointsToRedeem}`
+      );
+    }
+
+    const oldBalance = customer.loyaltyPointsBalance;
+    customer.loyaltyPointsBalance -= pointsToRedeem;
+    customer.updatedAt = new Date();
+
+    const updatedCustomer = await updateDb(customerRepo, customer, { queryRunner });
+
+    // Create loyalty transaction
+    const tx = loyaltyRepo.create({
+      pointsChange: -pointsToRedeem,
+      transactionType: "redeem",
+      notes: `Redeemed on Sale #${saleId}`,
+      customer: updatedCustomer,
+      sale: { id: saleId },
+      timestamp: new Date(),
+    });
+    const savedTx = await saveDb(loyaltyRepo, tx, { queryRunner });
+
+    await AuditLogger.logCreate("LoyaltyTransaction", savedTx.id, savedTx, user);
+
+    logger.info(
+      `[CustomerPoints] Redeemed ${pointsToRedeem} points for customer #${customerId}. Balance: ${oldBalance} → ${updatedCustomer.loyaltyPointsBalance}`
+    );
+
+    return { customer: updatedCustomer, pointsRedeemed: pointsToRedeem };
   }
-  ```
-- **Time Estimate:** 2 hours
 
----
+  /**
+   * Handle points balance change (side effects only)
+   * @param {number} customerId
+   * @param {number} oldBalance
+   * @param {number} newBalance
+   * @param {string} user
+   * @param {import("typeorm").QueryRunner | null} queryRunner
+   */
+  async handlePointsChange(customerId, oldBalance, newBalance, user = "system", queryRunner = null) {
+    const diff = newBalance - oldBalance;
+    logger.info(`[CustomerPoints] Customer #${customerId} points changed: ${oldBalance} → ${newBalance} (diff: ${diff})`);
 
-### 18. **Magic Strings in Status Checks**
-- **Files:** Multiple services
-- **Issue:** Status values like `'active'`, `'paid'`, `'pending'` are hardcoded strings.
-- **Action:** Create constants.
-  ```javascript
-  // src/constants/statuses.js
-  const BATCH_STATUS = {
-    ACTIVE: 'active',
-    DEPLETED: 'depleted',
-    EXPIRED: 'expired',
-    ON_HOLD: 'on_hold'
-  };
-  
-  const SALE_STATUS = {
-    INITIATED: 'initiated',
-    PAID: 'paid',
-    REFUNDED: 'refunded',
-    VOIDED: 'voided'
-  };
-  
-  const PURCHASE_STATUS = {
-    PENDING: 'pending',
-    APPROVED: 'approved',
-    COMPLETED: 'completed',
-    CANCELLED: 'cancelled'
-  };
-  
-  // Usage
-  if (batch.status === BATCH_STATUS.ACTIVE) {
-    // ...
-  }
-  ```
-- **Time Estimate:** 3 hours
+    // 1. Broadcast to UI
+    UIBroadcaster.customer("pointsChanged", {
+      id: customerId,
+      oldBalance,
+      newBalance,
+      diff,
+      timestamp: new Date().toISOString(),
+    });
 
----
+    // 2. Audit log
+    await AuditLogger.logUpdate(
+      "Customer",
+      customerId,
+      { loyaltyPointsBalance: oldBalance },
+      { loyaltyPointsBalance: newBalance },
+      user,
+      queryRunner
+    );
 
-### 19. **Missing Retry Logic for External Services**
-- **Files:** `Printer.js`, `CashDrawer.js`, `NotificationLog.js`
-- **Issue:** Failed printer/cash drawer operations don't retry.
-- **Action:** Implement retry with exponential backoff.
-  ```javascript
-  async function withRetry(fn, options = {}) {
-    const { maxAttempts = 3, delay = 1000, backoff = 2 } = options;
-    
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        return await fn();
-      } catch (error) {
-        if (attempt === maxAttempts) throw error;
-        
-        const waitTime = delay * Math.pow(backoff, attempt - 1);
-        logger.warn(`Attempt ${attempt} failed, retrying in ${waitTime}ms`, { error: error.message });
-        await new Promise(resolve => setTimeout(resolve, waitTime));
+    // 3. Notify for significant change (> 100 points)
+    if (Math.abs(diff) > 100) {
+      const customerRepo = this._getRepo(queryRunner, this.customerRepo.target);
+      const customer = await customerRepo.findOne({ where: { id: customerId } });
+      if (customer) {
+        await NotificationSender.sendInApp(
+          "Loyalty Points Updated",
+          `${customer.name} - Points ${diff > 0 ? "increased" : "decreased"} by ${Math.abs(diff)}. New balance: ${newBalance}`,
+          "info",
+          { customerId, oldBalance, newBalance, diff },
+          user,
+          queryRunner
+        );
       }
     }
   }
-  
-  // Usage
-  await withRetry(() => printer.print(receipt), { maxAttempts: 3 });
-  ```
-- **Time Estimate:** 4 hours
 
----
-
-### 20. **No Data Validation in Import Methods**
-- **Files:** All `importFromCSV` methods
-- **Issue:** CSV imports trust data without validation.
-- **Action:** Add schema validation for imports.
-  ```javascript
-  const importSchema = Joi.object({
-    name: Joi.string().required(),
-    email: Joi.string().email().optional(),
-    phone: Joi.string().pattern(/^[\d\s+()-]+$/).optional(),
-    // ... etc
-  });
-  
-  // In importFromCSV
-  for (const record of records) {
-    const { error, value } = importSchema.validate(record);
-    if (error) {
-      results.errors.push({ row: record, error: error.message });
-      continue;
-    }
-    // Use validated value
-    const saved = await this.create(value, user, qr);
-  }
-  ```
-- **Time Estimate:** 4 hours
-
----
-
-## 🟢 LOW PRIORITY ISSUES
-
-### 21. **Missing Unit Tests**
-- **Files:** No test files found
-- **Issue:** No test coverage for critical business logic.
-- **Action:** Set up Jest/Mocha and write tests.
-  ```javascript
-  // __tests__/services/Batch.test.js
-  describe('BatchService', () => {
-    let service;
-    let dataSource;
-    
-    beforeEach(async () => {
-      dataSource = await createTestDataSource();
-      service = new BatchService();
-      await service.initialize(dataSource);
-    });
-    
-    afterEach(async () => {
-      await dataSource.dropDatabase();
-    });
-    
-    test('should create batch with valid data', async () => {
-      const result = await service.create({
-        meatId: 1,
-        quantity: 10,
-        unitCost: 100,
-        expiryDate: '2025-12-31'
-      });
-      expect(result.id).toBeDefined();
-      expect(result.remainingQuantity).toBe(10);
-    });
-    
-    test('should throw error when meat not found', async () => {
-      await expect(service.create({
-        meatId: 999,
-        quantity: 10,
-        unitCost: 100,
-        expiryDate: '2025-12-31'
-      })).rejects.toThrow('Meat with ID 999 not found');
-    });
-  });
-  ```
-- **Time Estimate:** 20 hours
-
----
-
-### 22. **Inconsistent Naming Conventions**
-- **Files:** Multiple
-- **Issue:** Mix of `camelCase`, `snake_case`, and inconsistent suffixes.
-- **Action:** Standardize naming.
-  ```javascript
-  // Standardization
-  // ✅ Use camelCase for JS variables
-  const saleItems = [];
-  const totalAmount = 0;
-  
-  // ✅ Use snake_case for DB columns (TypeORM handles mapping)
-  @Column({ name: 'total_amount' })
-  totalAmount: number;
-  
-  // ✅ Suffix patterns
-  // - Service classes: XxxService
-  // - State services: XxxStateService
-  // - Subscribers: XxxSubscriber
-  // - Repositories: XxxRepository (or just use TypeORM)
-  // - DTOs: XxxDto
-  // - Controllers: XxxController (if using REST)
-  
-  // ✅ File naming
-  // - kebab-case for files: batch-service.js, sale-state.js
-  // - PascalCase for classes: BatchService, SaleStateService
-  ```
-- **Time Estimate:** 4 hours
-
----
-
-### 23. **Missing API Documentation**
-- **Files:** Services
-- **Issue:** No comprehensive API documentation.
-- **Action:** Add JSDoc comments to all public methods.
-  ```javascript
   /**
-   * Deducts a specified weight from a batch using FIFO method
-   * 
-   * @param {number} meatId - The ID of the meat product
-   * @param {number} totalWeight - Total weight to deduct (in kg)
-   * @param {string} reason - Reason for deduction ('sale', 'adjustment', etc.)
-   * @param {Object} metadata - Additional metadata
-   * @param {number} metadata.saleId - Sale ID if applicable
-   * @param {string} metadata.notes - Additional notes
+   * Determine customer status based on lifetime points
+   * @private
+   */
+  _determineStatus(lifetimePoints) {
+    if (lifetimePoints >= 5000) return "elite";
+    if (lifetimePoints >= 1000) return "vip";
+    return "regular";
+  }
+}
+
+module.exports = CustomerPointsModule;
+```
+
+---
+
+#### `src/stateServices/customer/CustomerStateService.js` (Orchestrator)
+
+```javascript
+// src/stateServices/customer/CustomerStateService.js
+//@ts-check
+const { logger } = require("../../utils/logger");
+const Customer = require("../../entities/Customer");
+const CustomerStatusModule = require("./modules/CustomerStatusModule");
+const CustomerPointsModule = require("./modules/CustomerPointsModule");
+const AuditLogger = require("../common/AuditLogger");
+const UIBroadcaster = require("../common/UIBroadcaster");
+const NotificationSender = require("../common/NotificationSender");
+const system = require("../../utils/system");
+
+/**
+ * CustomerStateService - Orchestrates customer state transitions.
+ * All methods delegate to specialized modules.
+ */
+class CustomerStateService {
+  /**
+   * @param {import("typeorm").DataSource} dataSource
+   */
+  constructor(dataSource) {
+    this.dataSource = dataSource;
+    this.statusModule = new CustomerStatusModule(dataSource);
+    this.pointsModule = new CustomerPointsModule(dataSource);
+    this.customerRepo = dataSource.getRepository(Customer);
+  }
+
+  /**
+   * Helper: get repository (transactional)
+   */
+  _getRepo(qr, entityClass) {
+    if (qr) return qr.manager.getRepository(entityClass);
+    return this.dataSource.getRepository(entityClass);
+  }
+
+  // ============================================================
+  // 🔄 SIDE EFFECTS (called by subscriber)
+  // ============================================================
+
+  /**
+   * Side effect after a customer is created
+   * Called from CustomerSubscriber.afterInsert
+   */
+  async onCreate(customerId, customerEntity, user = "system", queryRunner = null) {
+    logger.info(`[CustomerState] ✅ Customer #${customerId} (${customerEntity.name}) created by ${user}`);
+
+    // 1. Broadcast to UI
+    UIBroadcaster.customer("created", {
+      id: customerEntity.id,
+      name: customerEntity.name,
+      email: customerEntity.email,
+      phone: customerEntity.phone,
+      status: customerEntity.status,
+      loyaltyPoints: customerEntity.loyaltyPointsBalance,
+      createdAt: customerEntity.createdAt,
+    });
+
+    // 2. Audit log
+    await AuditLogger.logCreate("Customer", customerId, customerEntity, user);
+
+    // 3. Welcome email
+    const emailEnabled = await system.emailEnabled();
+    if (emailEnabled && customerEntity.email) {
+      const company = await system.companyName();
+      const emailBody =
+        `Dear ${customerEntity.name},\n\n` +
+        `Welcome to ${company}! We're excited to have you as a valued customer.\n\n` +
+        `Here's what you can expect:\n` +
+        `✅ Quality meat products at competitive prices\n` +
+        `✅ Loyalty points on every purchase\n` +
+        `✅ Special promotions and discounts\n` +
+        `✅ Easy and fast checkout experience\n\n` +
+        `Your loyalty points balance: ${customerEntity.loyaltyPointsBalance || 0}\n\n` +
+        `We look forward to serving you!\n\n` +
+        `Best regards,\n${company} Team`;
+
+      await NotificationSender.sendEmail(
+        customerEntity.email,
+        `Welcome to ${company}! 🥩`,
+        emailBody,
+        user,
+        queryRunner
+      );
+    }
+  }
+
+  /**
+   * Side effect for status change
+   * Called from CustomerSubscriber.afterUpdate
+   */
+  async onStatusChange(customerId, oldStatus, newStatus, user = "system", queryRunner = null) {
+    await this.statusModule.handleStatusChange(customerId, oldStatus, newStatus, user, queryRunner);
+  }
+
+  /**
+   * Side effect for points balance change
+   * Called from CustomerSubscriber.afterUpdate
+   */
+  async onPointsChange(customerId, oldBalance, newBalance, user = "system", queryRunner = null) {
+    await this.pointsModule.handlePointsChange(customerId, oldBalance, newBalance, user, queryRunner);
+  }
+
+  // ============================================================
+  // 🔄 BUSINESS LOGIC (delegated to modules)
+  // ============================================================
+
+  /**
+   * Earn loyalty points for a customer (called from SaleStateService)
+   */
+  async earnPoints(customerId, amountSpent, saleId, user = "system", queryRunner = null) {
+    return this.pointsModule.earnPoints(customerId, amountSpent, saleId, user, queryRunner);
+  }
+
+  /**
+   * Redeem loyalty points (called from SaleService when applying redemption)
+   */
+  async redeemPoints(customerId, pointsToRedeem, saleId, user = "system", queryRunner = null) {
+    return this.pointsModule.redeemPoints(customerId, pointsToRedeem, saleId, user, queryRunner);
+  }
+
+  /**
+   * Manually adjust loyalty points (admin adjustment)
+   */
+  async manualAdjustPoints(customerId, pointsChange, reason, user = "system", queryRunner = null) {
+    return this.pointsModule.manualAdjustPoints(customerId, pointsChange, reason, user, queryRunner);
+  }
+
+  /**
+   * Get customer loyalty history with summary
+   */
+  async getLoyaltyHistory(customerId, queryRunner = null) {
+    return this.pointsModule.getLoyaltyHistory(customerId, queryRunner);
+  }
+}
+
+module.exports = { CustomerStateService };
+```
+
+---
+
+#### `src/stateServices/customer/index.js`
+
+```javascript
+// src/stateServices/customer/index.js
+const { CustomerStateService } = require("./CustomerStateService");
+const CustomerStatusModule = require("./modules/CustomerStatusModule");
+const CustomerPointsModule = require("./modules/CustomerPointsModule");
+
+module.exports = {
+  CustomerStateService,
+  CustomerStatusModule,
+  CustomerPointsModule,
+};
+```
+
+---
+
+### Step 3: Refactor PurchaseStateService into Modules
+
+#### `src/stateServices/purchase/modules/PurchaseNotificationModule.js`
+
+```javascript
+// src/stateServices/purchase/modules/PurchaseNotificationModule.js
+const { logger } = require("../../../utils/logger");
+const NotificationSender = require("../../common/NotificationSender");
+const system = require("../../../utils/system");
+
+class PurchaseNotificationModule {
+  /**
+   * Notify supplier about purchase status change via email (if enabled)
+   * @param {Object} purchase - Purchase entity
+   * @param {string} action - approved, completed, cancelled
    * @param {string} user - User performing the action
-   * @param {import("typeorm").QueryRunner|null} queryRunner - Transaction query runner
-   * @returns {Promise<Array<{ batch: Batch, deductedWeight: number }>>} - Deduction results
-   * @throws {Error} If insufficient stock or no active batches
-   * 
-   * @example
-   * const results = await batchService.fifoDeduct(1, 2.5, 'sale', { saleId: 123 }, 'admin');
-   * console.log(`Deducted ${results.length} batches`);
+   * @param {string} reason - Cancellation reason (if applicable)
+   * @param {import("typeorm").QueryRunner | null} queryRunner
    */
-  ```
-- **Time Estimate:** 8 hours
+  async notifySupplier(purchase, action, user = "system", reason = "", queryRunner = null) {
+    if (!purchase.supplier) {
+      logger.warn(`[PurchaseNotification] No supplier for purchase #${purchase.id}`);
+      return;
+    }
 
----
+    const supplier = purchase.supplier;
+    const company = await system.companyName();
 
-### 24. **No Connection Pool Monitoring**
-- **Files:** `src/main/db/data-source.js`
-- **Issue:** No monitoring of database connection pool.
-- **Action:** Add health checks.
-  ```javascript
-  // In data-source.js
-  async function checkDatabaseHealth() {
-    try {
-      await AppDataSource.query('SELECT 1');
-      const pool = AppDataSource.driver?.pool;
-      if (pool) {
-        return {
-          status: 'healthy',
-          poolSize: pool.size,
-          availableConnections: pool.available,
-          usedConnections: pool.used
-        };
+    let title, message, type;
+
+    switch (action) {
+      case "approved":
+        title = "Purchase Order Approved";
+        message = `Purchase #${purchase.referenceNo} has been approved. Please prepare the order.`;
+        type = "info";
+        break;
+      case "completed":
+        title = "Purchase Order Completed";
+        message = `Purchase #${purchase.referenceNo} has been completed. Stock has been added to inventory.`;
+        type = "success";
+        break;
+      case "cancelled":
+        title = "Purchase Order Cancelled";
+        message = `Purchase #${purchase.referenceNo} has been cancelled.${reason ? ` Reason: ${reason}` : ""}`;
+        type = "warning";
+        break;
+      default:
+        return;
+    }
+
+    // ─── Email to supplier ──────────────────────────────────────
+    const emailEnabled = await system.emailEnabled();
+    if (emailEnabled && supplier.email) {
+      const emailSubject = `${title} – ${purchase.referenceNo}`;
+
+      // Build item list with details
+      let itemsList = "";
+      if (purchase.purchaseItems && purchase.purchaseItems.length > 0) {
+        itemsList = purchase.purchaseItems
+          .map((item, index) => {
+            const meatName = item.meat?.name || "Unknown Item";
+            const expiryDate = item.expiryDate
+              ? new Date(item.expiryDate).toLocaleDateString()
+              : "N/A";
+            return `  ${index + 1}. ${meatName}\n     Quantity: ${item.quantity}kg @ ₱${item.unitPrice.toFixed(2)} = ₱${item.subtotal.toFixed(2)}\n     Expiry: ${expiryDate}`;
+          })
+          .join("\n");
+      } else {
+        itemsList = "  (No items listed)";
       }
-      return { status: 'healthy' };
-    } catch (error) {
-      return { status: 'unhealthy', error: error.message };
+
+      const emailBody =
+        `Dear ${supplier.name},\n\n` +
+        `${message}\n\n` +
+        `┌─────────────────────────────────────────\n` +
+        `│ PURCHASE DETAILS\n` +
+        `├─────────────────────────────────────────\n` +
+        `│ Reference:  ${purchase.referenceNo}\n` +
+        `│ Date:       ${new Date(purchase.orderDate).toLocaleDateString()}\n` +
+        `│ Status:     ${purchase.status.toUpperCase()}\n` +
+        `│ Total:      ₱${purchase.totalAmount.toFixed(2)}\n` +
+        `│ Items:      ${purchase.purchaseItems?.length || 0}\n` +
+        `└─────────────────────────────────────────\n\n` +
+        `ITEMS:\n${itemsList}\n\n` +
+        `Thank you for your business.\n\n` +
+        `Regards,\n${company}`;
+
+      await NotificationSender.sendEmail(supplier.email, emailSubject, emailBody, user, queryRunner);
     }
+
+    // ─── In-app notification for admin ──────────────────────────
+    const emailStatus = emailEnabled && supplier.email
+      ? `✓ Email sent to ${supplier.email}`
+      : "✗ Email not sent";
+
+    await NotificationSender.sendInApp(
+      `Purchase ${action.charAt(0).toUpperCase() + action.slice(1)}`,
+      `Purchase #${purchase.referenceNo} ${action}.\nSupplier: ${supplier.name}\nAmount: ₱${purchase.totalAmount.toFixed(2)}\n${emailStatus}`,
+      type,
+      {
+        purchaseId: purchase.id,
+        referenceNo: purchase.referenceNo,
+        supplierId: supplier.id,
+        action,
+        emailSent: emailEnabled && !!supplier.email,
+      },
+      user,
+      queryRunner
+    );
   }
-  ```
-- **Time Estimate:** 2 hours
+}
+
+module.exports = PurchaseNotificationModule;
+```
 
 ---
 
-### 25. **Missing Environment Validation**
-- **Files:** `src/main/core/env.js`
-- **Issue:** No validation of required environment variables.
-- **Action:** Add env validation on startup.
-  ```javascript
-  // src/main/core/env.js
-  function validateEnv() {
-    const required = [
-      'NODE_ENV',
-      // Add other required env vars
-    ];
-    
-    const missing = required.filter(key => !process.env[key]);
-    if (missing.length > 0) {
-      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
-    }
-    
-    // Validate values
-    if (!['development', 'production', 'test'].includes(process.env.NODE_ENV)) {
-      throw new Error('NODE_ENV must be development, production, or test');
-    }
+#### `src/stateServices/purchase/modules/PurchaseStatusModule.js`
+
+```javascript
+// src/stateServices/purchase/modules/PurchaseStatusModule.js
+const { logger } = require("../../../utils/logger");
+const AuditLogger = require("../../common/AuditLogger");
+const UIBroadcaster = require("../../common/UIBroadcaster");
+
+class PurchaseStatusModule {
+  /**
+   * Handle purchase created
+   */
+  async handleCreated(purchaseId, purchase, user = "system", queryRunner = null) {
+    logger.info(`[PurchaseStatus] Purchase #${purchaseId} (${purchase.referenceNo}) created by ${user}`);
+
+    UIBroadcaster.purchase("created", {
+      id: purchase.id,
+      referenceNo: purchase.referenceNo,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplier?.name,
+      status: purchase.status,
+      totalAmount: purchase.totalAmount,
+      orderDate: purchase.orderDate,
+      createdAt: purchase.createdAt,
+    });
+
+    await AuditLogger.logCreate("Purchase", purchaseId, purchase, user);
   }
-  
-  validateEnv();
-  ```
-- **Time Estimate:** 1 hour
 
----
+  /**
+   * Handle purchase approved
+   */
+  async handleApproved(purchaseId, purchase, user = "system", queryRunner = null) {
+    logger.info(`[PurchaseStatus] Purchase #${purchaseId} (${purchase.referenceNo}) approved by ${user}`);
 
-### 26. **Missing Graceful Shutdown**
-- **Files:** `src/main/index.js`
-- **Issue:** App doesn't handle graceful shutdown (SIGTERM, SIGINT).
-- **Action:** Add graceful shutdown handlers.
-  ```javascript
-  // In main process
-  process.on('SIGTERM', async () => {
-    logger.info('Received SIGTERM, shutting down gracefully...');
-    await shutdown();
-  });
-  
-  process.on('SIGINT', async () => {
-    logger.info('Received SIGINT, shutting down gracefully...');
-    await shutdown();
-  });
-  
-  async function shutdown() {
-    try {
-      // Close database connections
-      if (AppDataSource.isInitialized) {
-        await AppDataSource.destroy();
-        logger.info('Database connections closed');
-      }
-      
-      // Close other resources
-      // ...
-      
-      process.exit(0);
-    } catch (error) {
-      logger.error('Error during shutdown:', error);
-      process.exit(1);
-    }
+    UIBroadcaster.purchase("approved", {
+      id: purchase.id,
+      referenceNo: purchase.referenceNo,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplier?.name,
+      totalAmount: purchase.totalAmount,
+      approvedAt: new Date().toISOString(),
+    });
+
+    await AuditLogger.logUpdate(
+      "Purchase",
+      purchaseId,
+      { action: "approved" },
+      { status: "approved" },
+      user
+    );
   }
-  ```
-- **Time Estimate:** 2 hours
 
----
+  /**
+   * Handle purchase completed
+   */
+  async handleCompleted(purchaseId, purchase, options = {}, user = "system", queryRunner = null) {
+    const { batchCount = purchase.purchaseItems?.length || 0 } = options;
+    logger.info(`[PurchaseStatus] Purchase #${purchaseId} (${purchase.referenceNo}) completed by ${user}`);
 
-### 27. **No CORS/Origin Protection**
-- **Files:** IPC handlers (if exposed to web)
-- **Issue:** IPC handlers may be exposed to web content.
-- **Action:** Implement origin validation.
-  ```javascript
-  // In IPC handlers
-  ipcMain.handle('sale:create', async (event, data) => {
-    // ✅ Validate sender
-    if (!event.senderFrame.url.startsWith('app://')) {
-      throw new Error('Unauthorized source');
-    }
-    
-    // ... handle request
-  });
-  ```
-- **Time Estimate:** 2 hours
+    UIBroadcaster.purchase("completed", {
+      id: purchase.id,
+      referenceNo: purchase.referenceNo,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplier?.name,
+      totalAmount: purchase.totalAmount,
+      batchCount,
+      completedAt: new Date().toISOString(),
+    });
 
----
-
-### 28. **Missing Log Rotation**
-- **Files:** Logger configuration
-- **Issue:** Log files can grow indefinitely.
-- **Action:** Configure log rotation.
-  ```javascript
-  // In logger.js
-  const winston = require('winston');
-  const DailyRotateFile = require('winston-daily-rotate-file');
-  
-  const transport = new DailyRotateFile({
-    filename: 'logs/meatify-%DATE%.log',
-    datePattern: 'YYYY-MM-DD',
-    maxSize: '20m',
-    maxFiles: '14d'
-  });
-  
-  const logger = winston.createLogger({
-    transports: [transport]
-  });
-  ```
-- **Time Estimate:** 1 hour
-
----
-
-### 29. **No Performance Metrics**
-- **Files:** Services
-- **Issue:** No timing/performance tracking.
-- **Action:** Add performance logging.
-  ```javascript
-  // src/utils/performance.js
-  function measurePerformance(fn, label) {
-    return async function (...args) {
-      const start = Date.now();
-      try {
-        const result = await fn.apply(this, args);
-        const duration = Date.now() - start;
-        logger.debug(`[Performance] ${label}: ${duration}ms`);
-        return result;
-      } catch (error) {
-        const duration = Date.now() - start;
-        logger.error(`[Performance] ${label} failed after ${duration}ms:`, error);
-        throw error;
-      }
-    };
+    await AuditLogger.logUpdate(
+      "Purchase",
+      purchaseId,
+      { action: "completed" },
+      { status: "completed" },
+      user
+    );
   }
-  
-  // Usage
-  const create = measurePerformance(originalCreate, 'BatchService.create');
-  ```
-- **Time Estimate:** 2 hours
+
+  /**
+   * Handle purchase cancelled
+   */
+  async handleCancelled(purchaseId, purchase, reason = "", user = "system", queryRunner = null) {
+    logger.info(`[PurchaseStatus] Purchase #${purchaseId} (${purchase.referenceNo}) cancelled by ${user}`);
+
+    UIBroadcaster.purchase("cancelled", {
+      id: purchase.id,
+      referenceNo: purchase.referenceNo,
+      supplierId: purchase.supplierId,
+      supplierName: purchase.supplier?.name,
+      reason,
+      cancelledAt: new Date().toISOString(),
+    });
+
+    await AuditLogger.logUpdate(
+      "Purchase",
+      purchaseId,
+      { action: "cancelled", reason },
+      { status: "cancelled" },
+      user
+    );
+  }
+}
+
+module.exports = PurchaseStatusModule;
+```
 
 ---
 
-### 30. **Missing Health Check Endpoint**
-- **Files:** Main process
-- **Issue:** No way to check if app is healthy.
-- **Action:** Add health endpoint.
-  ```javascript
-  // In main process
-  ipcMain.handle('health:check', async () => {
-    const checks = {
-      database: await checkDatabaseHealth(),
-      printer: await checkPrinterHealth(),
-      // ... more checks
-    };
-    
-    const allHealthy = Object.values(checks).every(c => c.status === 'healthy');
-    return {
-      status: allHealthy ? 'healthy' : 'unhealthy',
-      checks,
-      timestamp: new Date().toISOString()
-    };
-  });
-  ```
-- **Time Estimate:** 2 hours
+#### `src/stateServices/purchase/PurchaseStateService.js` (Orchestrator)
+
+```javascript
+// src/stateServices/purchase/PurchaseStateService.js
+//@ts-check
+const { logger } = require("../../utils/logger");
+const Purchase = require("../../entities/Purchase");
+const PurchaseStatusModule = require("./modules/PurchaseStatusModule");
+const PurchaseNotificationModule = require("./modules/PurchaseNotificationModule");
+
+/**
+ * PurchaseStateService - Orchestrates purchase state transitions.
+ * All methods delegate to specialized modules.
+ */
+class PurchaseStateService {
+  /**
+   * @param {import("typeorm").DataSource} dataSource
+   */
+  constructor(dataSource) {
+    this.dataSource = dataSource;
+    this.statusModule = new PurchaseStatusModule(dataSource);
+    this.notificationModule = new PurchaseNotificationModule(dataSource);
+    this.purchaseRepo = dataSource.getRepository(Purchase);
+  }
+
+  // ============================================================
+  // 🔄 SIDE EFFECTS (called by subscriber)
+  // ============================================================
+
+  async onCreated(purchaseId, purchase, user = "system", queryRunner = null) {
+    await this.statusModule.handleCreated(purchaseId, purchase, user, queryRunner);
+  }
+
+  async onApproved(purchaseId, purchase, user = "system", queryRunner = null) {
+    await this.statusModule.handleApproved(purchaseId, purchase, user, queryRunner);
+    await this.notificationModule.notifySupplier(purchase, "approved", user, "", queryRunner);
+  }
+
+  async onCompleted(purchaseId, purchase, options = {}, user = "system", queryRunner = null) {
+    await this.statusModule.handleCompleted(purchaseId, purchase, options, user, queryRunner);
+    await this.notificationModule.notifySupplier(purchase, "completed", user, "", queryRunner);
+  }
+
+  async onCancelled(purchaseId, purchase, reason = "", user = "system", queryRunner = null) {
+    await this.statusModule.handleCancelled(purchaseId, purchase, reason, user, queryRunner);
+    await this.notificationModule.notifySupplier(purchase, "cancelled", user, reason, queryRunner);
+  }
+
+  async onUpdated(purchaseId, purchase, changes, user = "system", queryRunner = null) {
+    logger.info(`[PurchaseState] ✅ Purchase #${purchaseId} updated (fields: ${Object.keys(changes).join(", ")})`);
+    // ... existing code
+  }
+
+  async onDeleted(purchaseId, purchase, user = "system", queryRunner = null) {
+    // ... existing code
+  }
+}
+
+module.exports = { PurchaseStateService };
+```
 
 ---
 
-## 📊 Summary Statistics
+### Step 4: Similar Pattern for Other Services
 
-| Priority | Count | Estimated Hours |
-|----------|-------|-----------------|
-| 🔴 CRITICAL | 5 | 25 hours |
-| 🟠 HIGH | 5 | 20 hours |
-| 🟡 MEDIUM | 10 | 30 hours |
-| 🟢 LOW | 10 | 44 hours |
-| **TOTAL** | **30** | **119 hours** |
-
----
-
-## 🚀 Quick Win Checklist (First 2 Weeks)
-
-- [ ] **Week 1**
-  - [ ] Add database indexes (Issue #6) - 2 hrs
-  - [ ] Create BaseService (Issue #7) - 8 hrs
-  - [ ] Implement error handling (Issue #9) - 3 hrs
-  - [ ] Add idempotency to SaleState (Issue #10) - 2 hrs
-  - [ ] Standardize logger usage (Issue #17) - 2 hrs
-
-- [ ] **Week 2**
-  - [ ] Fix N+1 queries (Issue #3) - 3 hrs
-  - [ ] Add validation schemas (Issue #2) - 8 hrs
-  - [ ] Implement optimistic locking (Issue #1) - 4 hrs
-  - [ ] Fix transaction rollback (Issue #5) - 6 hrs
-  - [ ] Create status constants (Issue #18) - 3 hrs
+| Entity | Modules |
+|--------|---------|
+| **Batch** | `BatchStatusModule`, `BatchNotificationModule`, `BatchAuditModule` |
+| **Sale** | `SaleInventoryModule`, `SaleLoyaltyModule`, `SalePaymentModule`, `SaleNotificationModule` |
+| **ReturnRefund** | `ReturnStatusModule`, `ReturnNotificationModule`, `ReturnAuditModule` |
+| **Supplier** | `SupplierStatusModule`, `SupplierNotificationModule`, `SupplierAuditModule` |
+| **Category** | `CategoryStatusModule`, `CategoryNotificationModule`, `CategoryAuditModule` |
+| **Meat** | `MeatStatusModule`, `MeatNotificationModule`, `MeatAuditModule` |
 
 ---
 
-## 📝 Implementation Notes
+## 📊 Benefits of This Architecture
 
-### BaseService Implementation Order:
-1. Create `BaseService.js`
-2. Update `BatchService.js` to extend BaseService
-3. Test thoroughly
-4. Update remaining services one by one
-
-### Testing Strategy:
-1. Start with critical services: Batch, Sale, Loyalty
-2. Use in-memory SQLite for tests
-3. Mock external dependencies (printer, email, SMS)
-
-### Performance Monitoring:
-1. Add metrics to all service methods
-2. Monitor query execution times
-3. Set up alerts for slow queries
-
-### Deployment Considerations:
-1. Migrate indexes before deploying
-2. Run validation on existing data
-3. Test rollback mechanisms
+| Benefit | Before | After |
+|---------|--------|-------|
+| **File Size** | 350+ lines per file | 80-120 lines per module |
+| **Testing** | Hard (mock everything) | Easy (test each module in isolation) |
+| **Reusability** | None | Can import individual modules |
+| **Maintainability** | Hard (one file = everything) | Easy (find what you need) |
+| **Onboarding** | Overwhelming | Clear structure |
+| **Merge Conflicts** | Frequent | Minimal |
+| **Bug Fixes** | Risky (affects everything) | Safe (isolated to module) |
 
 ---
 
-*Last Updated: 2026-09-04*
-*Project: Meatify POS System*
+## 🚀 Migration Path
+
+1. **Create common modules** (`UIBroadcaster`, `NotificationSender`, `AuditLogger`)
+2. **Refactor one service** (e.g., Customer) as a proof of concept
+3. **Test thoroughly** to ensure no regressions
+4. **Refactor remaining services** one by one
+5. **Update subscribers** to use new service structure
+6. **Remove old monolithic files**
+
+---
+
+## ✅ Checklist
+
+- [ ] Create `src/stateServices/common/UIBroadcaster.js`
+- [ ] Create `src/stateServices/common/NotificationSender.js`
+- [ ] Create `src/stateServices/common/AuditLogger.js`
+- [ ] Refactor `CustomerStateService` into modules
+- [ ] Refactor `PurchaseStateService` into modules
+- [ ] Refactor `BatchStateService` into modules
+- [ ] Refactor `SaleStateService` into modules
+- [ ] Refactor `ReturnRefundStateService` into modules
+- [ ] Refactor `SupplierStateService` into modules
+- [ ] Refactor `CategoryStateService` into modules
+- [ ] Refactor `MeatStateService` into modules
+- [ ] Update all subscribers to use new service structure
+- [ ] Remove old monolithic files
+- [ ] Run tests and verify no regressions
+
+---
+
+**This modular architecture will make the codebase much easier to maintain and understand!** 🚀
